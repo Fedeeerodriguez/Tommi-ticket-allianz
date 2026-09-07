@@ -4,7 +4,7 @@ Repositorio **aislado** (no toca el backend principal de Tommy) para la nueva fa
 un **agente de tickets con Allianz** que ingesta correos, los clasifica, cruza con Notion,
 lleva seguimiento y ejecuta acciones — con memoria y bitácora.
 
-> Canal del sistema: **`hola@babilonia.ai`** (a confirmar cómo se relaciona con `integraciones babilonia`).
+> Canal del sistema: **`hola@babilonia.ai`** — **único correo, lee y envía** (decisión de José/Fede).
 > Stack: Python (FastAPI) + n8n + Supabase + WATI + Notion.
 
 ---
@@ -37,7 +37,7 @@ y dispare la acción correcta automáticamente — con atención y seguimiento d
 ## 3. Arquitectura del flujo (pipeline)
 
 ```
-Buzón (hola@babilonia.ai)
+Buzón ÚNICO: hola@babilonia.ai  (lee entrantes y envía salientes)
    │  cada correo = 1 evento
    ▼
 (1) INTAKE ─────────► normaliza {from,to,cc,subject,body,adjuntos,headers,date}
@@ -118,7 +118,7 @@ Regla de oro: **clasificar barato (reglas) antes que caro (LLM).**
 ## 8. Qué necesito para arrancar
 
 **🔴 Bloqueante (Fase 0-1):**
-1. **Buzón:** ¿`hola@babilonia.ai` es el canal? ¿mismo o distinto de `integraciones babilonia`? ¿leo uno o los dos? ¿Tommy envía desde ahí? + cómo dar acceso (OAuth / reenvío / IMAP).
+1. **Acceso a `hola@babilonia.ai`** (canal único, lee y envía): ¿es Gmail/Workspace u otro? ¿cómo damos acceso — OAuth / reenvío / IMAP con app password?
 2. **15-30 correos reales** de muestra (uno por tipo).
 3. **Formato del nº de ticket** de Allianz (ejemplos de asunto y cuerpo).
 
