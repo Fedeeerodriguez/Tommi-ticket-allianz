@@ -52,8 +52,10 @@ def main(carpeta: Path | None = None) -> int:
     print("=" * 90)
     for t in repo.listar_tickets():
         print(f"#{t['id']} · {t.get('estado'):<18} · ticket:{t.get('nro_ticket') or '—'} · "
-              f"póliza:{t.get('poliza') or '—'} · cliente:{t.get('cliente_correo') or '—'}"
+              f"póliza:{t.get('poliza') or '—'}"
               f"{'  ⚠️ DELICADO/Ceci' if t.get('delicado') else ''}")
+        print(f"     cliente:{t.get('cliente_nombre') or t.get('cliente_correo') or '—'} · "
+              f"asesor:{t.get('asesor_correo') or '—'} · DAF:{t.get('daf') or '—'}")
         for ev in repo.listar_eventos(t["id"]):
             print(f"     └─ {ev.get('tipo_evento'):<22} {ev.get('resumen')}")
 

@@ -65,9 +65,11 @@ SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
 STORAGE_BUCKET = os.getenv("STORAGE_BUCKET", "tickets-allianz-adjuntos")
 
-# LLM L2 (clasificación de lo ambiguo + resúmenes coloquiales). Claude Haiku.
+# LLM L2 (clasificación de lo ambiguo + resúmenes coloquiales).
+# Decisión: reusar OpenAI del backend principal (gpt-4.1-mini). ANTHROPIC queda opcional.
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
-MODELO_L2 = os.getenv("MODELO_L2", "claude-haiku-4-5-20251001")
+MODELO_L2 = os.getenv("MODELO_L2", "") or os.getenv("OPENAI_CHAT_MODEL", "gpt-4.1-mini")
 
 # Carpetas locales (dry-run / dev).
 MUESTRAS_DIR = Path(os.getenv("MUESTRAS_DIR", str(RAIZ / "docs" / "muestras")))
@@ -91,7 +93,7 @@ def hay_imap() -> bool:
 
 
 def hay_llm() -> bool:
-    return bool(ANTHROPIC_API_KEY)
+    return bool(OPENAI_API_KEY)
 
 
 def hay_db() -> bool:

@@ -13,6 +13,7 @@ from __future__ import annotations
 import re
 
 from app.db import Repositorio
+from app.enriquecimiento import enriquecer
 from app.models import Clasificacion, Correo, EstadoTicket, TipoCorreo
 
 # Tipos que representan un ticket con Allianz.
@@ -69,30 +70,45 @@ def procesar_correo(repo: Repositorio, correo: Correo, clf: Clasificacion, entid
 
     delicado = es_delicado(correo)
 
+    # Cruce con Notion (M6): resuelve asesor/DAF/cliente por póliza o correo del cliente.
+    # Notion es fuente de verdad para póliza/cliente → completa lo que la extracción no vio.
+    notion = enriquecer(entidades)
+    for k in ("poliza", "cliente_correo", "cliente_nombre"):
+        if notion.get(k):
+            entidades[k] = notion[k]
+    if notion.get("found"):
+        resultado["notion"] = {"asesor": notion.get("asesor_correo"), "daf": notion.get("daf_nombre"),
+                               "cliente": notion.get("cliente_nombre"), "producto": notion.get("producto")}
+
     # Buscar ticket existente por nº / póliza / cliente.
     ticket = repo.buscar_ticket(entidades.get("nro_ticket"), entidades.get("poliza"),
                                 entidades.get("cliente_correo"))
 
     estado = EstadoTicket.ESCALADO_CECI if delicado else _ESTADO_POR_TIPO.get(clf.tipo, EstadoTicket.ABIERTO)
 
+    # Datos resueltos (extracción + Notion) para persistir en el ticket.
+    resueltos = {
+        "nro_ticket": entidades.get("nro_ticket"),
+        "poliza": entidades.get("poliza"),
+        "cliente_nombre": entidades.get("cliente_nombre"),
+        "cliente_correo": entidades.get("cliente_correo"),
+        "asesor_correo": notion.get("asesor_correo"),
+        "daf": notion.get("daf_nombre"),
+    }
+
     if ticket:
         ticket_id = ticket["id"]
         campos = {"estado": estado.value}
         if delicado and not ticket.get("delicado"):
             campos["delicado"] = True
-        # Completar datos que antes faltaban.
-        for k_ent, k_col in (("nro_ticket", "nro_ticket"), ("poliza", "poliza"),
-                             ("cliente_correo", "cliente_correo"), ("cliente_nombre", "cliente_nombre")):
-            if entidades.get(k_ent) and not ticket.get(k_col):
-                campos[k_col] = entidades[k_ent]
+        for col, val in resueltos.items():  # completar lo que faltaba
+            if val and not ticket.get(col):
+                campos[col] = val
         repo.actualizar_ticket(ticket_id, **campos)
         resultado["accion"] = f"ticket actualizado → {estado.value}" + (" [DELICADO→Ceci]" if delicado else "")
     else:
         ticket_id = repo.crear_ticket({
-            "nro_ticket": entidades.get("nro_ticket"),
-            "poliza": entidades.get("poliza"),
-            "cliente_nombre": entidades.get("cliente_nombre"),
-            "cliente_correo": entidades.get("cliente_correo"),
+            **resueltos,
             "estado": estado.value,
             "delicado": delicado,
             "abierto_por": _abierto_por(clf.tipo),
