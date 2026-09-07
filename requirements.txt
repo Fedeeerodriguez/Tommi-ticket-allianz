@@ -1,0 +1,17 @@
+# Fase 1 corre solo con stdlib + python-dotenv (IMAP y parseo de correo son stdlib).
+# El resto se activa a medida que avanzan las fases (import perezoso, no rompe si falta).
+python-dotenv>=1.0.0
+
+# L2 clasificación / resúmenes (Claude Haiku) — Fase 1/2
+anthropic>=0.39.0
+
+# Persistencia en Supabase/Postgres — Fase 2
+psycopg[binary]>=3.1
+
+# Extracción de texto de PDFs adjuntos — Fase 2
+pypdf>=4.0
+
+# Servicio + scheduler (polling IMAP, recordatorios, retención) — Fase 1/3
+fastapi>=0.111
+uvicorn>=0.30
+APScheduler>=3.10
