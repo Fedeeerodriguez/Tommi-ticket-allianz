@@ -16,7 +16,12 @@ from app import config
 from app.models import Clasificacion, Correo, TipoCorreo
 
 # --- Señales ---
-_RE_TICKET = re.compile(r"\b(?:ticket|folio|caso|solicitud)\s*[:#nº]*\s*([A-Z0-9][A-Z0-9\-]{3,})\b", re.I)
+# El nº de ticket/folio SIEMPRE tiene dígitos → exigirlo evita capturar palabras
+# sueltas (ej. "solicitud\nEstimado" agarraba "Estimado").
+_RE_TICKET = re.compile(
+    r"(?:ticket|folio|caso|solicitud)\s*(?:n[°ºo]?\.?|#|:)?\s*([0-9][0-9\-]{3,}|[A-Z]{1,4}[0-9][A-Z0-9\-]{2,})",
+    re.I,
+)
 _RE_ACUSE = re.compile(r"\b(se\s+(?:ha\s+|han\s+)?(?:cre|gener|abri|registr|levant)\w*|hemos\s+recibido|n[uú]mero\s+de\s+(?:ticket|folio|caso)|se\s+(?:le\s+)?asign[oó])\b", re.I)
 _RE_PIDE = re.compile(r"\b(favor\s+de|es\s+necesario|requerimos|debe(?:r[aá])?\s+(?:enviar|adjuntar|firmar|completar)|adjunt[ae]|proporcion[ae]|env[ií]e|complete)\b", re.I)
 _RE_PREGUNTA_PRODUCTO = re.compile(r"\b(c[oó]mo|cu[aá]l|cu[aá]nto|qu[eé]|se\s+puede|es\s+posible|duda|consulta|producto|cobertura|prima|comisi[oó]n)\b", re.I)

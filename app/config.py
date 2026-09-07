@@ -51,6 +51,15 @@ ALLIANZ_DOMINIOS = _csv("ALLIANZ_DOMINIOS", "allianz.com,allianz.com.mx")
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 DB_SCHEMA = os.getenv("DB_SCHEMA", "tickets_allianz")
 
+# Notion (reusado del backend principal de Tommy). Acepta NOTION_TOKEN o NOTION_API_KEY.
+NOTION_TOKEN = os.getenv("NOTION_TOKEN", "") or os.getenv("NOTION_API_KEY", "")
+NOTION_DB_TICKETS_ALLIANZ = os.getenv("NOTION_DB_TICKETS_ALLIANZ", "")
+NOTION_DB_DAF = os.getenv("NOTION_DB_DAF", "")
+NOTION_DB_ASESORES = os.getenv("NOTION_DB_ASESORES", "")
+NOTION_DB_EMISIONES = os.getenv("NOTION_DB_EMISIONES", "")
+NOTION_DB_COBRANZAS = os.getenv("NOTION_DB_COBRANZAS", "")
+NOTION_DB_CLIENTES = os.getenv("NOTION_DB_CLIENTES", "")
+
 # Supabase Storage para adjuntos (PDFs). En la DB solo va texto + referencia.
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
@@ -83,3 +92,11 @@ def hay_imap() -> bool:
 
 def hay_llm() -> bool:
     return bool(ANTHROPIC_API_KEY)
+
+
+def hay_db() -> bool:
+    return bool(DATABASE_URL)
+
+
+def hay_notion() -> bool:
+    return bool(NOTION_TOKEN)
