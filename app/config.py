@@ -70,6 +70,8 @@ STORAGE_BUCKET = os.getenv("STORAGE_BUCKET", "tickets-allianz-adjuntos")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 MODELO_L2 = os.getenv("MODELO_L2", "") or os.getenv("OPENAI_CHAT_MODEL", "gpt-4.1-mini")
+# Generar mensajes coloquiales con LLM (M4). Si false, usa plantillas fijas (sin costo).
+USAR_LLM_RESUMEN = _bool("USAR_LLM_RESUMEN", "true")
 
 # Carpetas locales (dry-run / dev).
 MUESTRAS_DIR = Path(os.getenv("MUESTRAS_DIR", str(RAIZ / "docs" / "muestras")))

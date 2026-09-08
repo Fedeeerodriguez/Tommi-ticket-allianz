@@ -57,6 +57,9 @@ def main(carpeta: Path | None = None) -> int:
                       f"Trámite:{tram} · vincula póliza:{emis}")
             else:
                 print(f"        └─ Notion {reg.get('accion')} · page {reg.get('page_id','')[:8]}")
+        for a in (res.get("acciones") or []):
+            prog = f" (prog. {a['programada_para'][:10]})" if a.get("programada_para") else ""
+            print(f"        → [{a['tipo_accion']}/{a['canal']}]{prog} {a.get('mensaje','')[:80]}")
 
     # Estado final de los tickets + bitácora
     print("\n" + "=" * 90)

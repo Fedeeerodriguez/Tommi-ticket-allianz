@@ -26,6 +26,9 @@ class Repositorio(Protocol):
     def vincular_correo(self, correo_id: int, ticket_id: int) -> None: ...
     def agregar_evento(self, ticket_id: int, correo_id: Optional[int],
                        tipo_evento: str, resumen: str) -> int: ...
+    def crear_accion(self, ticket_id: int, tipo_accion: str, canal: str, payload: dict,
+                     programada_para: Optional[str] = None) -> int: ...
+    def listar_acciones(self, ticket_id: Optional[int] = None, estado: Optional[str] = None) -> list[dict]: ...
     def listar_tickets(self, limite: int = 100) -> list[dict]: ...
     def listar_eventos(self, ticket_id: int) -> list[dict]: ...
 
@@ -117,6 +120,25 @@ class RepositorioPostgres:
                 f"values (%s,%s,%s,%s) returning id", (ticket_id, correo_id, tipo_evento, resumen))
             return int(cur.fetchone()[0])
 
+    def crear_accion(self, ticket_id, tipo_accion, canal, payload, programada_para=None) -> int:
+        with self.conn.cursor() as cur:
+            cur.execute(
+                f"insert into {self._t('acciones')} (ticket_id, tipo_accion, canal, estado, payload, programada_para) "
+                f"values (%s,%s,%s,'sugerida',%s::jsonb,%s) returning id",
+                (ticket_id, tipo_accion, canal, json.dumps(payload, ensure_ascii=False), programada_para))
+            return int(cur.fetchone()[0])
+
+    def listar_acciones(self, ticket_id=None, estado=None) -> list[dict]:
+        cond, args = [], []
+        if ticket_id is not None:
+            cond.append("ticket_id=%s"); args.append(ticket_id)
+        if estado is not None:
+            cond.append("estado=%s"); args.append(estado)
+        where = (" where " + " and ".join(cond)) if cond else ""
+        with self.conn.cursor() as cur:
+            cur.execute(f"select * from {self._t('acciones')}{where} order by created_at", args)
+            return self._rows(cur)
+
     def listar_tickets(self, limite: int = 100) -> list[dict]:
         with self.conn.cursor() as cur:
             cur.execute(f"select * from {self._t('tickets')} order by ultima_actividad desc limit %s", (limite,))
@@ -165,6 +187,10 @@ class RepositorioSQLite:
             create table if not exists ticket_eventos(
               id integer primary key autoincrement, ticket_id int, correo_id int,
               tipo_evento text, resumen text, created_at text default (datetime('now')));
+            create table if not exists acciones(
+              id integer primary key autoincrement, ticket_id int, tipo_accion text, canal text,
+              estado text default 'sugerida', payload text, resultado text, programada_para text,
+              created_at text default (datetime('now')));
             """
         )
         self.conn.commit()
@@ -224,6 +250,24 @@ class RepositorioSQLite:
                     (ticket_id, correo_id, tipo_evento, resumen))
         self.conn.commit()
         return int(cur.lastrowid)
+
+    def crear_accion(self, ticket_id, tipo_accion, canal, payload, programada_para=None) -> int:
+        cur = self.conn.cursor()
+        cur.execute("insert into acciones(ticket_id,tipo_accion,canal,estado,payload,programada_para) "
+                    "values(?,?,?,'sugerida',?,?)",
+                    (ticket_id, tipo_accion, canal, json.dumps(payload, ensure_ascii=False), programada_para))
+        self.conn.commit()
+        return int(cur.lastrowid)
+
+    def listar_acciones(self, ticket_id=None, estado=None) -> list[dict]:
+        cond, args = [], []
+        if ticket_id is not None:
+            cond.append("ticket_id=?"); args.append(ticket_id)
+        if estado is not None:
+            cond.append("estado=?"); args.append(estado)
+        where = (" where " + " and ".join(cond)) if cond else ""
+        cur = self.conn.execute(f"select * from acciones{where} order by created_at", args)
+        return [dict(r) for r in cur.fetchall()]
 
     def listar_tickets(self, limite: int = 100) -> list[dict]:
         cur = self.conn.execute("select * from tickets order by ultima_actividad desc limit ?", (limite,))

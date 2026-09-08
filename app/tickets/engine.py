@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import re
 
+from app.acciones import decidir_y_encolar
 from app.db import Repositorio
 from app.enriquecimiento import enriquecer
 from app.models import Clasificacion, Correo, EstadoTicket, TipoCorreo
@@ -44,9 +45,10 @@ _EVENTO_POR_TIPO = {
 }
 
 # Temas sensibles → forzosamente Ceci (LISTA TENTATIVA, a confirmar con Ceci).
+# Sin \b final: son raíces/prefijos (reclamaci→reclamación, cancelaci→cancelación, etc.).
 _RE_DELICADO = re.compile(
     r"\b(beneficiari|cancelaci|cancelar|rescate|retiro\s+total|fallecimiento|defunci|deceso|"
-    r"siniestro|reclamaci|fraude|legal|demanda|queja|conducta|devoluci[oó]n\s+de\s+prima)\b",
+    r"siniestro|reclamaci|fraude|demanda|conducta|devoluci[oó]n\s+de\s+prima)",
     re.I,
 )
 
@@ -124,11 +126,14 @@ def procesar_correo(repo: Repositorio, correo: Correo, clf: Clasificacion, entid
 
     # Registro en Notion (objetivo 3): UPSERT en la base Tickets Allianz + bitácora.
     # Respeta DRY_RUN (arma el payload, no escribe).
-    ticket_repr = {**resueltos, "estado": estado.value}
+    ticket_repr = {**resueltos, "estado": estado.value, "delicado": delicado}
     resultado["registro_notion"] = registrar_en_notion(
         ticket_repr, notion, correo, clf.tipo.value,
         bitacora=f"{_EVENTO_POR_TIPO.get(clf.tipo, 'evento')}: {(correo.asunto or '')[:160]}",
     )
+
+    # Motor de acciones (M3/M4/M7): decide y encola lo que Tommy HARÍA (estado 'sugerida').
+    resultado["acciones"] = decidir_y_encolar(repo, ticket_id, ticket_repr, clf, notion, correo)
     return resultado
 
 
