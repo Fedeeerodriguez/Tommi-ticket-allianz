@@ -15,6 +15,7 @@ import re
 from app.db import Repositorio
 from app.enriquecimiento import enriquecer
 from app.models import Clasificacion, Correo, EstadoTicket, TipoCorreo
+from app.registro import registrar_en_notion
 
 # Tipos que representan un ticket con Allianz.
 _TIPOS_TICKET = {
@@ -120,6 +121,14 @@ def procesar_correo(repo: Repositorio, correo: Correo, clf: Clasificacion, entid
                         (correo.asunto or "")[:200])
     resultado["ticket_id"] = ticket_id
     resultado["delicado"] = delicado
+
+    # Registro en Notion (objetivo 3): UPSERT en la base Tickets Allianz + bitácora.
+    # Respeta DRY_RUN (arma el payload, no escribe).
+    ticket_repr = {**resueltos, "estado": estado.value}
+    resultado["registro_notion"] = registrar_en_notion(
+        ticket_repr, notion, correo, clf.tipo.value,
+        bitacora=f"{_EVENTO_POR_TIPO.get(clf.tipo, 'evento')}: {(correo.asunto or '')[:160]}",
+    )
     return resultado
 
 

@@ -53,6 +53,7 @@ create table if not exists tickets_allianz.tickets (
     delicado        boolean default false,    -- si va forzosamente con Ceci
     autorizado      boolean default false,    -- autorización del prospecto para actuar
     abierto_por     text,          -- cliente / asesor / allianz / tommy
+    notion_page_id  text,          -- página en la base Tickets Allianz de Notion (write-back)
     ultima_actividad timestamptz default now(),
     created_at      timestamptz default now(),
     unique (nro_ticket)

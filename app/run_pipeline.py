@@ -45,6 +45,18 @@ def main(carpeta: Path | None = None) -> int:
         procesados += 1
         tk = f"#{res['ticket_id']}" if res.get("ticket_id") else "—"
         print(f"[{res['tipo']:<20}] ticket {tk:<5} · {res['accion']}")
+        reg = res.get("registro_notion")
+        if reg and reg.get("ok"):
+            if reg.get("dry_run"):
+                props = reg.get("properties", {})
+                estado = (props.get("Estado", {}).get("status") or {}).get("name", "—")
+                interno = (props.get("Estado Interno de Allianz", {}).get("status") or {}).get("name", "—")
+                tram = (props.get("Tipo de Trámite", {}).get("select") or {}).get("name", "—")
+                emis = "sí" if props.get("Emisiones") else "no"
+                print(f"        └─ Notion [DRY-RUN] → Estado:{estado} · Interno:{interno} · "
+                      f"Trámite:{tram} · vincula póliza:{emis}")
+            else:
+                print(f"        └─ Notion {reg.get('accion')} · page {reg.get('page_id','')[:8]}")
 
     # Estado final de los tickets + bitácora
     print("\n" + "=" * 90)
