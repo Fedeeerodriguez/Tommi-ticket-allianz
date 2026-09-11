@@ -3,7 +3,9 @@
 Registro de las decisiones tomadas (para no re-discutirlas y que quede la trazabilidad).
 
 ## Stack (elegido con Fede)
-- **Orquestación:** todo en **Python (FastAPI)**. Sin n8n como dependencia.
+- **Orquestación:** todo en **Python**, modelada como **grafo de LangGraph**; los pasos con
+  LLM son **agentes LangChain**. Sin n8n como dependencia. Ver `docs/ARQUITECTURA_GRAFO.md`.
+  (El pipeline lineal `run_pipeline.py` queda como legacy; el camino oficial es `run_grafo.py`.)
 - **Ingesta:** **IMAP** (proveedor-agnóstico) para leer; **SMTP** para enviar (Fase 4).
 - **Base de datos:** **misma Supabase de Tommy**, esquema aislado **`tickets_allianz`**.
 - **LLM (L2 + resúmenes):** **Claude Haiku** (`claude-haiku-4-5`). Si no hay API key, cae a solo-L1.

@@ -2,7 +2,14 @@
 # El resto se activa a medida que avanzan las fases (import perezoso, no rompe si falta).
 python-dotenv>=1.0.0
 
-# L2 clasificación / resúmenes (Claude Haiku) — Fase 1/2
+# Orquestación: grafo de estados que procesa cada correo (clasificar→…→despachar).
+langgraph>=1.0
+
+# Agentes LLM (clasificador L2 con salida estructurada + redactor coloquial) sobre OpenAI.
+langchain-core>=1.0
+langchain-openai>=1.0
+
+# L2 alternativo con Claude (opcional; el camino por defecto es OpenAI vía LangChain).
 anthropic>=0.39.0
 
 # Persistencia en Supabase/Postgres — Fase 2

@@ -32,27 +32,16 @@ def _plantilla(rol: str, ctx: dict) -> str:
 
 
 def generar(rol: str, ctx: dict) -> str:
-    """rol: 'cliente' | 'asesor' | 'ceci'. ctx trae tipo, nombres, nro_ticket, resumen_allianz."""
-    if not (config.USAR_LLM_RESUMEN and config.hay_llm()):
-        return _plantilla(rol, ctx)
-    try:
-        from openai import OpenAI
+    """rol: 'cliente' | 'asesor' | 'ceci'. ctx trae tipo, nombres, nro_ticket, resumen_allianz.
 
-        client = OpenAI(api_key=config.OPENAI_API_KEY)
-        sistema = (
-            "Sos Tommy, asistente de Babilonia (correduría de seguros con Allianz). Escribí un "
-            "mensaje de WhatsApp BREVE (máx 3 frases), cálido y claro, en español rioplatense "
-            "neutro, sin tecnicismos ni datos sensibles. No inventes datos que no estén en el contexto."
-        )
-        usuario = (
-            f"Destinatario: {rol}. Contexto del ticket: {ctx}. "
-            "Redactá SOLO el mensaje, sin comillas ni encabezados."
-        )
-        resp = client.chat.completions.create(
-            model=config.MODELO_L2, temperature=0.4, max_tokens=180,
-            messages=[{"role": "system", "content": sistema}, {"role": "user", "content": usuario}],
-        )
-        return resp.choices[0].message.content.strip()
+    Redacta con el agente LangChain (`app.agentes.redactar`); si no está disponible o falla,
+    cae a la plantilla fija (sin costo)."""
+    try:
+        from app.agentes import redactar
+
+        texto = redactar(rol, ctx)
+        if texto:
+            return texto
     except Exception as ex:  # noqa: BLE001
-        log.warning("resumen LLM falló, uso plantilla: %s", ex)
-        return _plantilla(rol, ctx)
+        log.warning("agente redactor no disponible, uso plantilla: %s", ex)
+    return _plantilla(rol, ctx)
