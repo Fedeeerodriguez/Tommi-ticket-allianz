@@ -28,8 +28,11 @@ class Repositorio(Protocol):
                        tipo_evento: str, resumen: str) -> int: ...
     def crear_accion(self, ticket_id: int, tipo_accion: str, canal: str, payload: dict,
                      programada_para: Optional[str] = None) -> int: ...
+    def actualizar_accion(self, accion_id: int, estado: str,
+                          resultado: Optional[dict] = None) -> None: ...
     def listar_acciones(self, ticket_id: Optional[int] = None, estado: Optional[str] = None) -> list[dict]: ...
     def listar_tickets(self, limite: int = 100) -> list[dict]: ...
+    def obtener_ticket(self, ticket_id: int) -> Optional[dict]: ...
     def listar_eventos(self, ticket_id: int) -> list[dict]: ...
 
 
@@ -128,6 +131,12 @@ class RepositorioPostgres:
                 (ticket_id, tipo_accion, canal, json.dumps(payload, ensure_ascii=False), programada_para))
             return int(cur.fetchone()[0])
 
+    def actualizar_accion(self, accion_id, estado, resultado=None) -> None:
+        res = json.dumps(resultado, ensure_ascii=False) if resultado is not None else None
+        with self.conn.cursor() as cur:
+            cur.execute(f"update {self._t('acciones')} set estado=%s, resultado=%s::jsonb where id=%s",
+                        (estado, res, accion_id))
+
     def listar_acciones(self, ticket_id=None, estado=None) -> list[dict]:
         cond, args = [], []
         if ticket_id is not None:
@@ -143,6 +152,11 @@ class RepositorioPostgres:
         with self.conn.cursor() as cur:
             cur.execute(f"select * from {self._t('tickets')} order by ultima_actividad desc limit %s", (limite,))
             return self._rows(cur)
+
+    def obtener_ticket(self, ticket_id: int) -> Optional[dict]:
+        with self.conn.cursor() as cur:
+            cur.execute(f"select * from {self._t('tickets')} where id=%s", (ticket_id,))
+            return self._row(cur)
 
     def listar_eventos(self, ticket_id: int) -> list[dict]:
         with self.conn.cursor() as cur:
@@ -259,6 +273,11 @@ class RepositorioSQLite:
         self.conn.commit()
         return int(cur.lastrowid)
 
+    def actualizar_accion(self, accion_id, estado, resultado=None) -> None:
+        res = json.dumps(resultado, ensure_ascii=False) if resultado is not None else None
+        self.conn.execute("update acciones set estado=?, resultado=? where id=?", (estado, res, accion_id))
+        self.conn.commit()
+
     def listar_acciones(self, ticket_id=None, estado=None) -> list[dict]:
         cond, args = [], []
         if ticket_id is not None:
@@ -272,6 +291,11 @@ class RepositorioSQLite:
     def listar_tickets(self, limite: int = 100) -> list[dict]:
         cur = self.conn.execute("select * from tickets order by ultima_actividad desc limit ?", (limite,))
         return [dict(r) for r in cur.fetchall()]
+
+    def obtener_ticket(self, ticket_id: int) -> Optional[dict]:
+        cur = self.conn.execute("select * from tickets where id=?", (ticket_id,))
+        r = cur.fetchone()
+        return dict(r) if r else None
 
     def listar_eventos(self, ticket_id: int) -> list[dict]:
         cur = self.conn.execute("select * from ticket_eventos where ticket_id=? order by created_at", (ticket_id,))

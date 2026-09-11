@@ -43,6 +43,12 @@ SMTP_HOST = os.getenv("SMTP_HOST", "")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
 SMTP_USER = os.getenv("SMTP_USER", "")
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+# Remitente de los correos que sale Tommy (default: el buzón único).
+SMTP_REMITENTE = os.getenv("SMTP_REMITENTE", "") or BUZON
+SMTP_NOMBRE = os.getenv("SMTP_NOMBRE", "Babilonia")
+# Destino de los tickets que se levantan ante Allianz (Directorio Allianz, pendiente de confirmar).
+# Sin esto, la acción 'enviar_a_allianz' queda BLOQUEADA (nunca adivina un destinatario).
+ALLIANZ_DEST = os.getenv("ALLIANZ_DEST", "")
 
 # Dominios/correos de Allianz para las reglas L1 (ajustar con los reales).
 ALLIANZ_DOMINIOS = _csv("ALLIANZ_DOMINIOS", "allianz.com,allianz.com.mx")
@@ -92,6 +98,10 @@ POLL_SEGUNDOS = int(os.getenv("POLL_SEGUNDOS", "90"))
 
 def hay_imap() -> bool:
     return bool(IMAP_HOST and IMAP_USER and IMAP_PASSWORD)
+
+
+def hay_smtp() -> bool:
+    return bool(SMTP_HOST and SMTP_USER and SMTP_PASSWORD)
 
 
 def hay_llm() -> bool:

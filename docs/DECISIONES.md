@@ -25,5 +25,20 @@ Registro de las decisiones tomadas (para no re-discutirlas y que quede la trazab
 4. **Idempotencia por `message_id`**: el polling puede re-ver mensajes; nunca reprocesar.
 
 ## Modo seguro
-- Todo corre en **`DRY_RUN`** (no envía nada) hasta la Fase 4.
+- Todo corre en **`DRY_RUN`** (no envía nada) por default.
 - Lectores (`LectorIMAP` real / `LectorEmlLocal` dev) cumplen la misma interfaz → se cambian por config.
+- **Emisores** (`EmisorSMTP` real / `EmisorLaboratorio` dry-run) cumplen la misma interfaz →
+  `emisor_desde_config()` elige SMTP real **solo** con credenciales **y** `DRY_RUN=false`.
+
+## Fase 4 — Envío (objetivo 2: enviar tickets a Allianz)
+- El **despachador** (`app.acciones.despacho.despachar_pendientes`) toma las acciones que dejó
+  el motor en estado `sugerida` y las ejecuta. Estados de salida: `enviada` / `simulada` /
+  `fallida` / `bloqueada` / `pendiente_wati` / `omitida` / (queda `sugerida` si es `diferida`).
+- Guardarraíles antes de mandar a Allianz:
+  1. Ticket **delicado sin `autorizado`** → `bloqueada` (nunca sale solo; va a Ceci).
+  2. Sin **`ALLIANZ_DEST`** (Directorio Allianz) → `bloqueada` (no adivina destinatario).
+- Canal `wati` (WhatsApp) → `pendiente_wati`: lo envía la integración de WATI, no este despachador.
+- Canal `interno` (Ceci/panel) → `omitida`: no requiere envío externo.
+- Runner: `python -m app.run_despacho`.
+- **Pendiente de accesos para ir en vivo:** SMTP de `hola@babilonia.ai`, `ALLIANZ_DEST` real,
+  desactivar el Zapier viejo de José, y `DRY_RUN=false`.
