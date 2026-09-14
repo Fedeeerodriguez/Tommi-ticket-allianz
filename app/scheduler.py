@@ -24,7 +24,7 @@ from app.acciones.motor import escanear_inactividad
 from app.db import RepositorioPostgres, get_repo
 from app.envio import emisor_desde_config
 from app.grafo import construir_grafo
-from app.intake import LectorEmlLocal, LectorIMAP
+from app.intake import lector_desde_config
 
 log = logging.getLogger("scheduler")
 
@@ -34,11 +34,8 @@ _INACTIVIDAD_DIAS = 3
 
 
 def _lector():
-    """IMAP si hay credenciales; si no, la carpeta de muestras (dev)."""
-    if config.hay_imap():
-        return LectorIMAP(config.IMAP_HOST, config.IMAP_USER, config.IMAP_PASSWORD,
-                          config.IMAP_CARPETA, config.IMAP_PORT), f"IMAP {config.IMAP_HOST}"
-    return LectorEmlLocal(config.MUESTRAS_DIR), f"local {config.MUESTRAS_DIR}"
+    """Gmail API / IMAP / carpeta de muestras, según la config."""
+    return lector_desde_config()
 
 
 def job_intake(repo, grafo, emisor) -> dict:

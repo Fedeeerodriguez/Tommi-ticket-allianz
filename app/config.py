@@ -83,6 +83,13 @@ USAR_LLM_RESUMEN = _bool("USAR_LLM_RESUMEN", "true")
 MUESTRAS_DIR = Path(os.getenv("MUESTRAS_DIR", str(RAIZ / "docs" / "muestras")))
 DATA_DIR = Path(os.getenv("DATA_DIR", str(RAIZ / "data")))
 
+# Gmail API por OAuth (Plan B para Workspace: reemplaza IMAP+SMTP si hay token).
+# El client OAuth se descarga de Google Cloud Console; el token lo genera
+# `python -m app.google_oauth_setup` y queda en GOOGLE_TOKEN_JSON.
+GOOGLE_CREDENTIALS_JSON = os.getenv("GOOGLE_CREDENTIALS_JSON", str(DATA_DIR / "google_credentials.json"))
+GOOGLE_TOKEN_JSON = os.getenv("GOOGLE_TOKEN_JSON", str(DATA_DIR / "google_token.json"))
+GMAIL_QUERY = os.getenv("GMAIL_QUERY", "is:unread")
+
 # Modo seguro: en dry-run NO se envía nada a nadie.
 DRY_RUN = _bool("DRY_RUN", "true")
 
@@ -98,6 +105,11 @@ POLL_SEGUNDOS = int(os.getenv("POLL_SEGUNDOS", "90"))
 
 def hay_imap() -> bool:
     return bool(IMAP_HOST and IMAP_USER and IMAP_PASSWORD)
+
+
+def hay_gmail_api() -> bool:
+    """True si ya se autorizó la Gmail API (existe el token OAuth)."""
+    return Path(GOOGLE_TOKEN_JSON).is_file()
 
 
 def hay_smtp() -> bool:

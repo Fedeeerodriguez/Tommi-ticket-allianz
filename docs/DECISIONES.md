@@ -6,7 +6,12 @@ Registro de las decisiones tomadas (para no re-discutirlas y que quede la trazab
 - **Orquestación:** todo en **Python**, modelada como **grafo de LangGraph**; los pasos con
   LLM son **agentes LangChain**. Sin n8n como dependencia. Ver `docs/ARQUITECTURA_GRAFO.md`.
   (El pipeline lineal `run_pipeline.py` queda como legacy; el camino oficial es `run_grafo.py`.)
-- **Ingesta:** **IMAP** (proveedor-agnóstico) para leer; **SMTP** para enviar (Fase 4).
+- **Ingesta:** el buzón `hola@babilonia.ai` está en **Google Workspace**. Se conecta por
+  **Gmail API (OAuth)** — *Plan B* — porque el Workspace tiene bloqueadas las App Passwords
+  (IMAP/SMTP con contraseña quedan como fallback). Ver `app/google_auth.py`,
+  `app/intake/gmail_api.py`, `app/envio/gmail_api.py`; autorización one-shot con
+  `python -m app.google_oauth_setup`. Los lectores/emisores son enchufables:
+  `intake.lector_desde_config()` y `envio.emisor_desde_config()` eligen Gmail API → IMAP → local.
 - **Base de datos:** **misma Supabase de Tommy**, esquema aislado **`tickets_allianz`**.
 - **LLM (L2 + resúmenes):** **Claude Haiku** (`claude-haiku-4-5`). Si no hay API key, cae a solo-L1.
 - **Despliegue:** EasyPanel, servicio separado (no toca el backend principal de Tommy).

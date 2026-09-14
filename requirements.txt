@@ -22,3 +22,8 @@ pypdf>=4.0
 fastapi>=0.111
 uvicorn>=0.30
 APScheduler>=3.10
+
+# Gmail API por OAuth (Plan B para Workspace: alternativa a IMAP/SMTP). Import perezoso.
+google-api-python-client>=2.0
+google-auth>=2.0
+google-auth-oauthlib>=1.0

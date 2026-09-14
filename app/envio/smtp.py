@@ -101,8 +101,14 @@ class EmisorLaboratorio:
 
 
 def emisor_desde_config() -> Emisor:
-    """SMTP real solo con credenciales y DRY_RUN=false; si no, emisor de laboratorio."""
-    if config.hay_smtp() and not config.DRY_RUN:
-        return EmisorSMTP(config.SMTP_HOST, config.SMTP_PORT, config.SMTP_USER,
-                          config.SMTP_PASSWORD, config.SMTP_REMITENTE, config.SMTP_NOMBRE)
+    """Envío real solo con DRY_RUN=false: Gmail API si está autorizada, si no SMTP; en
+    cualquier otro caso, emisor de laboratorio (no toca la red)."""
+    if not config.DRY_RUN:
+        if config.hay_gmail_api():
+            from .gmail_api import EmisorGmail
+
+            return EmisorGmail(config.SMTP_REMITENTE, config.SMTP_NOMBRE)
+        if config.hay_smtp():
+            return EmisorSMTP(config.SMTP_HOST, config.SMTP_PORT, config.SMTP_USER,
+                              config.SMTP_PASSWORD, config.SMTP_REMITENTE, config.SMTP_NOMBRE)
     return EmisorLaboratorio(config.SMTP_REMITENTE, config.SMTP_NOMBRE)

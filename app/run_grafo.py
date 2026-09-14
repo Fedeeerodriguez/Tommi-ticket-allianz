@@ -17,18 +17,11 @@ from app import config
 from app.db import RepositorioPostgres, get_repo
 from app.envio import emisor_desde_config
 from app.grafo import construir_grafo
-from app.intake import LectorEmlLocal, LectorIMAP
+from app.intake import lector_desde_config
 
 
 def main(carpeta: Path | None = None, despachar: bool = False) -> int:
-    if config.hay_imap() and carpeta is None:
-        lector = LectorIMAP(config.IMAP_HOST, config.IMAP_USER, config.IMAP_PASSWORD,
-                            config.IMAP_CARPETA, config.IMAP_PORT)
-        fuente = f"IMAP {config.IMAP_HOST}"
-    else:
-        carpeta = carpeta or config.MUESTRAS_DIR
-        lector = LectorEmlLocal(carpeta)
-        fuente = str(carpeta)
+    lector, fuente = lector_desde_config(carpeta)
 
     repo = get_repo()
     emisor = emisor_desde_config()
