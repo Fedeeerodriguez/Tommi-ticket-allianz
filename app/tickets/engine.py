@@ -45,10 +45,13 @@ _EVENTO_POR_TIPO = {
     TipoCorreo.F_CONSULTA_PRODUCTO: "consulta_tramite",
 }
 
-# Temas sensibles → forzosamente Ceci (LISTA TENTATIVA, a confirmar con Ceci).
+# Temas sensibles → forzosamente Ceci (confirmado con Ceci).
 # Sin \b final: son raíces/prefijos (reclamaci→reclamación, cancelaci→cancelación, etc.).
+# NOTA: "cambio de beneficiario" NO es delicado — es self-service del portal (Ceci), por eso
+# 'beneficiari' no está acá. Un fallecimiento/siniestro con beneficiario igual cae por sus
+# otras raíces.
 _RE_DELICADO = re.compile(
-    r"\b(beneficiari|cancelaci|cancelar|rescate|retiro\s+total|fallecimiento|defunci|deceso|"
+    r"\b(cancelaci|cancelar|rescate|retiro\s+total|fallecimiento|defunci|deceso|"
     r"siniestro|reclamaci|fraude|demanda|conducta|devoluci[oó]n\s+de\s+prima)",
     re.I,
 )

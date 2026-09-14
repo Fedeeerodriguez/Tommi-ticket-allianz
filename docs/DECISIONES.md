@@ -75,7 +75,7 @@ Dos rutas de atención:
   - Requiere apoyo: **Cambio de conducto de cobro**.
 - Consulta sin trámite reconocido → queda para Ceci (canal `interno`).
 
-**⚠️ Interacción a confirmar con Ceci:** el guardarraíl de "delicado" (`_RE_DELICADO` en
-`tickets/engine.py`) matchea la raíz `beneficiari`, así que hoy **"Cambio de beneficiario"**
-se marca como delicado y va a Ceci en vez de auto-instruir. Si querés que se auto-instruya
-como los otros self-service, hay que sacar `beneficiari` de esa lista (o afinar la regla).
+**Beneficiario (decidido con Fede):** "Cambio de beneficiario" es self-service → se auto-instruye
+como los demás (se sacó `beneficiari` del guardarraíl `_RE_DELICADO`). Pero un beneficiario en
+contexto sensible (p. ej. "por fallecimiento") **sigue** cayendo en delicado por sus otras raíces
+(`fallecimiento`, `defunci`, etc.) y va a Ceci.
