@@ -88,6 +88,9 @@ DATA_DIR = Path(os.getenv("DATA_DIR", str(RAIZ / "data")))
 # `python -m app.google_oauth_setup` y queda en GOOGLE_TOKEN_JSON.
 GOOGLE_CREDENTIALS_JSON = os.getenv("GOOGLE_CREDENTIALS_JSON", str(DATA_DIR / "google_credentials.json"))
 GOOGLE_TOKEN_JSON = os.getenv("GOOGLE_TOKEN_JSON", str(DATA_DIR / "google_token.json"))
+# En servidores headless (EasyPanel) no se puede abrir el navegador: se genera el token una
+# vez en local y su CONTENIDO se pega en esta env var. Tiene prioridad sobre el archivo.
+GOOGLE_TOKEN = os.getenv("GOOGLE_TOKEN", "")
 GMAIL_QUERY = os.getenv("GMAIL_QUERY", "is:unread")
 
 # Modo seguro: en dry-run NO se envía nada a nadie.
@@ -108,8 +111,8 @@ def hay_imap() -> bool:
 
 
 def hay_gmail_api() -> bool:
-    """True si ya se autorizó la Gmail API (existe el token OAuth)."""
-    return Path(GOOGLE_TOKEN_JSON).is_file()
+    """True si ya se autorizó la Gmail API (token en env var o en archivo)."""
+    return bool(GOOGLE_TOKEN.strip()) or Path(GOOGLE_TOKEN_JSON).is_file()
 
 
 def hay_smtp() -> bool:
