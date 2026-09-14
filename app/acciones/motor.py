@@ -16,6 +16,7 @@ from datetime import datetime, timedelta, timezone
 
 from app.db import Repositorio
 from app.models import Clasificacion, Correo, TipoCorreo
+from app.tramites import Ruta, identificar_tramite, instrucciones_cliente
 from . import resumen
 
 _DIAS_RECORDATORIO = 2
@@ -49,6 +50,10 @@ def decidir_y_encolar(repo: Repositorio, ticket_id: int, ticket: dict,
                                 f"Cliente: {ctx['cliente_nombre'] or '—'} · asunto: {correo.asunto}"})
         return _persistir(repo, ticket_id, plan)
 
+    # Consulta de trámite (F): instruir al cliente (portal) o gestionar nosotros por mail.
+    if clf.tipo == TipoCorreo.F_CONSULTA_PRODUCTO:
+        return _plan_tramite(repo, ticket_id, ctx, correo, cliente_dest, asesor_dest)
+
     tipo = clf.tipo
     if tipo == TipoCorreo.A_RESPUESTA_TICKET:
         plan.append(_msg("avisar_cliente", "wati", "cliente", cliente_dest, ctx))
@@ -78,10 +83,48 @@ def _msg(tipo_accion: str, canal: str, rol: str, destinatario, ctx: dict) -> dic
             "mensaje": resumen.generar(rol, ctx)}
 
 
+def _plan_tramite(repo: Repositorio, ticket_id: int, ctx: dict, correo: Correo,
+                  cliente_dest, asesor_dest) -> list[dict]:
+    """Rutea una consulta de trámite según el catálogo de Ceci:
+      - CLIENTE_PORTAL → le mandamos las instrucciones a quien preguntó (email_cliente).
+      - NOSOTROS_MAIL  → lo gestionamos por mail (canal email → Allianz) + aviso al cliente.
+    Si no se reconoce el trámite, queda para revisión de Ceci (canal interno)."""
+    tramite = identificar_tramite(correo)
+    # A quién le respondemos: quien escribió; si no, el cliente/asesor del ticket.
+    destino = correo.remitente or cliente_dest or asesor_dest
+    nombre = (ctx.get("cliente_nombre") or "").split()[0] if ctx.get("cliente_nombre") else None
+
+    if tramite is None:
+        return _persistir(repo, ticket_id, [{
+            "tipo_accion": "consulta_general", "canal": "interno", "rol": "ceci", "destinatario": None,
+            "mensaje": f"Consulta de proceso sin trámite reconocido → revisar. Asunto: {correo.asunto}"}])
+
+    if tramite.ruta == Ruta.CLIENTE_PORTAL:
+        return _persistir(repo, ticket_id, [{
+            "tipo_accion": "instruir_tramite", "canal": "email_cliente", "rol": "cliente",
+            "destinatario": destino, "asunto": f"Cómo hacer: {tramite.nombre}",
+            "mensaje": instrucciones_cliente(tramite, nombre)}])
+
+    # NOSOTROS_MAIL: lo hacemos nosotros por correo (a Allianz) + le avisamos al cliente.
+    hola = f"Hola {nombre}! " if nombre else "Hola! "
+    plan = [
+        {"tipo_accion": "gestionar_tramite", "canal": "email", "rol": "allianz", "destinatario": None,
+         "mensaje": f"Solicitud de trámite: {tramite.nombre}"
+                    + (f" · póliza {ctx.get('poliza')}" if ctx.get("poliza") else "")
+                    + (f" · cliente {ctx.get('cliente_nombre')}" if ctx.get("cliente_nombre") else "")},
+        {"tipo_accion": "avisar_cliente", "canal": "email_cliente", "rol": "cliente",
+         "destinatario": destino, "asunto": f"Estamos gestionando: {tramite.nombre}",
+         "mensaje": f"{hola}Recibimos tu solicitud de «{tramite.nombre}». Este trámite lo "
+                    f"gestionamos nosotros directamente con Allianz y te mantenemos al tanto. 💛"},
+    ]
+    return _persistir(repo, ticket_id, plan)
+
+
 def _persistir(repo: Repositorio, ticket_id: int, plan: list[dict]) -> list[dict]:
     for a in plan:
         repo.crear_accion(ticket_id, a["tipo_accion"], a["canal"],
-                          {"rol": a.get("rol"), "destinatario": a.get("destinatario"), "mensaje": a.get("mensaje")},
+                          {"rol": a.get("rol"), "destinatario": a.get("destinatario"),
+                           "mensaje": a.get("mensaje"), "asunto": a.get("asunto")},
                           a.get("programada_para"))
     return plan
 

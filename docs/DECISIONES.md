@@ -56,3 +56,26 @@ Registro de las decisiones tomadas (para no re-discutirlas y que quede la trazab
 - Runner de producción: `python -m app.run_scheduler` (es el proceso a levantar en EasyPanel).
 - Modo seguro intacto: sin credenciales / `DRY_RUN=true` no sale nada por SMTP ni se purga nada,
   así el mismo binario corre igual en dev y en prod — solo cambian las variables de entorno.
+
+## Catálogo de trámites Allianz (indicaciones de Ceci)
+Fuente: capturas + explicación de Ceci. Vive en `app/tramites/catalogo.py` y se dispara en las
+consultas de trámite (`F_CONSULTA_PRODUCTO`). Portal del cliente:
+`https://clientes.allianz.com.mx/portal-clientes-web/home` → pestaña **Trámites** → póliza + trámite.
+
+Dos rutas de atención:
+- **`CLIENTE_PORTAL`** (el cliente lo hace solo) → Tommy le responde con las **instrucciones**
+  paso a paso (canal `email_cliente`, va a quien preguntó, sin guardarraíl de Allianz).
+  - Self-service: Asesoría sobre endosos · Cambio de beneficiario · Cambio de fecha de pago ·
+    Redistribución de aportaciones · Retiro desde alternativas · Traspaso entre alternativas.
+  - **Período de descanso (año de descanso):** self-service pero con instrucciones detalladas
+    (trámite "Asesoría para endosos" + Observaciones pidiendo pausar cobros → confirmar por
+    correo; condiciones: estar al corriente y no aportar durante el descanso).
+- **`NOSOTROS_MAIL`** (lo gestionamos nosotros por correo) → acción `gestionar_tramite`
+  (canal `email` → Directorio Allianz, con los guardarraíles) + aviso al cliente.
+  - Requiere apoyo: **Cambio de conducto de cobro**.
+- Consulta sin trámite reconocido → queda para Ceci (canal `interno`).
+
+**⚠️ Interacción a confirmar con Ceci:** el guardarraíl de "delicado" (`_RE_DELICADO` en
+`tickets/engine.py`) matchea la raíz `beneficiari`, así que hoy **"Cambio de beneficiario"**
+se marca como delicado y va a Ceci en vez de auto-instruir. Si querés que se auto-instruya
+como los otros self-service, hay que sacar `beneficiari` de esa lista (o afinar la regla).

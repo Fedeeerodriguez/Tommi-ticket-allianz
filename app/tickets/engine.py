@@ -42,6 +42,7 @@ _EVENTO_POR_TIPO = {
     TipoCorreo.C_ALLIANZ_PIDE: "pedido_a_cliente",
     TipoCorreo.D_REENVIO_ASESOR: "solicitud_asesor",
     TipoCorreo.E_CC_CLIENTE: "cliente_escribio_allianz",
+    TipoCorreo.F_CONSULTA_PRODUCTO: "consulta_tramite",
 }
 
 # Temas sensibles → forzosamente Ceci (LISTA TENTATIVA, a confirmar con Ceci).

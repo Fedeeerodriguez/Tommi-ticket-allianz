@@ -14,8 +14,9 @@ from app.clasificador import clasificar_l1, clasificar_l2
 from app.db import Repositorio
 from app.enriquecimiento import enriquecer
 from app.extraccion import extraer
-from app.models import EstadoTicket
+from app.models import EstadoTicket, TipoCorreo
 from app.registro import registrar_en_notion
+from app.tramites import identificar_tramite
 from app.tickets.engine import (
     _ESTADO_POR_TIPO, _EVENTO_POR_TIPO, _TIPOS_TICKET, _abierto_por, es_delicado,
 )
@@ -48,10 +49,13 @@ def n_persistir(estado: EstadoCorreo, repo: Repositorio) -> dict:
     correo_id, es_nuevo = repo.guardar_correo(correo, clf, ent)
     if not es_nuevo:
         fin = "duplicado"
-    elif clf.tipo not in _TIPOS_TICKET:
-        fin = "no_ticket"
-    else:
+    elif clf.tipo in _TIPOS_TICKET:
         fin = None
+    elif clf.tipo == TipoCorreo.F_CONSULTA_PRODUCTO and identificar_tramite(correo) is not None:
+        # Consulta con un trámite reconocido → la tratamos como ticket (instruir / gestionar).
+        fin = None
+    else:
+        fin = "no_ticket"
     return {"correo_id": correo_id, "es_nuevo": es_nuevo, "fin": fin, "ruta": ["persistir"]}
 
 

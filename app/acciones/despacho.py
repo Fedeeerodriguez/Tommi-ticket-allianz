@@ -106,7 +106,26 @@ def _despachar_una(repo: Repositorio, accion: dict, emisor: Emisor, ahora: datet
                                                        "mensaje": pay.get("mensaje")})
         return "pendiente_wati"
 
-    # Canal email → único caso que sale por SMTP. Hoy: envío a Allianz.
+    # Canal email al cliente/asesor (instrucciones de trámite o aviso): sale por SMTP a quien
+    # preguntó. No lleva el guardarraíl de Allianz (no es un envío al Directorio Allianz).
+    if canal == "email_cliente":
+        destino = pay.get("destinatario")
+        if not destino:
+            repo.actualizar_accion(aid, "bloqueada", {"motivo": "sin destinatario para responder"})
+            return "bloqueada"
+        asunto = pay.get("asunto") or "Sobre tu trámite"
+        cuerpo = pay.get("mensaje") or ""
+        res = emisor.enviar([destino], asunto, cuerpo)
+        if res.get("simulado"):
+            repo.actualizar_accion(aid, "simulada", res)
+            return "simulada"
+        if res.get("ok"):
+            repo.actualizar_accion(aid, "enviada", res)
+            return "enviada"
+        repo.actualizar_accion(aid, "fallida", res)
+        return "fallida"
+
+    # Canal email → envío a Allianz (Directorio). Guardarraíles antes de salir.
     if canal == "email":
         ticket = repo.obtener_ticket(accion["ticket_id"]) or {}
         # Guardarraíl 1: delicado sin autorización → nunca sale solo.
