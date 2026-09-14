@@ -44,3 +44,15 @@ Registro de las decisiones tomadas (para no re-discutirlas y que quede la trazab
 - Runner: `python -m app.run_despacho`.
 - **Pendiente de accesos para ir en vivo:** SMTP de `hola@babilonia.ai`, `ALLIANZ_DEST` real,
   desactivar el Zapier viejo de José, y `DRY_RUN=false`.
+
+## Fase 5 — Scheduler (servicio autónomo 24/7)
+- `app/scheduler.py` corre sobre **APScheduler** (un solo proceso, sin cron externo). Tres jobs:
+  1. **intake** (cada `POLL_SEGUNDOS`): lee correos nuevos por IMAP → invoca el grafo por cada
+     uno → despacha las acciones vencidas. Idempotente por `message_id` (re-ver no reprocesa).
+  2. **inactividad** (03:00 → 08:00 UTC): `escanear_inactividad` encola recordatorios de
+     reactivación para tickets estancados y los despacha.
+  3. **retención** (03:30 UTC): `repo.purgar_antiguos(RETENCION_DIAS)` borra correos y tickets
+     resueltos más viejos que 6 meses (con su historial). En `DRY_RUN` solo **cuenta**, no borra.
+- Runner de producción: `python -m app.run_scheduler` (es el proceso a levantar en EasyPanel).
+- Modo seguro intacto: sin credenciales / `DRY_RUN=true` no sale nada por SMTP ni se purga nada,
+  así el mismo binario corre igual en dev y en prod — solo cambian las variables de entorno.

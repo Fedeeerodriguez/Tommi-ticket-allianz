@@ -53,7 +53,12 @@ puede romper el pipeline.
 ```bash
 python -m app.run_grafo               # muestras (o IMAP si hay credenciales)
 python -m app.run_grafo --despachar   # además ejecuta el envío (SMTP), respetando DRY_RUN
+python -m app.run_scheduler           # servicio 24/7: polling IMAP + inactividad + retención (Fase 5)
 ```
+
+En producción (EasyPanel) el proceso que corre es `run_scheduler`: cada `POLL_SEGUNDOS`
+invoca el grafo por cada correo nuevo, más los jobs diarios de inactividad y retención a 6
+meses. Ver `app/scheduler.py` y la sección "Fase 5" de `docs/DECISIONES.md`.
 
 `run_pipeline.py` (lineal, hand-rolled) queda como referencia/legacy; el camino oficial es
 el grafo.

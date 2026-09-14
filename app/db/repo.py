@@ -34,6 +34,7 @@ class Repositorio(Protocol):
     def listar_tickets(self, limite: int = 100) -> list[dict]: ...
     def obtener_ticket(self, ticket_id: int) -> Optional[dict]: ...
     def listar_eventos(self, ticket_id: int) -> list[dict]: ...
+    def purgar_antiguos(self, dias: int, dry: bool = False) -> dict: ...
 
 
 # ------------------------------------------------------------------ Postgres
@@ -162,6 +163,28 @@ class RepositorioPostgres:
         with self.conn.cursor() as cur:
             cur.execute(f"select * from {self._t('ticket_eventos')} where ticket_id=%s order by created_at", (ticket_id,))
             return self._rows(cur)
+
+    def purgar_antiguos(self, dias: int, dry: bool = False) -> dict:
+        """Retención (6 meses): borra correos viejos y tickets resueltos viejos con su historial.
+        Con `dry=True` solo cuenta lo que se borraría (no toca nada)."""
+        corte = "now() - (%s || ' days')::interval"
+        with self.conn.cursor() as cur:
+            # Tickets resueltos más viejos que el corte → se van con sus eventos/acciones.
+            cur.execute(f"select id from {self._t('tickets')} "
+                        f"where estado='resuelto' and created_at < {corte}", (dias,))
+            ids_tk = [r[0] for r in cur.fetchall()]
+            cur.execute(f"select count(*) from {self._t('correos')} where created_at < {corte}", (dias,))
+            n_correos = int(cur.fetchone()[0])
+            resumen = {"correos": n_correos, "tickets_resueltos": len(ids_tk), "dry": dry}
+            if dry or (n_correos == 0 and not ids_tk):
+                return resumen
+            if ids_tk:
+                ph = ",".join(["%s"] * len(ids_tk))
+                cur.execute(f"delete from {self._t('acciones')} where ticket_id in ({ph})", ids_tk)
+                cur.execute(f"delete from {self._t('ticket_eventos')} where ticket_id in ({ph})", ids_tk)
+                cur.execute(f"delete from {self._t('tickets')} where id in ({ph})", ids_tk)
+            cur.execute(f"delete from {self._t('correos')} where created_at < {corte}", (dias,))
+        return resumen
 
     @staticmethod
     def _row(cur) -> Optional[dict]:
@@ -300,6 +323,27 @@ class RepositorioSQLite:
     def listar_eventos(self, ticket_id: int) -> list[dict]:
         cur = self.conn.execute("select * from ticket_eventos where ticket_id=? order by created_at", (ticket_id,))
         return [dict(r) for r in cur.fetchall()]
+
+    def purgar_antiguos(self, dias: int, dry: bool = False) -> dict:
+        """Retención (6 meses): borra correos viejos y tickets resueltos viejos con su historial.
+        Con `dry=True` solo cuenta lo que se borraría (no toca nada)."""
+        corte = f"-{int(dias)} days"
+        cur = self.conn.cursor()
+        cur.execute("select id from tickets where estado='resuelto' and created_at < datetime('now', ?)", (corte,))
+        ids_tk = [r["id"] for r in cur.fetchall()]
+        cur.execute("select count(*) as n from correos where created_at < datetime('now', ?)", (corte,))
+        n_correos = int(cur.fetchone()["n"])
+        resumen = {"correos": n_correos, "tickets_resueltos": len(ids_tk), "dry": dry}
+        if dry or (n_correos == 0 and not ids_tk):
+            return resumen
+        if ids_tk:
+            ph = ",".join("?" * len(ids_tk))
+            cur.execute(f"delete from acciones where ticket_id in ({ph})", ids_tk)
+            cur.execute(f"delete from ticket_eventos where ticket_id in ({ph})", ids_tk)
+            cur.execute(f"delete from tickets where id in ({ph})", ids_tk)
+        cur.execute("delete from correos where created_at < datetime('now', ?)", (corte,))
+        self.conn.commit()
+        return resumen
 
 
 def get_repo() -> Repositorio:
