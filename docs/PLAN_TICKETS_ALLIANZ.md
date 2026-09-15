@@ -73,6 +73,60 @@ alcance (ver Fase G).
 | `cierre` | "solicitud cerrada/atendida/finalizada" | marcar ticket resuelto |
 | `notif_daf/emision/cobranza` | remitentes de notificaciones | **fuera de alcance** (ya cubierto por el WATI del equipo) |
 
+## Arquitectura de agentes (LangGraph + LangChain)
+
+Todo en **Python**. El flujo se modela como **grafo de LangGraph**; el cerebro es un **agente
+LangChain** con herramientas (tools). Roster:
+
+### 1. Agente Orquestador (LLM — el cerebro)
+- **El más importante.** Siempre conectado a un LLM. Toma TODAS las decisiones y **diseña las
+  respuestas/mensajes** a enviar.
+- **Entradas:** los avisos del agente de Gmail (entrada), y **solicitudes de Tomi** (el agente de
+  Babilonia que responde).
+- **Tools a disposición:**
+  - `enviar_email(...)` — responder al ticket (siempre en el hilo).
+  - `wati_cliente(numero, plantilla, params)` — aviso al cliente.
+  - `wati_ceci(plantilla, params)` — intervención/visto bueno de Ceci (**número fijo, pendiente**).
+  - (apoyo) consulta a Notion (asesor/cliente/póliza) para rutear.
+- Aplica la **asertividad** (detecta malas prácticas de Allianz y re-exige) y respeta el
+  **guardarraíl crítico** (acciones críticas → borrador a Ceci antes de ejecutar).
+- Modelo fuerte (es decisión crítica); es el único paso con LLM sí o sí.
+
+### 2. Agente de Gmail (entrada)
+- Observa **todos** los mails que llegan y **acciona automáticamente** ante cada uno.
+- Clasifica (reglas L1 + subtipos del sandbox; L2 con LLM solo si es ambiguo). Si el mail cumple
+  los criterios (es un ticket accionable), **dispara al orquestador**.
+- Determinístico en su mayoría → no gasta LLM salvo ambigüedad.
+
+### 3. Agente/Tool de envío de email
+- Envía/responde correos. **Siempre responde en el hilo del ticket** (usa `threadId` + `References`).
+- Si abre un **mail nuevo**, guarda su `id`/`threadId` para poder **asociar la respuesta** y seguir
+  en ese hilo.
+
+### 4. Tool de WATI
+- `wati_cliente`: plantilla a un número específico (aviso a cliente).
+- `wati_ceci`: plantilla a Ceci para cosas de su intervención (**fijar su número de contacto**).
+
+**Flujo:** Gmail (entrada) detecta y clasifica → si aplica, invoca al **Orquestador** → el LLM
+decide y redacta → llama a las tools (`enviar_email` / `wati_*`) → si es acción crítica, pasa por
+el **visto bueno de Ceci** antes de ejecutar → persiste el estado del ticket.
+
+> **Pendiente de dato:** número de WhatsApp de **Ceci** para la tool `wati_ceci`.
+
+### Stack y librerías (qué uso y en qué caso)
+
+| Librería / framework | En qué caso se usa |
+|---|---|
+| **LangGraph** | Orquestación y estado del flujo (StateGraph): cuándo se llama al orquestador, ruteo entre nodos, guardarraíl de Ceci. Es el "cableado". |
+| **LangChain** (+ `langchain-openai`) | El **agente orquestador** (LLM con tool-calling) y el **redactor** de respuestas. Cualquier paso que razone/redacte con LLM. |
+| **google-api-python-client** + **google-auth** | Gmail API: agente de **entrada** (leer buzón) y tool de **envío** (responder en hilo). Ya integrado (Plan B / OAuth). |
+| **httpx** | Tool de **WATI** (API HTTP de WhatsApp): `wati_cliente` y `wati_ceci`. Cliente HTTP con timeouts. |
+| **APScheduler** | El agente de Gmail como **poller** que dispara ante cada mail nuevo + jobs de SLA/recordatorios. Ya integrado. |
+| **pydantic** | **Salida estructurada** del orquestador/clasificador (formato forzado de decisiones). Viene con LangChain. |
+| **holidays** *(opcional, Fase C)* | **Días hábiles MX** para calcular vencimientos del SLA (72 h hábiles, etc.). Se agrega al llegar a la Fase C. |
+
+Regla: cualquier librería nueva que se sume, se anota acá con el caso de uso.
+
 ## Fases de implementación
 
 ### Fase A — Clasificador real (reemplazar supuestos)
