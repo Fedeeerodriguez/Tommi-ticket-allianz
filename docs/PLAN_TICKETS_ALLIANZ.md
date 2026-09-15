@@ -1,8 +1,46 @@
 # Plan de acción — Sistema de tickets Allianz (reglas reales de negocio)
 
 Basado en las respuestas del equipo de Babilonia y en el análisis del sandbox sobre correos
-reales. El foco de arranque son **los tickets** (`Allianz.Mexico@`); las notificaciones
-(DAF/emisión/cobranza) se ingieren para conocimiento pero **no accionan** todavía.
+reales. El foco es **solo los tickets** (`Allianz.Mexico@`). Las notificaciones
+(DAF/emisión/cobranza) **YA están cubiertas** por el WATI actual del equipo → quedan fuera de
+alcance (ver Fase G).
+
+## Actualizaciones tras la llamada (2026-09-15)
+
+**Se afinó:**
+- **"Sistema escribió un mensaje" no es solo apertura:** puede ser **asignación** de ticket
+  (avisar el nº al cliente), **recordatorio** (por cerrar por inactividad) o **cierre**. "Sistema"
+  = Allianz avisando; hay que mirar el cuerpo para saber cuál es.
+- **Actor (regla fina):** en "<actor> escribió un mensaje", si es **NOMBRE** → agente/ejecutivo de
+  **Allianz**; si es **CORREO** → externo a Allianz (**cliente / asesor de Babilonia / nosotros**).
+- **Ruteo:** avisos por **WATI** — a **asesores** siempre (plantilla de avances); al **cliente**
+  solo cuando se le pide una acción/documento (los automáticos lo saturaban).
+- **Confirmación desde el correo del cliente (obligatoria, lista final):** cancelación de póliza,
+  suspensión de aportaciones, período de descanso. (Aumento/disminución NO es obligatorio.)
+  Para esos, avisamos al cliente por WATI, pero la confirmación la manda **él** desde su correo.
+- **Acción crítica → Ceci revisa el BORRADOR** que el bot va a enviar y da el **visto bueno antes**
+  de ejecutar (hay casos donde el cliente puede **perder dinero**). No es solo "escalar".
+- **SLA:** default **72 h hábiles**; el plazo real viene en la última respuesta de Allianz
+  (ejecutivo o sistema). Hay un plazo aparte para el **cliente** (envío de documentos).
+
+**Se agregó (nuevo):**
+- **Bot asertivo / malas prácticas de Allianz:** Allianz "no lee y contesta otra cosa". El bot
+  debe ser **crítico y direccional**: detectar respuestas fuera de tema y **volver a exigir** lo
+  pedido, en vez de tragarse cualquier respuesta.
+- **Destino en Allianz = un DIRECTORIO por tipo de trámite** (cliente.optimax, endosos, etc.), NO
+  un único correo. Ceci va a compartir la **página de Allianz que explica trámite-por-trámite quién
+  lo hace y a qué correo** → base del ruteo y del `ALLIANZ_DEST` (que pasa a ser un mapa).
+- **Notion para visualización + checkbox de aprobación (visto bueno de Ceci).** Fede: frontend/
+  sandbox primero, bajar a Notion después; bases nuevas en Supabase (RAG vectorial).
+
+**Se sacó del alcance:**
+- **Notificaciones (DAF / emisión / cobranza):** ya están mapeadas y con WATI por el equipo →
+  el sistema nuevo NO las procesa. Fase G queda como opcional/futuro.
+
+**Riesgos abiertos:**
+- **Cobertura de casilla:** algunos correos de Allianz llegan **directo a `integraciones@`** sin
+  pasar por `hola@`. Si el sistema lee solo `hola@`, puede **perder tickets**. Definir: leer ambas
+  casillas o arreglar el ruteo. (Parkeado con el tema del reenvío roto.)
 
 ## Reglas de negocio confirmadas
 
@@ -33,15 +71,17 @@ reales. El foco de arranque son **los tickets** (`Allianz.Mexico@`); las notific
 | `recordatorio` | "Sistema escribió un mensaje" + texto de cierre próximo | **urgente**: responder en el hilo |
 | `respuesta_participante` | "<actor> escribió un mensaje" (nombre=Allianz, correo=no participante) | leer; si piden algo → pedírselo al cliente/asesor |
 | `cierre` | "solicitud cerrada/atendida/finalizada" | marcar ticket resuelto |
-| `notif_daf/emision/cobranza` | remitentes de notificaciones | (fase 2) solo registrar |
+| `notif_daf/emision/cobranza` | remitentes de notificaciones | **fuera de alcance** (ya cubierto por el WATI del equipo) |
 
 ## Fases de implementación
 
 ### Fase A — Clasificador real (reemplazar supuestos)
 - Normalizar todo el texto entrante a **NFC** (Allianz manda en Unicode descompuesto).
 - Priorizar el **dominio Allianz** antes de las reglas genéricas de ruido.
-- Reconocer los subtipos de la tabla; extraer **nº ticket**, **actor** (nombre/correo), **plazos**.
+- Reconocer los subtipos de la tabla; extraer **nº ticket**, **actor** (nombre/correo), **plazos**, **detalle del mail**.
 - Mapear subtipos → taxonomía interna (`TipoCorreo`), agregando los que falten.
+
+- Obtener los tipos de correo que manda allianz, tener un ejemplo de cada uno y extraer la informacion para ver el orden que ellos utilizan
 
 ### Fase B — Ticket con hilo (seguimiento por correo)
 - Guardar el **`threadId` de Gmail** + `References` por ticket para **responder en el mismo hilo**
@@ -59,20 +99,30 @@ reales. El foco de arranque son **los tickets** (`Allianz.Mexico@`); las notific
 
 ### Fase D — Ruteo y notificaciones
 - Asesor → **WATI** (plantilla de avances).
-- Cliente → **correo**, solo cuando requiere acción/documento; procesos con confirmación desde el
+- Cliente → **WATI-PLANTILLA**, solo cuando requiere acción/documento; procesos con confirmación desde el
   correo del cliente (cancelación, suspensión de aportaciones, período de descanso).
+- **Seguimiento a Allianz** → por **correo, en el hilo del ticket** (esto NO es WATI).
+- **Destino en Allianz = directorio por tipo de trámite** (cliente.optimax, endosos, etc.) →
+  pendiente la página de Allianz "trámite-por-trámite" que comparte Ceci.
+- **Asertividad:** si Allianz responde fuera de tema, el bot re-exige lo pedido (no lo da por bueno).
 
 ### Fase E — Guardarraíl de acciones críticas (Ceci primero)
 - Extender el guardarraíl `delicado/autorizado` con la lista crítica: **nunca se ejecutan solas**;
   van a **Ceci** para aprobación manual antes de ejecutar.
+- **Ceci revisa el BORRADOR** de la respuesta que el bot va a mandar y da el **visto bueno** antes
+  de que se ejecute (hay casos donde el cliente puede perder dinero).
+- Lista crítica: cancelación de póliza, suspensión de aportaciones, período de descanso, rescate /
+  retiro total, siniestro / fallecimiento.
+- Los mensajes a **Ceci** van por **WATI**
 
 ### Fase F — Enriquecimiento desde Notion (base emisiones)
 - Mapear campos de la base **emisiones** (póliza, cliente, correo del cliente, asesor) vía Notion
   MCP; cruzar por póliza / nº de solicitud para rutear al destinatario correcto.
+-Crear **Rieles** en python para que encuentre las bases de datos y campos necesarios de forma automatica en notion
 
-### Fase G — Notificaciones (fase 2)
-- Ingerir DAF/emisión/cobranza como conocimiento (registrar + vincular por póliza/solicitud), sin
-  accionar todavía.
+### Fase G — Notificaciones (FUERA DE ALCANCE / futuro)
+- DAF/emisión/cobranza **ya están cubiertas** por el WATI actual del equipo → el sistema nuevo NO
+  las procesa. Solo se retomaría si más adelante se quiere sumar ese conocimiento a la base.
 
 ## Sandbox (herramienta de apoyo — ya construida)
 - `app/sandbox.py` + `python -m app.run_sandbox [query] [límite]`: lee correos reales por Gmail API

@@ -48,7 +48,9 @@ RE_TICKET = re.compile(r"ticket[-\s#]*([0-9]{4,})", re.I)
 RE_SOLICITUD = re.compile(r"solicitud[:\s#]*([0-9]{4,})", re.I)
 RE_POLIZA = re.compile(r"\b([A-Z]{2,4}[0-9][A-Z0-9]*-?[0-9]{3,}(?:-[0-9])?)\b")
 RE_CIERRE = re.compile(r"(solicitud\s+(?:cerrada|atendida|finalizada)|se\s+ha\s+cerrad|ticket\s+cerrad|caso\s+cerrad|finalizad\w*\s+ticket)", re.I)
-RE_RECORDATORIO = re.compile(r"(recordatorio|por\s+cerrar|pr[oó]xim\w*\s+a\s+cerrar|falta\s+de\s+respuesta|sin\s+respuesta)", re.I)
+RE_RECORDATORIO = re.compile(
+    r"(recordatorio|por\s+cerrar|pr[oó]xim\w*\s+a\s+cerrar|falta\s+de\s+respuesta|sin\s+respuesta|"
+    r"cerrad\w*\s+autom[aá]tic|por\s+inactividad|iniciar\s+nuevamente|no\s+recibir\s+la\s+solicitud)", re.I)
 RE_CREO_SOLICITUD = re.compile(r"cre[oó]\s+una\s+nueva\s+solicitud", re.I)
 RE_SISTEMA_MSG = re.compile(r"sistema\s+escrib\w*\s+un\s+mensaje", re.I)
 RE_ESCRIBIO = re.compile(r"escrib\w*\s+un\s+mensaje", re.I)
