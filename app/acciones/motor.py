@@ -43,9 +43,9 @@ def decidir_y_encolar(repo: Repositorio, ticket_id: int, ticket: dict,
 
     plan: list[dict] = []
 
-    # M5: delicado → SOLO Ceci.
+    # M5: delicado → SOLO Ceci (los mensajes a Ceci van por WATI).
     if ticket.get("delicado"):
-        plan.append({"tipo_accion": "escalar_ceci", "canal": "interno", "rol": "ceci",
+        plan.append({"tipo_accion": "escalar_ceci", "canal": "wati", "rol": "ceci",
                      "destinatario": None,
                      "mensaje": f"Ticket DELICADO ({clf.tipo.value}) requiere intervención de Ceci. "
                                 f"Cliente: {ctx['cliente_nombre'] or '—'} · asunto: {correo.asunto}"})
@@ -97,7 +97,7 @@ def _plan_tramite(repo: Repositorio, ticket_id: int, ctx: dict, correo: Correo,
 
     if tramite is None:
         return _persistir(repo, ticket_id, [{
-            "tipo_accion": "consulta_general", "canal": "interno", "rol": "ceci", "destinatario": None,
+            "tipo_accion": "consulta_general", "canal": "wati", "rol": "ceci", "destinatario": None,
             "mensaje": f"Consulta de proceso sin trámite reconocido → revisar. Asunto: {correo.asunto}"}])
 
     if tramite.ruta == Ruta.CLIENTE_PORTAL:

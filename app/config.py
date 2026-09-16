@@ -52,6 +52,17 @@ ALLIANZ_DEST = os.getenv("ALLIANZ_DEST", "")
 
 # Dominios/correos de Allianz para las reglas L1 (ajustar con los reales).
 ALLIANZ_DOMINIOS = _csv("ALLIANZ_DOMINIOS", "allianz.com,allianz.com.mx")
+# Directorio Allianz por tipo de trámite (JSON: {"cambio_conducto_cobro": "cliente.optimax@..."}).
+# Pendiente la página de Allianz "trámite-por-trámite". Si un trámite no está acá, cae a ALLIANZ_DEST.
+ALLIANZ_DIRECTORIO = os.getenv("ALLIANZ_DIRECTORIO", "")
+
+# --- WATI (WhatsApp) — Fase D. Real solo con credenciales y DRY_RUN=false; si no, laboratorio. ---
+WATI_API_URL = os.getenv("WATI_API_URL", "").rstrip("/")
+WATI_API_TOKEN = os.getenv("WATI_API_TOKEN", "")
+WATI_PLANTILLA_ASESOR = os.getenv("WATI_PLANTILLA_ASESOR", "avances")     # plantilla de avances (asesores)
+WATI_PLANTILLA_CLIENTE = os.getenv("WATI_PLANTILLA_CLIENTE", "")          # solo cuando se le pide algo
+WATI_PLANTILLA_CECI = os.getenv("WATI_PLANTILLA_CECI", "")               # intervención/visto bueno de Ceci
+CECI_WHATSAPP = os.getenv("CECI_WHATSAPP", "")                           # número fijo de Ceci (pendiente)
 
 # Base de datos: misma Supabase de Tommy, esquema aislado.
 DATABASE_URL = os.getenv("DATABASE_URL", "")
@@ -134,3 +145,17 @@ def hay_db() -> bool:
 
 def hay_notion() -> bool:
     return bool(NOTION_TOKEN)
+
+
+def hay_wati() -> bool:
+    return bool(WATI_API_URL and WATI_API_TOKEN)
+
+
+def directorio_allianz(clave: str) -> str:
+    """Correo de Allianz para un trámite (del directorio); si no está, cae a ALLIANZ_DEST."""
+    import json
+    try:
+        m = json.loads(ALLIANZ_DIRECTORIO) if ALLIANZ_DIRECTORIO else {}
+    except Exception:  # noqa: BLE001
+        m = {}
+    return m.get(clave) or ALLIANZ_DEST

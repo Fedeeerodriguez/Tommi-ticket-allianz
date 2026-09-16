@@ -99,12 +99,36 @@ def _despachar_una(repo: Repositorio, accion: dict, emisor: Emisor, ahora: datet
         repo.actualizar_accion(aid, "omitida", {"motivo": "canal interno (panel/Ceci)"})
         return "omitida"
 
-    # Canal WhatsApp: lo manda la integración WATI, no este despachador (aún sin credenciales).
+    # Canal WhatsApp (WATI): plantilla según el rol. Ceci usa su número fijo; asesor/cliente usan
+    # el número del payload (lo completa Notion en Fase F). Sin número → queda pendiente.
     if canal == "wati":
-        repo.actualizar_accion(aid, "pendiente_wati", {"motivo": "envío por WATI (integración pendiente)",
-                                                       "destinatario": pay.get("destinatario"),
-                                                       "mensaje": pay.get("mensaje")})
-        return "pendiente_wati"
+        rol = (pay.get("rol") or "").lower()
+        if rol == "ceci":
+            numero = config.CECI_WHATSAPP
+            plantilla = config.WATI_PLANTILLA_CECI
+        elif rol == "asesor":
+            numero = pay.get("numero") or pay.get("destinatario")
+            plantilla = config.WATI_PLANTILLA_ASESOR
+        else:  # cliente
+            numero = pay.get("numero") or pay.get("destinatario")
+            plantilla = config.WATI_PLANTILLA_CLIENTE
+        # Un número de WhatsApp es telefónico; si el destinatario es un email, no sirve.
+        if not numero or "@" in str(numero):
+            repo.actualizar_accion(aid, "pendiente_wati",
+                                   {"motivo": "sin número de WhatsApp", "rol": rol,
+                                    "mensaje": pay.get("mensaje")})
+            return "pendiente_wati"
+        from app.wati import wati_desde_config
+        wati = wati_desde_config()
+        res = wati.enviar_plantilla(numero, plantilla, {"mensaje": pay.get("mensaje", "")})
+        if res.get("simulado"):
+            repo.actualizar_accion(aid, "simulada", res)
+            return "simulada"
+        if res.get("ok"):
+            repo.actualizar_accion(aid, "enviada", res)
+            return "enviada"
+        repo.actualizar_accion(aid, "fallida", res)
+        return "fallida"
 
     # Canal email al cliente/asesor (instrucciones de trámite o aviso): sale por SMTP a quien
     # preguntó. No lleva el guardarraíl de Allianz (no es un envío al Directorio Allianz).

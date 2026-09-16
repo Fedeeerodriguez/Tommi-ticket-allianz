@@ -164,7 +164,12 @@ encola un `recordatorio_sla` (una vez) y marca `por_cerrar` si venció. Config `
 - Cálculo en **días/horas hábiles** (calendario laboral MX).
 - Recordatorios **antes** del cierre para no perder el ticket.
 
-### Fase D — Ruteo y notificaciones
+### Fase D — Ruteo y notificaciones ✅ HECHA
+Tool WATI en `app/wati/` (HTTP real con httpx / laboratorio, `wati_desde_config`). El despachador
+rutea el canal `wati` por rol: Ceci→número fijo (`CECI_WHATSAPP`) + plantilla Ceci; asesor/cliente→
+número del payload (lo completa Notion en Fase F) + su plantilla; sin número de WhatsApp →
+`pendiente_wati`. Los mensajes a Ceci ahora salen por WATI. Directorio Allianz por trámite
+(`ALLIANZ_DIRECTORIO`, cae a `ALLIANZ_DEST`). Validado + integración A+B+C+D end-to-end.
 - Asesor → **WATI** (plantilla de avances).
 - Cliente → **WATI-PLANTILLA**, solo cuando requiere acción/documento; procesos con confirmación desde el
   correo del cliente (cancelación, suspensión de aportaciones, período de descanso).
