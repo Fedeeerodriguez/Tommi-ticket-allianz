@@ -98,7 +98,8 @@ class RepositorioPostgres:
 
     def crear_ticket(self, datos: dict) -> int:
         cols = ["nro_ticket", "poliza", "cliente_nombre", "cliente_correo", "asesor_correo",
-                "daf", "estado", "delicado", "autorizado", "abierto_por"]
+                "daf", "estado", "delicado", "autorizado", "abierto_por",
+                "gmail_thread_id", "asunto_hilo", "ultimo_message_id"]
         vals = [datos.get(c) for c in cols]
         ph = ",".join(["%s"] * len(cols))
         with self.conn.cursor() as cur:
@@ -219,7 +220,8 @@ class RepositorioSQLite:
               id integer primary key autoincrement, nro_ticket text unique, poliza text,
               cliente_nombre text, cliente_correo text, asesor_correo text, daf text,
               estado text default 'abierto', delicado int default 0, autorizado int default 0,
-              abierto_por text, ultima_actividad text default (datetime('now')),
+              abierto_por text, gmail_thread_id text, asunto_hilo text, ultimo_message_id text,
+              ultima_actividad text default (datetime('now')),
               created_at text default (datetime('now')));
             create table if not exists ticket_eventos(
               id integer primary key autoincrement, ticket_id int, correo_id int,
@@ -263,7 +265,8 @@ class RepositorioSQLite:
 
     def crear_ticket(self, datos: dict) -> int:
         cols = ["nro_ticket", "poliza", "cliente_nombre", "cliente_correo", "asesor_correo",
-                "daf", "estado", "delicado", "autorizado", "abierto_por"]
+                "daf", "estado", "delicado", "autorizado", "abierto_por",
+                "gmail_thread_id", "asunto_hilo", "ultimo_message_id"]
         vals = [datos.get(c) for c in cols]
         cur = self.conn.cursor()
         cur.execute(f"insert into tickets({','.join(cols)}) values({','.join('?'*len(cols))})", vals)

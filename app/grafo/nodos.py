@@ -18,7 +18,7 @@ from app.models import EstadoTicket, TipoCorreo
 from app.registro import registrar_en_notion
 from app.tramites import identificar_tramite
 from app.tickets.engine import (
-    _ESTADO_POR_TIPO, _EVENTO_POR_TIPO, _TIPOS_TICKET, _abierto_por, es_delicado,
+    _ESTADO_POR_TIPO, _EVENTO_POR_TIPO, _TIPOS_TICKET, _abierto_por, es_delicado, estado_sugerido,
 )
 
 from .estado import EstadoCorreo
@@ -75,30 +75,36 @@ def n_upsert_ticket(estado: EstadoCorreo, repo: Repositorio) -> dict:
     correo, clf = estado["correo"], estado["clasificacion"]
     ent, notion, delicado = estado["entidades"], estado["notion"], estado.get("delicado", False)
 
-    estado_tk = EstadoTicket.ESCALADO_CECI if delicado else _ESTADO_POR_TIPO.get(clf.tipo, EstadoTicket.ABIERTO)
+    estado_tk = estado_sugerido(clf, delicado)
     resueltos = {
         "nro_ticket": ent.get("nro_ticket"), "poliza": ent.get("poliza"),
         "cliente_nombre": ent.get("cliente_nombre"), "cliente_correo": ent.get("cliente_correo"),
         "asesor_correo": notion.get("asesor_correo"), "daf": notion.get("daf_nombre"),
     }
+    # Hilo (Fase B): el thread y el asunto se fijan una vez; el último Message-ID se refresca
+    # SIEMPRE para poder responder encadenando en el mismo hilo del ticket.
+    hilo = {"gmail_thread_id": correo.hilo_id, "asunto_hilo": correo.asunto}
     ticket = repo.buscar_ticket(ent.get("nro_ticket"), ent.get("poliza"), ent.get("cliente_correo"))
     if ticket:
         ticket_id = ticket["id"]
-        campos = {"estado": estado_tk.value}
+        campos = {"estado": estado_tk.value, "ultimo_message_id": correo.message_id}
         if delicado and not ticket.get("delicado"):
             campos["delicado"] = True
-        for col, val in resueltos.items():
+        for col, val in {**resueltos, **hilo}.items():
             if val and not ticket.get(col):
                 campos[col] = val
         repo.actualizar_ticket(ticket_id, **campos)
     else:
-        ticket_id = repo.crear_ticket({**resueltos, "estado": estado_tk.value,
-                                       "delicado": delicado, "abierto_por": _abierto_por(clf.tipo)})
+        ticket_id = repo.crear_ticket({**resueltos, **hilo, "ultimo_message_id": correo.message_id,
+                                       "estado": estado_tk.value, "delicado": delicado,
+                                       "abierto_por": _abierto_por(clf.tipo)})
 
     repo.vincular_correo(estado["correo_id"], ticket_id)
-    repo.agregar_evento(ticket_id, estado["correo_id"], _EVENTO_POR_TIPO.get(clf.tipo, "evento"),
+    repo.agregar_evento(ticket_id, estado["correo_id"],
+                        clf.subtipo or _EVENTO_POR_TIPO.get(clf.tipo, "evento"),
                         (correo.asunto or "")[:200])
-    ticket_repr = {**resueltos, "estado": estado_tk.value, "delicado": delicado}
+    ticket_repr = {**resueltos, **hilo, "ultimo_message_id": correo.message_id,
+                   "estado": estado_tk.value, "delicado": delicado}
     return {"ticket_id": ticket_id, "ticket": ticket_repr, "ruta": ["upsert_ticket"]}
 
 

@@ -45,6 +45,26 @@ _EVENTO_POR_TIPO = {
     TipoCorreo.F_CONSULTA_PRODUCTO: "consulta_tramite",
 }
 
+# Estado del ticket según el SUBTIPO Allianz (más fino que por tipo; Fase B).
+_ESTADO_POR_SUBTIPO = {
+    "apertura_nuestra": EstadoTicket.ESPERANDO_ALLIANZ,    # abrimos el ticket, Allianz procesa
+    "asignacion_ticket": EstadoTicket.ESPERANDO_ALLIANZ,   # nos asignaron nº, espera ejecutivo
+    "recordatorio": EstadoTicket.POR_CERRAR,               # urgente: responder o se cierra
+    "respuesta_participante": EstadoTicket.ESPERANDO_CLIENTE,  # alguien respondió → revisar/actuar
+    "cierre": EstadoTicket.RESUELTO,                        # Allianz cerró la solicitud
+    "ticket_otro": EstadoTicket.ABIERTO,
+}
+
+
+def estado_sugerido(clf: Clasificacion, delicado: bool) -> EstadoTicket:
+    """Estado a asignar: delicado manda; si hay subtipo Allianz, lo usa; si no, por tipo."""
+    if delicado:
+        return EstadoTicket.ESCALADO_CECI
+    sub = getattr(clf, "subtipo", None)
+    if sub and sub in _ESTADO_POR_SUBTIPO:
+        return _ESTADO_POR_SUBTIPO[sub]
+    return _ESTADO_POR_TIPO.get(clf.tipo, EstadoTicket.ABIERTO)
+
 # Temas sensibles → forzosamente Ceci (confirmado con Ceci).
 # Sin \b final: son raíces/prefijos (reclamaci→reclamación, cancelaci→cancelación, etc.).
 # NOTA: "cambio de beneficiario" NO es delicado — es self-service del portal (Ceci), por eso

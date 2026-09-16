@@ -30,6 +30,7 @@ class EstadoTicket(str, Enum):
     ESPERANDO_ALLIANZ = "esperando_allianz"
     ESPERANDO_CLIENTE = "esperando_cliente"
     ESPERANDO_ASESOR = "esperando_asesor"
+    POR_CERRAR = "por_cerrar"          # Allianz avisó que cierra por inactividad → urgente
     RESUELTO = "resuelto"
     ESCALADO_CECI = "escalado_ceci"
 
@@ -49,6 +50,7 @@ class Correo:
     headers: dict[str, str] = field(default_factory=dict)
     adjuntos: list[str] = field(default_factory=list)
     origen: Optional[str] = None  # ruta del .eml o id del mensaje en el buzón
+    hilo_id: Optional[str] = None  # threadId de Gmail → para responder EN EL MISMO HILO (Fase B)
 
 
 @dataclass

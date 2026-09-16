@@ -140,9 +140,13 @@ def _despachar_una(repo: Repositorio, accion: dict, emisor: Emisor, ahora: datet
                                    {"motivo": "falta ALLIANZ_DEST (Directorio Allianz sin confirmar)"})
             return "bloqueada"
 
-        asunto = _asunto_allianz(ticket)
+        # Responder EN EL MISMO HILO del ticket (Fase B): mantenemos el asunto del hilo y
+        # encadenamos con el último Message-ID; si es un ticket nuevo, sale sin hilo.
+        asunto = ticket.get("asunto_hilo") or _asunto_allianz(ticket)
         cuerpo = _cuerpo_allianz(ticket, pay)
-        res = emisor.enviar([destino], asunto, cuerpo)
+        res = emisor.enviar([destino], asunto, cuerpo,
+                            hilo_id=ticket.get("gmail_thread_id"),
+                            in_reply_to=ticket.get("ultimo_message_id"))
         if res.get("simulado"):
             repo.actualizar_accion(aid, "simulada", res)
             return "simulada"

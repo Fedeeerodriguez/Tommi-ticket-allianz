@@ -48,7 +48,9 @@ class LectorGmail:
             except Exception as ex:  # noqa: BLE001
                 log.warning("Gmail API get %s falló: %s", meta.get("id"), ex)
                 continue
-            yield normalizar_desde_bytes(crudo, origen=f"gmail:{meta['id']}")
+            correo = normalizar_desde_bytes(crudo, origen=f"gmail:{meta['id']}")
+            correo.hilo_id = meta.get("threadId")  # para responder en el mismo hilo (Fase B)
+            yield correo
             if self.marcar_leidos:
                 try:
                     service.users().messages().modify(

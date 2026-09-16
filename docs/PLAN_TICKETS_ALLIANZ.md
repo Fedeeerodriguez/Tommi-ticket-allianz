@@ -140,7 +140,12 @@ en vivo y el sandbox). El clasificador L1 prioriza Allianz y adjunta `subtipo` +
 
 - Obtener los tipos de correo que manda allianz, tener un ejemplo de cada uno y extraer la informacion para ver el orden que ellos utilizan
 
-### Fase B — Ticket con hilo (seguimiento por correo)
+### Fase B — Ticket con hilo (seguimiento por correo) ✅ HECHA
+El `threadId` viaja del `LectorGmail` al `Correo` y se persiste en el ticket (`gmail_thread_id`,
+`asunto_hilo`, `ultimo_message_id`). Los emisores aceptan `hilo_id`/`in_reply_to` (Gmail responde
+con `threadId`; SMTP setea In-Reply-To/References). Estado del ticket por subtipo
+(`estado_sugerido`): cierre→resuelto, recordatorio→por_cerrar, etc. Migración Postgres en
+`app/db/migrations.sql` (SQLite se crea solo). Validado offline end-to-end.
 - Guardar el **`threadId` de Gmail** + `References` por ticket para **responder en el mismo hilo**
   (funciona aunque el Message-ID venga roto — confirmado en el sandbox).
 - `EmisorGmail`: soportar **responder dentro de un hilo** (threadId + In-Reply-To/References,
