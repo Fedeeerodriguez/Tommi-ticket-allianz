@@ -43,7 +43,10 @@ def decidir_y_encolar(repo: Repositorio, ticket_id: int, ticket: dict,
 
     plan: list[dict] = []
 
-    # M5: delicado → SOLO Ceci (los mensajes a Ceci van por WATI).
+    # M5: delicado → SOLO Ceci (los mensajes a Ceci van por WATI). Fase E: los temas realmente
+    # sensibles (fallecimiento, siniestro, cancelación, rescate, fraude…) no se auto-responden;
+    # Ceci interviene a mano. Los críticos NO delicados (período de descanso, suspensión de
+    # aportaciones) sí se autoarman como trámite y el guardarraíl del despacho retiene el borrador.
     if ticket.get("delicado"):
         plan.append({"tipo_accion": "escalar_ceci", "canal": "wati", "rol": "ceci",
                      "destinatario": None,

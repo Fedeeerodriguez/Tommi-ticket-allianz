@@ -8,7 +8,9 @@ Estados que deja en `acciones.estado`:
   - enviada     → salió por SMTP real (ok).
   - simulada    → DRY_RUN / sin credenciales: se compuso pero no se mandó (queda el correo en `resultado`).
   - fallida     → intento de envío con error (queda el error en `resultado`).
-  - bloqueada   → guardarraíl: ticket delicado sin autorización, o falta el Directorio Allianz.
+  - bloqueada   → guardarraíl: falta el Directorio Allianz o el destinatario.
+  - pendiente_ceci → guardarraíl crítico (Fase E): se compuso el BORRADOR pero es una acción
+                     crítica → espera el visto bueno de Ceci (queda el borrador en `resultado`).
   - pendiente_wati → canal WhatsApp (WATI): lo envía la integración de WATI, no este despachador.
   - omitida     → canal interno (Ceci/panel): no requiere envío externo.
   - diferida    → tiene `programada_para` en el futuro: todavía no toca.
@@ -23,6 +25,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from app import config
+from app.acciones.criticas import CANALES_SALIENTES, es_accion_critica, retener_para_ceci
 from app.db import Repositorio
 from app.envio import Emisor, emisor_desde_config
 
@@ -85,6 +88,19 @@ def _cuerpo_allianz(ticket: dict, pay: dict) -> str:
     return "\n".join(lineas)
 
 
+def _guardar_si_critico(repo: Repositorio, accion: dict, ticket: dict, pay: dict,
+                        borrador: dict) -> Optional[str]:
+    """Fase E: si la acción es crítica y el ticket NO está autorizado, retiene el borrador para
+    el visto bueno de Ceci y devuelve 'pendiente_ceci'. Si no es crítica o Ceci ya autorizó,
+    devuelve None (sigue el envío normal)."""
+    if not es_accion_critica(ticket, pay):
+        return None
+    if ticket.get("autorizado"):
+        return None  # Ceci ya dio el visto bueno → se ejecuta
+    retener_para_ceci(repo, accion, ticket, borrador)
+    return "pendiente_ceci"
+
+
 def _despachar_una(repo: Repositorio, accion: dict, emisor: Emisor, ahora: datetime) -> str:
     canal = (accion.get("canal") or "").lower()
     tipo = accion.get("tipo_accion") or ""
@@ -139,6 +155,14 @@ def _despachar_una(repo: Repositorio, accion: dict, emisor: Emisor, ahora: datet
             return "bloqueada"
         asunto = pay.get("asunto") or "Sobre tu trámite"
         cuerpo = pay.get("mensaje") or ""
+        # Guardarraíl crítico (Fase E): confirmaciones al cliente en temas críticos (cancelación,
+        # suspensión de aportaciones, período de descanso…) pasan primero por Ceci.
+        ticket = repo.obtener_ticket(accion["ticket_id"]) or {}
+        hold = _guardar_si_critico(repo, accion, ticket, pay,
+                                   {"destino": destino, "asunto": asunto, "cuerpo": cuerpo,
+                                    "canal": "email_cliente"})
+        if hold:
+            return hold
         res = emisor.enviar([destino], asunto, cuerpo)
         if res.get("simulado"):
             repo.actualizar_accion(aid, "simulada", res)
@@ -152,12 +176,7 @@ def _despachar_una(repo: Repositorio, accion: dict, emisor: Emisor, ahora: datet
     # Canal email → envío a Allianz (Directorio). Guardarraíles antes de salir.
     if canal == "email":
         ticket = repo.obtener_ticket(accion["ticket_id"]) or {}
-        # Guardarraíl 1: delicado sin autorización → nunca sale solo.
-        if ticket.get("delicado") and not ticket.get("autorizado"):
-            repo.actualizar_accion(aid, "bloqueada",
-                                   {"motivo": "ticket delicado sin autorización (requiere Ceci)"})
-            return "bloqueada"
-        # Guardarraíl 2: sin Directorio Allianz no hay a quién mandarle.
+        # Guardarraíl 1: sin Directorio Allianz no hay a quién mandarle.
         destino = config.ALLIANZ_DEST
         if not destino:
             repo.actualizar_accion(aid, "bloqueada",
@@ -168,6 +187,13 @@ def _despachar_una(repo: Repositorio, accion: dict, emisor: Emisor, ahora: datet
         # encadenamos con el último Message-ID; si es un ticket nuevo, sale sin hilo.
         asunto = ticket.get("asunto_hilo") or _asunto_allianz(ticket)
         cuerpo = _cuerpo_allianz(ticket, pay)
+        # Guardarraíl 2 crítico (Fase E): si es delicado/crítico y Ceci no lo autorizó, se
+        # compone el borrador pero NO se manda: espera el visto bueno de Ceci.
+        hold = _guardar_si_critico(repo, accion, ticket, pay,
+                                   {"destino": destino, "asunto": asunto, "cuerpo": cuerpo,
+                                    "canal": "email"})
+        if hold:
+            return hold
         res = emisor.enviar([destino], asunto, cuerpo,
                             hilo_id=ticket.get("gmail_thread_id"),
                             in_reply_to=ticket.get("ultimo_message_id"))

@@ -178,7 +178,17 @@ número del payload (lo completa Notion en Fase F) + su plantilla; sin número d
   pendiente la página de Allianz "trámite-por-trámite" que comparte Ceci.
 - **Asertividad:** si Allianz responde fuera de tema, el bot re-exige lo pedido (no lo da por bueno).
 
-### Fase E — Guardarraíl de acciones críticas (Ceci primero)
+### Fase E — Guardarraíl de acciones críticas (Ceci primero) ✅ HECHA
+`app/acciones/criticas.py` es la fuente única de "qué es crítico" (`texto_critico` /
+`es_accion_critica`). El guardarraíl vive en el **despacho** (transversal): antes de ejecutar un
+envío saliente (canal `email` a Allianz o `email_cliente`), si la acción es crítica y el ticket
+no está `autorizado`, **compone el BORRADOR** (destino + asunto + cuerpo), deja la acción en
+`pendiente_ceci` y encola **una sola vez** (dedup) un `visto_bueno_ceci` a **Ceci por WATI** con
+el borrador embebido. `autorizar_ticket()` marca el ticket `autorizado` y re-encola las acciones
+como `sugerida` → el próximo despacho las envía; `rechazar_ticket()` las deja `rechazada` (no salen).
+Los temas realmente sensibles (fallecimiento, siniestro, cancelación, rescate, fraude) siguen
+escalando a Ceci a mano (M5); los críticos NO delicados (período de descanso, suspensión de
+aportaciones) autoarman el borrador y esperan su visto bueno. Validado offline + e2e por el grafo.
 - Extender el guardarraíl `delicado/autorizado` con la lista crítica: **nunca se ejecutan solas**;
   van a **Ceci** para aprobación manual antes de ejecutar.
 - **Ceci revisa el BORRADOR** de la respuesta que el bot va a mandar y da el **visto bueno** antes
@@ -186,6 +196,9 @@ número del payload (lo completa Notion en Fase F) + su plantilla; sin número d
 - Lista crítica: cancelación de póliza, suspensión de aportaciones, período de descanso, rescate /
   retiro total, siniestro / fallecimiento.
 - Los mensajes a **Ceci** van por **WATI**
+- **Pendiente (Fase F/Fede):** el visto bueno de Ceci hoy se dispara por función
+  (`autorizar_ticket`/`rechazar_ticket`); falta conectar el **disparador real** (checkbox en Notion
+  o respuesta de Ceci por WATI) — Fede arma el frontend/checkbox.
 
 ### Fase F — Enriquecimiento desde Notion (base emisiones)
 - Mapear campos de la base **emisiones** (póliza, cliente, correo del cliente, asesor) vía Notion
