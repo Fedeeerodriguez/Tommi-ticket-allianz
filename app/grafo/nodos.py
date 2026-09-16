@@ -81,6 +81,9 @@ def n_upsert_ticket(estado: EstadoCorreo, repo: Repositorio) -> dict:
         "nro_ticket": ent.get("nro_ticket"), "poliza": ent.get("poliza"),
         "cliente_nombre": ent.get("cliente_nombre"), "cliente_correo": ent.get("cliente_correo"),
         "asesor_correo": notion.get("asesor_correo"), "daf": notion.get("daf_nombre"),
+        # Fase F: teléfonos de Notion (Emisiones) → habilitan el ruteo por WATI a cliente/asesor.
+        "telefono_cliente": notion.get("telefono_cliente"),
+        "telefono_asesor": notion.get("telefono_asesor"),
     }
     # Hilo (Fase B): el thread y el asunto se fijan una vez; el último Message-ID se refresca
     # SIEMPRE para poder responder encadenando en el mismo hilo del ticket.

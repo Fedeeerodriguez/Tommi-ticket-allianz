@@ -103,23 +103,35 @@ def _extraer_emision(page: dict) -> dict:
 
 
 def enriquecer(entidades: dict) -> dict:
-    """Cruza por póliza (preferido) o por correo de cliente. Devuelve {} si no encuentra
-    o si no hay Notion configurado."""
+    """Cruza la base Emisiones por póliza (preferido) → nº de solicitud → correo del cliente.
+
+    Usa los **rieles de Notion** (Fase F): autodescubren la base y mapean los campos por nombre
+    aproximado, así que sobrevive a renombres de columnas. Devuelve los datos de contacto de
+    cliente y asesor —incluye **teléfonos** para el ruteo por WATI—. {} si no hay Notion o no
+    encuentra. Ante cualquier problema del riel, cae al cruce literal histórico (defensivo)."""
     if not config.hay_notion():
         return {}
+    try:
+        from app.rieles import resolver_emision
+        datos = resolver_emision(poliza=entidades.get("poliza"),
+                                 nro_solicitud=entidades.get("nro_solicitud"),
+                                 cliente_correo=entidades.get("cliente_correo"))
+        if datos:
+            return datos
+    except Exception as ex:  # noqa: BLE001
+        log.warning("rieles Notion fallaron, uso cruce literal: %s", ex)
+
+    # Fallback literal (por si los rieles no mapearon algo): nombres fijos históricos.
     poliza = entidades.get("poliza")
     cliente_correo = entidades.get("cliente_correo")
-
     if poliza:
         res = _query(config.NOTION_DB_EMISIONES,
                      {"property": "Número de Póliza", "rich_text": {"contains": poliza}})
         if res:
             return _extraer_emision(res[0])
-
     if cliente_correo:
         res = _query(config.NOTION_DB_EMISIONES,
                      {"property": "Correo Cliente", "rich_text": {"contains": cliente_correo}})
         if res:
             return _extraer_emision(res[0])
-
     return {}

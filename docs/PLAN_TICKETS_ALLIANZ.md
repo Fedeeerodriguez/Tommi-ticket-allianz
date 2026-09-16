@@ -200,10 +200,22 @@ aportaciones) autoarman el borrador y esperan su visto bueno. Validado offline +
   (`autorizar_ticket`/`rechazar_ticket`); falta conectar el **disparador real** (checkbox en Notion
   o respuesta de Ceci por WATI) — Fede arma el frontend/checkbox.
 
-### Fase F — Enriquecimiento desde Notion (base emisiones)
-- Mapear campos de la base **emisiones** (póliza, cliente, correo del cliente, asesor) vía Notion
-  MCP; cruzar por póliza / nº de solicitud para rutear al destinatario correcto.
--Crear **Rieles** en python para que encuentre las bases de datos y campos necesarios de forma automatica en notion
+### Fase F — Enriquecimiento desde Notion (base emisiones) ✅ HECHA
+`app/rieles/notion.py` = los **Rieles**: autodescubren el ID de la base (de `NOTION_DB_*` o por
+título con `/search`), leen el esquema y **mapean cada campo lógico** (póliza, nº de solicitud,
+cliente, correo/teléfono de cliente, correo/teléfono de asesor, producto…) al nombre real de la
+columna por **alias sin acentos + subconjunto de tokens** → sobreviven a renombres. `valor()`
+extrae cualquier tipo (rich_text, number, select/status, people, **rollup con teléfono**, formula).
+`resolver_emision(poliza|nro_solicitud|cliente_correo)` devuelve los contactos. `enriquecer()`
+ahora usa los rieles (con fallback literal). Los **teléfonos** se persisten en el ticket
+(`telefono_cliente`, `telefono_asesor`) y viajan como `numero` en las acciones WATI → **Fase D
+rutea de verdad** (deja de quedar en `pendiente_wati`). Validado contra la base **Emisiones** real
+(12/12 campos, sin credenciales MCP: usa `NOTION_TOKEN`) + test offline `test_fase_f`.
+- Se usa la **API de Notion con `NOTION_TOKEN`** (integración interna, ya en `.env`), no el MCP.
+- Se conecta por **API key**; cruza por póliza → nº de solicitud → correo del cliente.
+- **Rieles** = mapeo automático de bases/campos (sin hardcodear nombres ni IDs).
+- **Pendiente:** el nº de solicitud/póliza vienen vacíos en filas pre-emisión → el match fuerte
+  temprano es por **correo del cliente** hasta que se emite la póliza.
 
 ### Fase G — Notificaciones (FUERA DE ALCANCE / futuro)
 - DAF/emisión/cobranza **ya están cubiertas** por el WATI actual del equipo → el sistema nuevo NO

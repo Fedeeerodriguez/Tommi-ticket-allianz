@@ -40,6 +40,9 @@ def decidir_y_encolar(repo: Repositorio, ticket_id: int, ticket: dict,
     }
     cliente_dest = ticket.get("cliente_correo") or notion.get("cliente_correo")
     asesor_dest = ticket.get("asesor_correo") or notion.get("asesor_correo")
+    # Fase F: teléfonos (Notion Emisiones o ya persistidos en el ticket) para el ruteo por WATI.
+    tel_cliente = ticket.get("telefono_cliente") or notion.get("telefono_cliente")
+    tel_asesor = ticket.get("telefono_asesor") or notion.get("telefono_asesor")
 
     plan: list[dict] = []
 
@@ -60,14 +63,15 @@ def decidir_y_encolar(repo: Repositorio, ticket_id: int, ticket: dict,
 
     tipo = clf.tipo
     if tipo == TipoCorreo.A_RESPUESTA_TICKET:
-        plan.append(_msg("avisar_cliente", "wati", "cliente", cliente_dest, ctx))
-        plan.append(_msg("avisar_asesor", "wati", "asesor", asesor_dest, ctx))
+        plan.append(_msg("avisar_cliente", "wati", "cliente", cliente_dest, ctx, numero=tel_cliente))
+        plan.append(_msg("avisar_asesor", "wati", "asesor", asesor_dest, ctx, numero=tel_asesor))
     elif tipo == TipoCorreo.B_ACUSE_TICKET:
-        plan.append(_msg("avisar_asesor", "wati", "asesor", asesor_dest, ctx))
+        plan.append(_msg("avisar_asesor", "wati", "asesor", asesor_dest, ctx, numero=tel_asesor))
     elif tipo == TipoCorreo.C_ALLIANZ_PIDE:
-        plan.append(_msg("avisar_cliente", "wati", "cliente", cliente_dest, ctx))
+        plan.append(_msg("avisar_cliente", "wati", "cliente", cliente_dest, ctx, numero=tel_cliente))
         plan.append({"tipo_accion": "recordatorio", "canal": "wati", "rol": "cliente",
-                     "destinatario": cliente_dest, "programada_para": _mas_dias(_DIAS_RECORDATORIO),
+                     "destinatario": cliente_dest, "numero": tel_cliente,
+                     "programada_para": _mas_dias(_DIAS_RECORDATORIO),
                      "mensaje": "Recordatorio: verificar si el cliente envió lo que pidió Allianz."})
     elif tipo == TipoCorreo.E_CC_CLIENTE:
         plan.append({"tipo_accion": "recordatorio", "canal": "interno", "rol": "seguimiento",
@@ -77,14 +81,16 @@ def decidir_y_encolar(repo: Repositorio, ticket_id: int, ticket: dict,
         plan.append({"tipo_accion": "enviar_a_allianz", "canal": "email", "rol": "allianz",
                      "destinatario": None,
                      "mensaje": "Sugerencia: levantar el ticket ante Allianz (requiere Directorio + SMTP + autorización)."})
-        plan.append(_msg("avisar_asesor", "wati", "asesor", asesor_dest, ctx))
+        plan.append(_msg("avisar_asesor", "wati", "asesor", asesor_dest, ctx, numero=tel_asesor))
 
     return _persistir(repo, ticket_id, plan)
 
 
-def _msg(tipo_accion: str, canal: str, rol: str, destinatario, ctx: dict) -> dict:
+def _msg(tipo_accion: str, canal: str, rol: str, destinatario, ctx: dict, numero=None) -> dict:
+    # `numero` = teléfono para WATI (Fase F). Si viene, el despacho rutea al WhatsApp real;
+    # si no, cae a `destinatario` (y si es un email → pendiente_wati).
     return {"tipo_accion": tipo_accion, "canal": canal, "rol": rol, "destinatario": destinatario,
-            "mensaje": resumen.generar(rol, ctx)}
+            "numero": numero, "mensaje": resumen.generar(rol, ctx)}
 
 
 def _plan_tramite(repo: Repositorio, ticket_id: int, ctx: dict, correo: Correo,
@@ -128,7 +134,8 @@ def _persistir(repo: Repositorio, ticket_id: int, plan: list[dict]) -> list[dict
     for a in plan:
         repo.crear_accion(ticket_id, a["tipo_accion"], a["canal"],
                           {"rol": a.get("rol"), "destinatario": a.get("destinatario"),
-                           "mensaje": a.get("mensaje"), "asunto": a.get("asunto")},
+                           "numero": a.get("numero"), "mensaje": a.get("mensaje"),
+                           "asunto": a.get("asunto")},
                           a.get("programada_para"))
     return plan
 
@@ -153,9 +160,12 @@ def escanear_inactividad(repo: Repositorio, dias: int = 3) -> list[dict]:
         if ts < umbral:
             rol = "cliente" if estado == "esperando_cliente" else (
                 "asesor" if estado == "esperando_asesor" else "seguimiento")
+            numero = t.get("telefono_cliente") if rol == "cliente" else (
+                t.get("telefono_asesor") if rol == "asesor" else None)
             aid = repo.crear_accion(t["id"], "reactivacion", "wati" if rol != "seguimiento" else "interno",
-                                    {"rol": rol, "mensaje": f"Reactivar ticket sin novedades hace {dias}+ días "
-                                                            f"(estado {estado})."})
+                                    {"rol": rol, "numero": numero,
+                                     "mensaje": f"Reactivar ticket sin novedades hace {dias}+ días "
+                                                f"(estado {estado})."})
             encoladas.append({"ticket_id": t["id"], "accion_id": aid, "rol": rol})
     return encoladas
 
@@ -190,7 +200,7 @@ def escanear_vencimientos(repo: Repositorio, ahora: datetime | None = None,
         etiqueta = "VENCIÓ" if vencido else f"vence en ~{int(falta.total_seconds() // 3600)}h"
         aid = repo.crear_accion(
             t["id"], "recordatorio_sla", "wati",
-            {"rol": "asesor",
+            {"rol": "asesor", "numero": t.get("telefono_asesor"),
              "mensaje": f"Ticket {t.get('nro_ticket') or '—'} {etiqueta}: responder en el hilo "
                         f"antes de que Allianz lo cierre por inactividad."})
         if vencido and t.get("estado") != "por_cerrar":
