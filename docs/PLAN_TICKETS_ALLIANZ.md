@@ -129,7 +129,10 @@ Regla: cualquier librería nueva que se sume, se anota acá con el caso de uso.
 
 ## Fases de implementación
 
-### Fase A — Clasificador real (reemplazar supuestos)
+### Fase A — Clasificador real (reemplazar supuestos) ✅ HECHA
+Implementado en `app/clasificador/allianz.py` (fuente única de verdad, la usan el clasificador
+en vivo y el sandbox). El clasificador L1 prioriza Allianz y adjunta `subtipo` + extracción a la
+`Clasificacion`. Validado offline (los 5 subtipos + extracción) y en vivo con el sandbox.
 - Normalizar todo el texto entrante a **NFC** (Allianz manda en Unicode descompuesto).
 - Priorizar el **dominio Allianz** antes de las reglas genéricas de ruido.
 - Reconocer los subtipos de la tabla; extraer **nº ticket**, **actor** (nombre/correo), **plazos**, **detalle del mail**.

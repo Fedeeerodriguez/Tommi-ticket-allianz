@@ -60,3 +60,4 @@ class Clasificacion:
     motivo: str                      # por qué se decidió (trazabilidad)
     necesita_llm: bool = False       # True si la confianza cae bajo el umbral → revisar con L2
     entidades: dict[str, Any] = field(default_factory=dict)  # nº ticket, póliza, etc. (extracción)
+    subtipo: Optional[str] = None    # subtipo Allianz (asignacion/recordatorio/cierre/…) si aplica

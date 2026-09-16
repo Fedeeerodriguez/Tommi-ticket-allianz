@@ -9,6 +9,7 @@ from __future__ import annotations
 import email
 import email.policy
 import hashlib
+import unicodedata
 from email.message import EmailMessage
 from email.utils import getaddresses, parsedate_to_datetime
 from pathlib import Path
@@ -90,14 +91,16 @@ def normalizar_desde_bytes(datos: bytes, origen: str | None = None) -> Correo:
     if not message_id:
         message_id = "sha256:" + hashlib.sha256(datos).hexdigest()[:24]
 
+    # Allianz manda el texto en Unicode descompuesto (NFD): "creó" = "cre"+"o"+"́".
+    # Normalizamos a NFC en el intake para que TODO el pipeline (clasificar/extraer) matchee bien.
     return Correo(
         message_id=message_id,
         remitente=remitente,
         remitente_dominio=_dominio(remitente),
         para=_direcciones(msg.get("To")),
         cc=_direcciones(msg.get("Cc")),
-        asunto=(msg.get("Subject") or "").strip(),
-        cuerpo_texto=_cuerpo_texto(msg),
+        asunto=unicodedata.normalize("NFC", (msg.get("Subject") or "").strip()),
+        cuerpo_texto=unicodedata.normalize("NFC", _cuerpo_texto(msg)),
         fecha=fecha,
         headers={k.lower(): v for k, v in msg.items()},
         adjuntos=_adjuntos(msg),

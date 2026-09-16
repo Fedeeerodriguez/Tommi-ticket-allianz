@@ -13,7 +13,19 @@ from __future__ import annotations
 import re
 
 from app import config
+from app.clasificador.allianz import SubtipoAllianz, clasificar_allianz, es_correo_allianz
 from app.models import Clasificacion, Correo, TipoCorreo
+
+# Mapeo subtipo Allianz → taxonomía coarse (TipoCorreo) para el pipeline/engine existente.
+# El subtipo fino queda en clf.subtipo (lo usan las fases B/D: estados, ruteo, cierre).
+_SUBTIPO_A_TIPO = {
+    SubtipoAllianz.APERTURA_NUESTRA: TipoCorreo.B_ACUSE_TICKET,
+    SubtipoAllianz.ASIGNACION_TICKET: TipoCorreo.B_ACUSE_TICKET,
+    SubtipoAllianz.RECORDATORIO: TipoCorreo.C_ALLIANZ_PIDE,
+    SubtipoAllianz.RESPUESTA_PARTICIPANTE: TipoCorreo.A_RESPUESTA_TICKET,
+    SubtipoAllianz.CIERRE: TipoCorreo.A_RESPUESTA_TICKET,
+    SubtipoAllianz.TICKET_OTRO: TipoCorreo.A_RESPUESTA_TICKET,
+}
 
 # --- Señales ---
 # El nº de ticket/folio SIEMPRE tiene dígitos → exigirlo evita capturar palabras
@@ -47,6 +59,24 @@ def clasificar_l1(correo: Correo) -> Clasificacion:
     asunto = correo.asunto or ""
     cuerpo = correo.cuerpo_texto or ""
     texto = f"{asunto}\n{cuerpo}"
+
+    # 0) PRIORIDAD Allianz: los correos de tickets se clasifican por su patrón real ANTES que
+    #    las reglas genéricas de ruido (si no, 'notif@'/List-Unsubscribe se comían los tickets).
+    if es_correo_allianz(correo.remitente):
+        info = clasificar_allianz(asunto, cuerpo, correo.remitente)
+        if info.es_ticket:
+            ent = {k: v for k, v in {
+                "nro_ticket": info.nro_ticket, "poliza": info.poliza,
+                "nro_solicitud": info.nro_solicitud, "actor": info.actor,
+                "actor_tipo": info.actor_tipo, "plazos": info.plazos, "critico": info.critico,
+            }.items() if v not in (None, [], "")}
+            clf = Clasificacion(
+                _SUBTIPO_A_TIPO[info.subtipo], 0.92,
+                f"Allianz {info.subtipo.value}" + (f" (actor {info.actor_tipo})" if info.actor_tipo else ""),
+                entidades=ent)
+            clf.subtipo = info.subtipo.value
+            return clf
+        # Allianz pero no-ticket (notificación/marketing) → sigue con las reglas genéricas.
 
     # 1) Sistema / 2FA (muy barato y de alta certeza).
     remitente_local = correo.remitente.split("@")[0].lower()

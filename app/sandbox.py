@@ -20,10 +20,10 @@ import email
 import email.policy
 import re
 import time
-import unicodedata
 from dataclasses import asdict, dataclass, field
 from typing import Optional
 
+from app.clasificador.allianz import clasificar_allianz, nfc
 from app.google_auth import construir_servicio
 
 
@@ -43,31 +43,7 @@ def _ejecutar(req, reintentos: int = 4):
                 continue
             raise
 
-# --- Patrones de negocio (según respuestas del equipo) ---
-RE_TICKET = re.compile(r"ticket[-\s#]*([0-9]{4,})", re.I)
-RE_SOLICITUD = re.compile(r"solicitud[:\s#]*([0-9]{4,})", re.I)
-RE_POLIZA = re.compile(r"\b([A-Z]{2,4}[0-9][A-Z0-9]*-?[0-9]{3,}(?:-[0-9])?)\b")
-RE_CIERRE = re.compile(r"(solicitud\s+(?:cerrada|atendida|finalizada)|se\s+ha\s+cerrad|ticket\s+cerrad|caso\s+cerrad|finalizad\w*\s+ticket)", re.I)
-RE_RECORDATORIO = re.compile(
-    r"(recordatorio|por\s+cerrar|pr[oó]xim\w*\s+a\s+cerrar|falta\s+de\s+respuesta|sin\s+respuesta|"
-    r"cerrad\w*\s+autom[aá]tic|por\s+inactividad|iniciar\s+nuevamente|no\s+recibir\s+la\s+solicitud)", re.I)
-RE_CREO_SOLICITUD = re.compile(r"cre[oó]\s+una\s+nueva\s+solicitud", re.I)
-RE_SISTEMA_MSG = re.compile(r"sistema\s+escrib\w*\s+un\s+mensaje", re.I)
-RE_ESCRIBIO = re.compile(r"escrib\w*\s+un\s+mensaje", re.I)
-RE_DEADLINE = re.compile(r"(\d+\s*(?:d[ií]as?|horas?|h[aá]biles?)(?:\s*h[aá]biles?)?)", re.I)
-# Acciones críticas → confirmación desde el correo del cliente + revisión de Ceci.
-RE_CRITICO = re.compile(
-    r"(cancelaci[oó]n\s+de\s+p[oó]liza|cancelar\s+(?:la\s+)?p[oó]liza|"
-    r"suspensi[oó]n\s+de\s+aportaci|suspender\s+aportaci|"
-    r"per[ií]odo\s+de\s+descanso|a[ñn]o\s+de\s+descanso|"
-    r"rescate|retiro\s+total|cambio\s+de\s+beneficiari|fallecimiento|defunci)", re.I)
-
-# Remitentes reales observados (para mapear el tipo por origen).
-_SUBJETO_NOTIF = {
-    "daf": re.compile(r"\bDAF\b", re.I),
-    "emision": re.compile(r"emisi[oó]n", re.I),
-    "cobranza": re.compile(r"cobranza", re.I),
-}
+# Los patrones y la clasificación viven en app/clasificador/allianz.py (fuente única de verdad).
 
 
 @dataclass
@@ -114,44 +90,6 @@ def _texto_plano(msg) -> str:
         return ""
 
 
-def _actor_desde_asunto(asunto: str) -> tuple[Optional[str], Optional[str]]:
-    """De '[Allianz México Ticket-XXXX] <ACTOR> escribió un mensaje' saca el actor y su tipo."""
-    m = re.search(r"\]\s*(.+?)\s+escrib\w*\s+un\s+mensaje", asunto, re.I)
-    if not m:
-        return None, None
-    actor = m.group(1).strip()
-    tipo = "correo" if "@" in actor else "nombre"
-    return actor, tipo
-
-
-def _clasificar_subtipo(remitente: str, asunto: str, cuerpo: str) -> tuple[str, bool]:
-    """Devuelve (subtipo, es_ticket) según las reglas de negocio reales."""
-    s, b = asunto or "", cuerpo or ""
-    dom = remitente.split("@")[-1].lower()
-    local = remitente.split("@")[0].lower()
-
-    # Cierre (prioridad alta: cambia el estado del ticket).
-    if RE_CIERRE.search(s) or RE_CIERRE.search(b):
-        return "cierre", True
-    # Correos del sistema de tickets (Allianz.Mexico@ con "Ticket-XXXX").
-    if RE_TICKET.search(s):
-        if RE_CREO_SOLICITUD.search(s):
-            return "apertura_nuestra", True          # nosotros abrimos el ticket del cliente
-        if RE_SISTEMA_MSG.search(s):
-            return ("recordatorio" if RE_RECORDATORIO.search(b) else "asignacion_ticket"), True
-        if RE_ESCRIBIO.search(s):
-            return "respuesta_participante", True     # cliente / agente Allianz / asesor Babilonia
-        return "ticket_otro", True
-    # Notificaciones (fase 2: se ingieren para conocimiento, no accionan todavía).
-    if "allianz" in dom:
-        for clave, rx in _SUBJETO_NOTIF.items():
-            if rx.search(s):
-                return f"notif_{clave}", False
-        if any(t in local for t in ("noreply", "no-reply", "notif", "aviso", "mailer")):
-            return "notif_sistema", False
-    return "otro", False
-
-
 def _accion(a: "Analisis") -> str:
     if a.critico:
         return "→ CECI primero (acción crítica; confirmación desde correo del cliente)"
@@ -180,36 +118,27 @@ def analizar(query: str = "from:allianz.com.mx", limite: int = 60) -> list[Anali
         full = _ejecutar(svc.users().messages().get(userId="me", id=meta["id"], format="raw"))
         raw = base64.urlsafe_b64decode(full["raw"].encode("utf-8"))
         msg = email.message_from_bytes(raw, policy=email.policy.default)
-        # Allianz manda el texto en Unicode descompuesto (NFD): "creó" = "cre"+"o"+"́".
-        # Normalizamos a NFC para que los patrones con acentos matcheen.
-        asunto = unicodedata.normalize("NFC", (msg.get("Subject") or "").strip())
+        asunto = nfc((msg.get("Subject") or "").strip())
         remitente = (msg.get("From") or "").strip()
-        # Solo la dirección del remitente para las heurísticas por dominio/local.
-        m_addr = re.search(r"<([^>]+)>", remitente)
-        addr = (m_addr.group(1) if m_addr else remitente).strip().lower()
-        cuerpo = unicodedata.normalize("NFC", _texto_plano(msg))
-        texto = f"{asunto}\n{cuerpo}"
-
-        subtipo, es_ticket = _clasificar_subtipo(addr, asunto, cuerpo)
-        actor, actor_tipo = _actor_desde_asunto(asunto)
+        cuerpo = nfc(_texto_plano(msg))
         mid = (msg.get("Message-ID") or "").strip() or None
 
+        info = clasificar_allianz(asunto, cuerpo, remitente)  # fuente única de verdad
         a = Analisis(
             gmail_id=meta["id"],
             thread_id=full.get("threadId", ""),
             fecha=(msg.get("Date") or "").strip(),
             remitente=remitente[:60],
             asunto=asunto[:80],
-            subtipo=subtipo,
-            es_ticket=es_ticket,
-            nro_ticket=(RE_TICKET.search(asunto) or RE_TICKET.search(cuerpo) or [None, None])[1]
-            if (RE_TICKET.search(asunto) or RE_TICKET.search(cuerpo)) else None,
-            nro_solicitud=(RE_SOLICITUD.search(texto).group(1) if RE_SOLICITUD.search(texto) else None),
-            poliza=(RE_POLIZA.search(texto).group(1) if RE_POLIZA.search(texto) else None),
-            actor=actor,
-            actor_tipo=actor_tipo,
-            plazos=list(dict.fromkeys(m.strip() for m in RE_DEADLINE.findall(cuerpo)))[:4],
-            critico=bool(RE_CRITICO.search(texto)),
+            subtipo=info.subtipo.value,
+            es_ticket=info.es_ticket,
+            nro_ticket=info.nro_ticket,
+            nro_solicitud=info.nro_solicitud,
+            poliza=info.poliza,
+            actor=info.actor,
+            actor_tipo=info.actor_tipo,
+            plazos=info.plazos,
+            critico=info.critico,
             message_id=mid,
             message_id_roto=bool(mid and "SMTPIN_ADDED_BROKEN" in mid),
             en_hilo=bool(msg.get("In-Reply-To") or msg.get("References")),
