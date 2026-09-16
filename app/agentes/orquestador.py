@@ -49,9 +49,12 @@ _SISTEMA = (
     "Escribís SOLO el cuerpo del correo (sin asunto ni firma corporativa larga)."
 )
 _USUARIO = (
-    "Contexto del ticket (JSON):\n{ctx}\n\n"
+    "Contexto del ticket (JSON; incluye `historial` = bitácora del hilo con lo que ya pasó):\n"
+    "{ctx}\n\n"
     "Último mensaje recibido de Allianz (puede venir vacío):\n{mensaje_allianz}\n\n"
-    "Redactá el cuerpo del correo para Allianz y evaluá si hubo respuesta fuera de tema."
+    "Usá el `historial` para saber qué se pidió antes y no repetir ni contradecir. "
+    "Redactá el cuerpo del correo para Allianz y evaluá si su última respuesta quedó FUERA DE "
+    "TEMA respecto de lo que se venía pidiendo (marcá `fuera_de_tema` en ese caso)."
 )
 
 

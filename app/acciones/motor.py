@@ -32,11 +32,14 @@ def decidir_y_encolar(repo: Repositorio, ticket_id: int, ticket: dict,
     """Devuelve la lista de acciones sugeridas (y las persiste en la tabla `acciones`)."""
     ctx = {
         "tipo": clf.tipo.value,
+        "subtipo": getattr(clf, "subtipo", None),
         "nro_ticket": ticket.get("nro_ticket"),
         "poliza": ticket.get("poliza"),
         "cliente_nombre": ticket.get("cliente_nombre") or notion.get("cliente_nombre"),
         "producto": notion.get("producto"),
         "asunto": correo.asunto,
+        # v2: historial del hilo (bitácora) para que el orquestador tenga contexto de qué pasó.
+        "historial": _historial_ticket(repo, ticket_id),
     }
     cliente_dest = ticket.get("cliente_correo") or notion.get("cliente_correo")
     asesor_dest = ticket.get("asesor_correo") or notion.get("asesor_correo")
@@ -65,6 +68,15 @@ def decidir_y_encolar(repo: Repositorio, ticket_id: int, ticket: dict,
     if tipo == TipoCorreo.A_RESPUESTA_TICKET:
         plan.append(_msg("avisar_cliente", "wati", "cliente", cliente_dest, ctx, numero=tel_cliente))
         plan.append(_msg("avisar_asesor", "wati", "asesor", asesor_dest, ctx, numero=tel_asesor))
+        # Asertividad (v2): si el orquestador detecta que Allianz respondió FUERA DE TEMA,
+        # el bot re-exige en el hilo (no lo da por bueno). Ese correo saliente pasa igual por
+        # el guardarraíl de Fase E (si es crítico → visto bueno de Ceci). Dedup para no apilar.
+        orq = _orquestar_allianz(ctx, correo)
+        if orq.get("fuera_de_tema") and orq.get("cuerpo_allianz") and not _ya_pendiente_allianz(repo, ticket_id):
+            plan.append({"tipo_accion": "enviar_a_allianz", "canal": "email", "rol": "allianz",
+                         "destinatario": None,
+                         "mensaje": "Re-exigencia: Allianz respondió fuera de tema.",
+                         "cuerpo": orq["cuerpo_allianz"], "nota_asertividad": orq.get("nota_asertividad")})
     elif tipo == TipoCorreo.B_ACUSE_TICKET:
         plan.append(_msg("avisar_asesor", "wati", "asesor", asesor_dest, ctx, numero=tel_asesor))
     elif tipo == TipoCorreo.C_ALLIANZ_PIDE:
@@ -87,6 +99,26 @@ def decidir_y_encolar(repo: Repositorio, ticket_id: int, ticket: dict,
         plan.append(_msg("avisar_asesor", "wati", "asesor", asesor_dest, ctx, numero=tel_asesor))
 
     return _persistir(repo, ticket_id, plan)
+
+
+def _historial_ticket(repo: Repositorio, ticket_id: int, limite: int = 8) -> list[dict]:
+    """Bitácora reciente del ticket (para dar contexto al orquestador). Defensivo."""
+    try:
+        evs = repo.listar_eventos(ticket_id) or []
+    except Exception:  # noqa: BLE001
+        return []
+    return [{"evento": e.get("tipo_evento"), "detalle": e.get("resumen"), "fecha": str(e.get("created_at"))}
+            for e in evs[-limite:]]
+
+
+def _ya_pendiente_allianz(repo: Repositorio, ticket_id: int) -> bool:
+    """True si ya hay un correo a Allianz sin despachar (evita apilar re-exigencias)."""
+    try:
+        acc = repo.listar_acciones(ticket_id=ticket_id) or []
+    except Exception:  # noqa: BLE001
+        return False
+    return any(a.get("tipo_accion") in ("enviar_a_allianz", "gestionar_tramite")
+               and a.get("estado") in ("sugerida", "pendiente_ceci") for a in acc)
 
 
 def _orquestar_allianz(ctx: dict, correo: Correo) -> dict:

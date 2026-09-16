@@ -78,7 +78,7 @@ alcance (ver Fase G).
 Todo en **Python**. El flujo se modela como **grafo de LangGraph**; el cerebro es un **agente
 LangChain** con herramientas (tools). Roster:
 
-### 1. Agente Orquestador (LLM — el cerebro) ✅ v1 HECHA
+### 1. Agente Orquestador (LLM — el cerebro) ✅ v2 HECHA
 - **El más importante.** Siempre conectado a un LLM. Toma TODAS las decisiones y **diseña las
   respuestas/mensajes** a enviar.
 - **Implementado** en `app/agentes/orquestador.py` (`redactar_allianz`): redacta el **cuerpo del
@@ -89,9 +89,15 @@ LangChain** con herramientas (tools). Roster:
   como el guardarraíl de Fase E arma el borrador desde ese cuerpo, **Ceci revisa el texto redactado
   por el LLM**. Los mensajes de WhatsApp a cliente/asesor los sigue redactando `app/agentes/redactor.py`.
   Validado offline (`test_orquestador`, con el LLM mockeado).
-- **Pendiente v2:** que el orquestador pueda **crear** por sí mismo un `enviar_a_allianz` cuando
-  detecta `fuera_de_tema` en una `A_respuesta_ticket` (hoy sólo redacta correos ya decididos), y
-  sumar el historial del hilo (eventos/correos previos) al contexto para más precisión.
+- **v2 ✅:** asertividad **autónoma** — ante una `A_respuesta_ticket`, el orquestador evalúa la
+  respuesta de Allianz y, si quedó `fuera_de_tema`, **crea por sí mismo** un `enviar_a_allianz`
+  (re-exigencia en el hilo) además de avisar a cliente/asesor. Con **dedup** (no apila si ya hay un
+  correo a Allianz pendiente) y el envío pasa igual por el guardarraíl de Fase E. Además, el
+  contexto del orquestador ahora incluye el **historial del hilo** (bitácora de eventos) para no
+  repetir ni contradecir lo ya pedido. Validado en `test_orquestador_v2`.
+- **Pendiente v3:** sumar el **cuerpo completo de los correos previos** (no sólo la bitácora) al
+  contexto, y política anti-loop por si Allianz insiste con evasivas (hoy es 1 re-exigencia por
+  respuesta entrante, acotada naturalmente).
 - **Entradas:** los avisos del agente de Gmail (entrada), y **solicitudes de Tomi** (el agente de
   Babilonia que responde).
 - **Tools a disposición:**
