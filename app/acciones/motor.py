@@ -78,12 +78,25 @@ def decidir_y_encolar(repo: Repositorio, ticket_id: int, ticket: dict,
                      "destinatario": None, "programada_para": _mas_dias(_DIAS_RECORDATORIO),
                      "mensaje": "Recordatorio: chequear si Allianz respondió la solicitud del cliente."})
     elif tipo == TipoCorreo.D_REENVIO_ASESOR:
+        orq = _orquestar_allianz(ctx, correo)   # el cerebro redacta el cuerpo (asertivo) si hay LLM
         plan.append({"tipo_accion": "enviar_a_allianz", "canal": "email", "rol": "allianz",
                      "destinatario": None,
-                     "mensaje": "Sugerencia: levantar el ticket ante Allianz (requiere Directorio + SMTP + autorización)."})
+                     "mensaje": "Levantar el ticket ante Allianz (requiere Directorio + autorización).",
+                     "cuerpo": orq.get("cuerpo_allianz"),
+                     "nota_asertividad": orq.get("nota_asertividad")})
         plan.append(_msg("avisar_asesor", "wati", "asesor", asesor_dest, ctx, numero=tel_asesor))
 
     return _persistir(repo, ticket_id, plan)
+
+
+def _orquestar_allianz(ctx: dict, correo: Correo) -> dict:
+    """Pide al orquestador (LLM) el cuerpo asertivo para el correo a Allianz. {} si no hay LLM.
+    Defensivo: cualquier problema → {} y el despacho usa el cuerpo de plantilla."""
+    try:
+        from app.agentes import redactar_allianz
+        return redactar_allianz(ctx, mensaje_allianz=(correo.cuerpo_texto or "")) or {}
+    except Exception:  # noqa: BLE001
+        return {}
 
 
 def _msg(tipo_accion: str, canal: str, rol: str, destinatario, ctx: dict, numero=None) -> dict:
@@ -117,11 +130,13 @@ def _plan_tramite(repo: Repositorio, ticket_id: int, ctx: dict, correo: Correo,
 
     # NOSOTROS_MAIL: lo hacemos nosotros por correo (a Allianz) + le avisamos al cliente.
     hola = f"Hola {nombre}! " if nombre else "Hola! "
+    orq = _orquestar_allianz({**ctx, "tramite": tramite.nombre}, correo)  # cuerpo asertivo si hay LLM
     plan = [
         {"tipo_accion": "gestionar_tramite", "canal": "email", "rol": "allianz", "destinatario": None,
          "mensaje": f"Solicitud de trámite: {tramite.nombre}"
                     + (f" · póliza {ctx.get('poliza')}" if ctx.get("poliza") else "")
-                    + (f" · cliente {ctx.get('cliente_nombre')}" if ctx.get("cliente_nombre") else "")},
+                    + (f" · cliente {ctx.get('cliente_nombre')}" if ctx.get("cliente_nombre") else ""),
+         "cuerpo": orq.get("cuerpo_allianz"), "nota_asertividad": orq.get("nota_asertividad")},
         {"tipo_accion": "avisar_cliente", "canal": "email_cliente", "rol": "cliente",
          "destinatario": destino, "asunto": f"Estamos gestionando: {tramite.nombre}",
          "mensaje": f"{hola}Recibimos tu solicitud de «{tramite.nombre}». Este trámite lo "
@@ -135,7 +150,8 @@ def _persistir(repo: Repositorio, ticket_id: int, plan: list[dict]) -> list[dict
         repo.crear_accion(ticket_id, a["tipo_accion"], a["canal"],
                           {"rol": a.get("rol"), "destinatario": a.get("destinatario"),
                            "numero": a.get("numero"), "mensaje": a.get("mensaje"),
-                           "asunto": a.get("asunto")},
+                           "asunto": a.get("asunto"), "cuerpo": a.get("cuerpo"),
+                           "nota_asertividad": a.get("nota_asertividad")},
                           a.get("programada_para"))
     return plan
 

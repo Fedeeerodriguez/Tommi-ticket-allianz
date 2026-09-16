@@ -186,7 +186,8 @@ def _despachar_una(repo: Repositorio, accion: dict, emisor: Emisor, ahora: datet
         # Responder EN EL MISMO HILO del ticket (Fase B): mantenemos el asunto del hilo y
         # encadenamos con el último Message-ID; si es un ticket nuevo, sale sin hilo.
         asunto = ticket.get("asunto_hilo") or _asunto_allianz(ticket)
-        cuerpo = _cuerpo_allianz(ticket, pay)
+        # Cuerpo: si el ORQUESTADOR (LLM) ya lo redactó (asertivo), lo usamos; si no, plantilla.
+        cuerpo = pay.get("cuerpo") or _cuerpo_allianz(ticket, pay)
         # Guardarraíl 2 crítico (Fase E): si es delicado/crítico y Ceci no lo autorizó, se
         # compone el borrador pero NO se manda: espera el visto bueno de Ceci.
         hold = _guardar_si_critico(repo, accion, ticket, pay,

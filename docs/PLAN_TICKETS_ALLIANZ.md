@@ -78,9 +78,20 @@ alcance (ver Fase G).
 Todo en **Python**. El flujo se modela como **grafo de LangGraph**; el cerebro es un **agente
 LangChain** con herramientas (tools). Roster:
 
-### 1. Agente Orquestador (LLM — el cerebro)
+### 1. Agente Orquestador (LLM — el cerebro) ✅ v1 HECHA
 - **El más importante.** Siempre conectado a un LLM. Toma TODAS las decisiones y **diseña las
   respuestas/mensajes** a enviar.
+- **Implementado** en `app/agentes/orquestador.py` (`redactar_allianz`): redacta el **cuerpo del
+  correo a Allianz en el hilo**, con **asertividad** (si Allianz respondió fuera de tema, re-exige
+  lo pedido) y devuelve además `fuera_de_tema` + `nota_asertividad`. Salida estructurada
+  (`with_structured_output`), **defensivo** (sin LLM → None → cae a la plantilla `_cuerpo_allianz`).
+  El motor adjunta ese cuerpo a `enviar_a_allianz`/`gestionar_tramite`; el despacho lo prefiere; y
+  como el guardarraíl de Fase E arma el borrador desde ese cuerpo, **Ceci revisa el texto redactado
+  por el LLM**. Los mensajes de WhatsApp a cliente/asesor los sigue redactando `app/agentes/redactor.py`.
+  Validado offline (`test_orquestador`, con el LLM mockeado).
+- **Pendiente v2:** que el orquestador pueda **crear** por sí mismo un `enviar_a_allianz` cuando
+  detecta `fuera_de_tema` en una `A_respuesta_ticket` (hoy sólo redacta correos ya decididos), y
+  sumar el historial del hilo (eventos/correos previos) al contexto para más precisión.
 - **Entradas:** los avisos del agente de Gmail (entrada), y **solicitudes de Tomi** (el agente de
   Babilonia que responde).
 - **Tools a disposición:**

@@ -7,6 +7,7 @@ Ambos son defensivos: si no hay API key o LangChain no está, devuelven None y e
 sigue con reglas/plantillas (nunca rompe el pipeline por el LLM).
 """
 from .clasificador_l2 import clasificar_l2
+from .orquestador import redactar_allianz
 from .redactor import redactar
 
-__all__ = ["clasificar_l2", "redactar"]
+__all__ = ["clasificar_l2", "redactar", "redactar_allianz"]
