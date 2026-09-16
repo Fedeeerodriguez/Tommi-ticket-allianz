@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+from app import config
 from app.db import Repositorio
 from app.models import Clasificacion, Correo, TipoCorreo
 from app.tramites import Ruta, identificar_tramite, instrucciones_cliente
@@ -153,4 +154,43 @@ def escanear_inactividad(repo: Repositorio, dias: int = 3) -> list[dict]:
                                     {"rol": rol, "mensaje": f"Reactivar ticket sin novedades hace {dias}+ días "
                                                             f"(estado {estado})."})
             encoladas.append({"ticket_id": t["id"], "accion_id": aid, "rol": rol})
+    return encoladas
+
+
+def escanear_vencimientos(repo: Repositorio, ahora: datetime | None = None,
+                          umbral_horas: int | None = None) -> list[dict]:
+    """SLA (Fase C): tickets con `vence_en` próximo o vencido → encola un recordatorio (una vez)
+    al asesor y, si ya venció, marca el ticket `por_cerrar`. No envía nada (lo hace el despacho)."""
+    ahora = ahora or datetime.now(timezone.utc)
+    umbral = timedelta(hours=umbral_horas if umbral_horas is not None else config.SLA_AVISO_HORAS)
+    encoladas = []
+    for t in repo.listar_tickets(limite=500):
+        if (t.get("estado") or "") in ("resuelto",):
+            continue
+        v = t.get("vence_en")
+        if not v:
+            continue
+        try:
+            vd = v if isinstance(v, datetime) else datetime.fromisoformat(str(v).replace("Z", "+00:00"))
+            if vd.tzinfo is None:
+                vd = vd.replace(tzinfo=timezone.utc)
+        except Exception:  # noqa: BLE001
+            continue
+        falta = vd - ahora
+        if falta > umbral:
+            continue  # todavía lejos del vencimiento
+        # Evitar duplicar el recordatorio SLA si ya hay uno sugerido para este ticket.
+        if any(a.get("tipo_accion") == "recordatorio_sla"
+               for a in repo.listar_acciones(ticket_id=t["id"], estado="sugerida")):
+            continue
+        vencido = falta.total_seconds() <= 0
+        etiqueta = "VENCIÓ" if vencido else f"vence en ~{int(falta.total_seconds() // 3600)}h"
+        aid = repo.crear_accion(
+            t["id"], "recordatorio_sla", "wati",
+            {"rol": "asesor",
+             "mensaje": f"Ticket {t.get('nro_ticket') or '—'} {etiqueta}: responder en el hilo "
+                        f"antes de que Allianz lo cierre por inactividad."})
+        if vencido and t.get("estado") != "por_cerrar":
+            repo.actualizar_ticket(t["id"], estado="por_cerrar")
+        encoladas.append({"ticket_id": t["id"], "accion_id": aid, "vencido": vencido})
     return encoladas

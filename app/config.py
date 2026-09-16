@@ -102,6 +102,11 @@ UMBRAL_LLM = float(os.getenv("UMBRAL_LLM", "0.6"))
 # Retención: purgar/archivar registros más viejos que esto (días). 6 meses.
 RETENCION_DIAS = int(os.getenv("RETENCION_DIAS", "180"))
 
+# SLA (Fase C): plazo por default cuando Allianz no especifica (horas hábiles) y con cuánta
+# anticipación se avisa antes del vencimiento (horas).
+SLA_DEFAULT_HORAS = int(os.getenv("SLA_DEFAULT_HORAS", "72"))
+SLA_AVISO_HORAS = int(os.getenv("SLA_AVISO_HORAS", "24"))
+
 # Intervalo de polling IMAP (segundos).
 POLL_SEGUNDOS = int(os.getenv("POLL_SEGUNDOS", "90"))
 

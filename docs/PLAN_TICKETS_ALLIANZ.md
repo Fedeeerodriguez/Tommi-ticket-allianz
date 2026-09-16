@@ -153,7 +153,12 @@ con `threadId`; SMTP setea In-Reply-To/References). Estado del ticket por subtip
 - Estados alineados a Allianz: abierto / esperando_allianz / esperando_cliente / por_cerrar / cerrado.
 - Detección de **cierre** → resuelto; detección de **recordatorio de cierre** → acción urgente.
 
-### Fase C — SLA / plazos hábiles
+### Fase C — SLA / plazos hábiles ✅ HECHA
+`app/tickets/sla.py` parsea el plazo de la respuesta de Allianz y calcula el vencimiento en
+días/horas **hábiles** (feriados MX vía `holidays`; sin la librería, solo salta findes). Se guarda
+en `tickets.vence_en` (cierre lo limpia). El scheduler corre `escanear_vencimientos` cada hora:
+encola un `recordatorio_sla` (una vez) y marca `por_cerrar` si venció. Config `SLA_DEFAULT_HORAS`
+(72) y `SLA_AVISO_HORAS` (24). Validado offline (incluye salto de feriado).
 - Extraer el plazo de la última respuesta de Allianz; si no viene → **72 h hábiles**.
 - Extraer el plazo que tiene el **cliente**.
 - Cálculo en **días/horas hábiles** (calendario laboral MX).

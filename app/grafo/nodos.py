@@ -16,6 +16,7 @@ from app.enriquecimiento import enriquecer
 from app.extraccion import extraer
 from app.models import EstadoTicket, TipoCorreo
 from app.registro import registrar_en_notion
+from app.tickets import sla
 from app.tramites import identificar_tramite
 from app.tickets.engine import (
     _ESTADO_POR_TIPO, _EVENTO_POR_TIPO, _TIPOS_TICKET, _abierto_por, es_delicado, estado_sugerido,
@@ -84,10 +85,12 @@ def n_upsert_ticket(estado: EstadoCorreo, repo: Repositorio) -> dict:
     # Hilo (Fase B): el thread y el asunto se fijan una vez; el último Message-ID se refresca
     # SIEMPRE para poder responder encadenando en el mismo hilo del ticket.
     hilo = {"gmail_thread_id": correo.hilo_id, "asunto_hilo": correo.asunto}
+    # SLA (Fase C): vencimiento según el plazo de Allianz (o 72 h hábiles por default); cierre → None.
+    vence_en = sla.vence_en_para(correo, clf)
     ticket = repo.buscar_ticket(ent.get("nro_ticket"), ent.get("poliza"), ent.get("cliente_correo"))
     if ticket:
         ticket_id = ticket["id"]
-        campos = {"estado": estado_tk.value, "ultimo_message_id": correo.message_id}
+        campos = {"estado": estado_tk.value, "ultimo_message_id": correo.message_id, "vence_en": vence_en}
         if delicado and not ticket.get("delicado"):
             campos["delicado"] = True
         for col, val in {**resueltos, **hilo}.items():
@@ -96,8 +99,8 @@ def n_upsert_ticket(estado: EstadoCorreo, repo: Repositorio) -> dict:
         repo.actualizar_ticket(ticket_id, **campos)
     else:
         ticket_id = repo.crear_ticket({**resueltos, **hilo, "ultimo_message_id": correo.message_id,
-                                       "estado": estado_tk.value, "delicado": delicado,
-                                       "abierto_por": _abierto_por(clf.tipo)})
+                                       "vence_en": vence_en, "estado": estado_tk.value,
+                                       "delicado": delicado, "abierto_por": _abierto_por(clf.tipo)})
 
     repo.vincular_correo(estado["correo_id"], ticket_id)
     repo.agregar_evento(ticket_id, estado["correo_id"],

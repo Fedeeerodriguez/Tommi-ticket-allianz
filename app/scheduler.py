@@ -20,7 +20,7 @@ import logging
 
 from app import config
 from app.acciones import despachar_pendientes
-from app.acciones.motor import escanear_inactividad
+from app.acciones.motor import escanear_inactividad, escanear_vencimientos
 from app.db import RepositorioPostgres, get_repo
 from app.envio import emisor_desde_config
 from app.grafo import construir_grafo
@@ -61,6 +61,14 @@ def job_inactividad(repo, emisor) -> dict:
     return {"encoladas": len(encoladas), "despacho": desp}
 
 
+def job_sla(repo, emisor) -> dict:
+    """SLA (Fase C): revisa vencimientos, encola recordatorios y los despacha."""
+    encoladas = escanear_vencimientos(repo)
+    desp = despachar_pendientes(repo, emisor)
+    log.info("sla: %d recordatorios por vencimiento · despacho=%s", len(encoladas), desp.get("conteo"))
+    return {"encoladas": len(encoladas), "despacho": desp}
+
+
 def job_retencion(repo) -> dict:
     """Purga (o cuenta, en DRY_RUN) lo más viejo que RETENCION_DIAS."""
     res = repo.purgar_antiguos(config.RETENCION_DIAS, dry=config.DRY_RUN)
@@ -82,6 +90,7 @@ def construir_scheduler():
                   seconds=config.POLL_SEGUNDOS, id="intake", max_instances=1,
                   coalesce=True, next_run_time=__import__("datetime").datetime.now())
     sched.add_job(lambda: job_inactividad(repo, emisor), "cron", hour=8, minute=0, id="inactividad")
+    sched.add_job(lambda: job_sla(repo, emisor), "interval", minutes=60, id="sla")
     sched.add_job(lambda: job_retencion(repo), "cron", hour=3, minute=30, id="retencion")
 
     log.info("Scheduler listo | DB=%s | SMTP=%s | DRY_RUN=%s | poll=%ds",

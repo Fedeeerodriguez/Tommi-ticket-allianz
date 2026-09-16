@@ -6,3 +6,6 @@
 alter table tickets_allianz.tickets add column if not exists gmail_thread_id   text;
 alter table tickets_allianz.tickets add column if not exists asunto_hilo        text;
 alter table tickets_allianz.tickets add column if not exists ultimo_message_id  text;
+
+-- Fase C — SLA / vencimiento del ticket (para recordar antes de que Allianz lo cierre).
+alter table tickets_allianz.tickets add column if not exists vence_en          text;
