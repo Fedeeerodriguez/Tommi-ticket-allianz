@@ -74,8 +74,11 @@ mientras exista el `refresh_token`.
 | `TZ` | `America/Mexico_City` | Zona horaria (SLA/logs) |
 | `DRY_RUN` | `true` para validar / `false` para ir en vivo | **Empezar en `true`** |
 
-> **Migración de DB (una vez, antes del primer `DRY_RUN=false`):** correr `app/db/migrations.sql`
-> en la Supabase de prod (agrega columnas de hilo, SLA y teléfonos). SQLite las crea solo.
+> **Base de datos (Supabase de Babilonia):** el esquema **`tickets_allianz`** con sus tablas
+> (`correos`, `tickets`, `ticket_eventos`, `acciones`) ya está creado. El script
+> `app/db/migrations.sql` es el bootstrap idempotente (crea esquema + tablas + columnas +
+> índices, todo `if not exists`, sin tocar nada de Babilonia) — se puede re-correr cuando se
+> agreguen columnas. SQLite (dev) crea todo esto solo.
 
 ## 4. Puesta en marcha segura
 
