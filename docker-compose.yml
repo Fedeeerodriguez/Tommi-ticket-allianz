@@ -15,8 +15,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: tommi-ticket-allianz:latest
-    container_name: tickets-allianz
     restart: unless-stopped
     command: ["python", "-m", "app.run_scheduler"]
     environment:
