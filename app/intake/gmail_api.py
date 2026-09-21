@@ -3,14 +3,22 @@
 Cumple la MISMA interfaz que `LectorEmlLocal`/`LectorIMAP` (`.leer()`), así el resto del
 sistema (grafo, scheduler) no cambia. Trae los correos que matchean `query` (por defecto los
 no leídos del INBOX) y los normaliza con `normalizar_desde_bytes` (mismo parseo que IMAP/EML).
-Por seguridad NO marca leídos salvo que se pida; la idempotencia real la da `message_id` en DB.
+
+Anti rate-limit (Gmail limita "Units per minute per user"): baja como mucho `limite` correos
+por ciclo, con **backoff** ante 403/429 (`rateLimitExceeded`) y una **pausa** entre requests.
+Si `marcar_leidos=True`, tras procesar cada correo le quita la etiqueta UNREAD → así el poll
+siguiente NO vuelve a bajar el mismo backlog (clave para no quemar la cuota). La idempotencia
+real la sigue dando `message_id` en la DB.
 """
 from __future__ import annotations
 
 import base64
 import logging
+import random
+import time
 from typing import Iterator
 
+from app import config
 from app.google_auth import construir_servicio
 from app.models import Correo
 
@@ -19,13 +27,33 @@ from .reader import normalizar_desde_bytes
 log = logging.getLogger(__name__)
 
 
+def _es_rate_limit(ex: Exception) -> bool:
+    s = str(ex)
+    return "rateLimitExceeded" in s or "Quota exceeded" in s or "429" in s or "userRateLimitExceeded" in s
+
+
+def _ejecutar(req, intentos: int = 5):
+    """Ejecuta un request de la Gmail API con backoff exponencial ante rate-limit."""
+    for i in range(intentos):
+        try:
+            return req.execute()
+        except Exception as ex:  # noqa: BLE001
+            if _es_rate_limit(ex) and i < intentos - 1:
+                espera = min(2 ** i + random.uniform(0, 0.5), 20)
+                log.warning("Gmail rate-limit; reintento %d en %.1fs", i + 1, espera)
+                time.sleep(espera)
+                continue
+            raise
+
+
 class LectorGmail:
     def __init__(self, query: str = "is:unread", carpeta: str = "INBOX",
-                 marcar_leidos: bool = False, limite: int = 200):
+                 marcar_leidos: bool = True, limite: int = 40, pausa_ms: int = 250):
         self.query = query
         self.carpeta = carpeta
         self.marcar_leidos = marcar_leidos
         self.limite = limite
+        self.pausa_ms = pausa_ms
 
     def leer(self) -> Iterator[Correo]:
         service = construir_servicio()
@@ -34,16 +62,16 @@ class LectorGmail:
             return
         labels = [self.carpeta] if self.carpeta else None
         try:
-            resp = service.users().messages().list(
+            resp = _ejecutar(service.users().messages().list(
                 userId="me", q=self.query, labelIds=labels,
-                maxResults=min(self.limite, 500)).execute()
+                maxResults=min(self.limite, 100)))
         except Exception as ex:  # noqa: BLE001
             log.warning("Gmail API list falló: %s", ex)
             return
         for meta in resp.get("messages", []):
             try:
-                msg = service.users().messages().get(
-                    userId="me", id=meta["id"], format="raw").execute()
+                msg = _ejecutar(service.users().messages().get(
+                    userId="me", id=meta["id"], format="raw"))
                 crudo = base64.urlsafe_b64decode(msg["raw"].encode("utf-8"))
             except Exception as ex:  # noqa: BLE001
                 log.warning("Gmail API get %s falló: %s", meta.get("id"), ex)
@@ -51,9 +79,12 @@ class LectorGmail:
             correo = normalizar_desde_bytes(crudo, origen=f"gmail:{meta['id']}")
             correo.hilo_id = meta.get("threadId")  # para responder en el mismo hilo (Fase B)
             yield correo
+            # Marcar leído DESPUÉS de procesar → el próximo poll no re-baja este correo.
             if self.marcar_leidos:
                 try:
-                    service.users().messages().modify(
-                        userId="me", id=meta["id"], body={"removeLabelIds": ["UNREAD"]}).execute()
+                    _ejecutar(service.users().messages().modify(
+                        userId="me", id=meta["id"], body={"removeLabelIds": ["UNREAD"]}))
                 except Exception as ex:  # noqa: BLE001
                     log.warning("no se pudo marcar leído %s: %s", meta.get("id"), ex)
+            if self.pausa_ms:
+                time.sleep(self.pausa_ms / 1000.0)  # throttle para no reventar la cuota

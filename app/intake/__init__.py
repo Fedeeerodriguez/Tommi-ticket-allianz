@@ -19,7 +19,10 @@ def lector_desde_config(carpeta=None):
     if config.hay_gmail_api():
         from .gmail_api import LectorGmail
 
-        return LectorGmail(query=config.GMAIL_QUERY, carpeta=config.IMAP_CARPETA), "Gmail API"
+        return LectorGmail(query=config.GMAIL_QUERY, carpeta=config.IMAP_CARPETA,
+                           marcar_leidos=config.GMAIL_MARCAR_LEIDOS,
+                           limite=config.GMAIL_MAX_POR_CICLO,
+                           pausa_ms=config.GMAIL_PAUSA_MS), "Gmail API"
     if config.hay_imap():
         return (LectorIMAP(config.IMAP_HOST, config.IMAP_USER, config.IMAP_PASSWORD,
                            config.IMAP_CARPETA, config.IMAP_PORT),

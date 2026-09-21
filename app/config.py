@@ -103,6 +103,13 @@ GOOGLE_TOKEN_JSON = os.getenv("GOOGLE_TOKEN_JSON", str(DATA_DIR / "google_token.
 # vez en local y su CONTENIDO se pega en esta env var. Tiene prioridad sobre el archivo.
 GOOGLE_TOKEN = os.getenv("GOOGLE_TOKEN", "")
 GMAIL_QUERY = os.getenv("GMAIL_QUERY", "is:unread")
+# Anti rate-limit de Gmail: cuántos correos baja por ciclo, pausa entre requests (ms), y si
+# marca leídos los ya procesados (para drenar el backlog y NO re-bajarlos cada poll).
+# Por seguridad, el default de marcar-leídos sigue a DRY_RUN: en DRY_RUN NO toca la casilla
+# (así quien hoy maneja hola@ a mano sigue viendo los correos sin leer); en vivo sí los marca.
+GMAIL_MAX_POR_CICLO = int(os.getenv("GMAIL_MAX_POR_CICLO", "40"))
+GMAIL_PAUSA_MS = int(os.getenv("GMAIL_PAUSA_MS", "250"))
+GMAIL_MARCAR_LEIDOS = _bool("GMAIL_MARCAR_LEIDOS", "false" if _bool("DRY_RUN", "true") else "true")
 
 # Modo seguro: en dry-run NO se envía nada a nadie.
 DRY_RUN = _bool("DRY_RUN", "true")
