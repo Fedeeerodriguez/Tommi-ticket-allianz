@@ -111,6 +111,12 @@ GMAIL_MAX_POR_CICLO = int(os.getenv("GMAIL_MAX_POR_CICLO", "40"))
 GMAIL_PAUSA_MS = int(os.getenv("GMAIL_PAUSA_MS", "250"))
 GMAIL_MARCAR_LEIDOS = _bool("GMAIL_MARCAR_LEIDOS", "false" if _bool("DRY_RUN", "true") else "true")
 
+# Modo copiloto (primera parte en vivo): correo interno del equipo al que se manda el resumen
+# de tickets + borradores propuestos. Vacío = desactivado. Es interno (envía SOLO a esta
+# dirección), por eso funciona aunque DRY_RUN=true.
+RESUMEN_EQUIPO_EMAIL = os.getenv("RESUMEN_EQUIPO_EMAIL", "")
+RESUMEN_CADA_HORAS = int(os.getenv("RESUMEN_CADA_HORAS", "4"))  # cada cuánto manda el digest
+
 # Modo seguro: en dry-run NO se envía nada a nadie.
 DRY_RUN = _bool("DRY_RUN", "true")
 

@@ -80,6 +80,14 @@ def job_retencion(repo) -> dict:
     return res
 
 
+def job_resumen_equipo(repo) -> dict:
+    """Modo copiloto: manda el resumen interno de tickets + borradores al equipo (opt-in)."""
+    from app.resumen_equipo import enviar_resumen_equipo
+    res = enviar_resumen_equipo(repo)
+    log.info("resumen_equipo: %s", res.get("motivo") or ("enviado a " + str(res.get("destino"))))
+    return res
+
+
 def construir_scheduler():
     """Arma el BlockingScheduler con los tres jobs. Devuelve (scheduler, repo)."""
     from apscheduler.schedulers.blocking import BlockingScheduler
@@ -96,6 +104,11 @@ def construir_scheduler():
     sched.add_job(lambda: job_inactividad(repo, emisor), "cron", hour=8, minute=0, id="inactividad")
     sched.add_job(lambda: job_sla(repo, emisor), "interval", minutes=60, id="sla")
     sched.add_job(lambda: job_retencion(repo), "cron", hour=3, minute=30, id="retencion")
+    # Modo copiloto: resumen interno al equipo (solo si RESUMEN_EQUIPO_EMAIL está configurado).
+    if config.RESUMEN_EQUIPO_EMAIL:
+        sched.add_job(lambda: job_resumen_equipo(repo), "interval",
+                      hours=max(1, config.RESUMEN_CADA_HORAS), id="resumen_equipo",
+                      next_run_time=__import__("datetime").datetime.now())
 
     log.info("Scheduler listo | DB=%s | SMTP=%s | DRY_RUN=%s | poll=%ds",
              backend, "on" if config.hay_smtp() else "off", config.DRY_RUN, config.POLL_SEGUNDOS)
