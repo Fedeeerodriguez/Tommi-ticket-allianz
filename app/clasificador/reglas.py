@@ -39,6 +39,13 @@ _RE_PIDE = re.compile(r"\b(favor\s+de|es\s+necesario|requerimos|debe(?:r[aá])?\
 _RE_PREGUNTA_PRODUCTO = re.compile(r"\b(c[oó]mo|cu[aá]l|cu[aá]nto|qu[eé]|se\s+puede|es\s+posible|duda|consulta|producto|cobertura|prima|comisi[oó]n)\b", re.I)
 _RE_REENVIO = re.compile(r"^(fw:|fwd:|rv:|reenv)", re.I)
 _RE_CODIGO = re.compile(r"\b(c[oó]digo\s+(?:de\s+)?(?:verificaci[oó]n|seguridad|acceso)|one[-\s]?time|otp|2fa|token)\b", re.I)
+# Fuera de alcance (Fase G): cobranza / saldo deudor ya lo cubre el WATI del equipo → NO genera
+# ticket. Se matchea sobre el ASUNTO (conservador) para no tragarse tickets reales que mencionen
+# "saldo" al pasar. Ampliar acá si aparecen otras notificaciones fuera de alcance (DAF/emisión).
+_RE_FUERA_ALCANCE = re.compile(
+    r"(saldo\s+deudor|saldo\s+vencido|notificaci[oó]n\s+de\s+cobranza|aviso\s+de\s+cobranza|"
+    r"aviso\s+de\s+cobro|recibo\s+de\s+cobro|estado\s+de\s+cuenta|comprobante\s+de\s+pago)",
+    re.I)
 
 
 def _es_allianz(direccion_o_dominio: str) -> bool:
@@ -60,7 +67,13 @@ def clasificar_l1(correo: Correo) -> Clasificacion:
     cuerpo = correo.cuerpo_texto or ""
     texto = f"{asunto}\n{cuerpo}"
 
-    # 0) PRIORIDAD Allianz: los correos de tickets se clasifican por su patrón real ANTES que
+    # 0.a) FUERA DE ALCANCE: notificaciones de cobranza / saldo deudor → ya las cubre el WATI del
+    #      equipo. No generan ticket (van como G_sistema). Antes que todo, para no crear tickets.
+    if _RE_FUERA_ALCANCE.search(asunto):
+        return Clasificacion(TipoCorreo.G_SISTEMA, 0.9,
+                             "notificación de cobranza/saldo (fuera de alcance, la cubre WATI)")
+
+    # 0.b) PRIORIDAD Allianz: los correos de tickets se clasifican por su patrón real ANTES que
     #    las reglas genéricas de ruido (si no, 'notif@'/List-Unsubscribe se comían los tickets).
     if es_correo_allianz(correo.remitente):
         info = clasificar_allianz(asunto, cuerpo, correo.remitente)
