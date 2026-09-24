@@ -88,6 +88,14 @@ def job_resumen_equipo(repo) -> dict:
     return res
 
 
+def job_seguimiento_notion(repo) -> dict:
+    """Sandbox: sincroniza el panel de revisión 'Ticket Allianz Seguimiento' en Notion (opt-in)."""
+    from app.registro import sincronizar_seguimiento
+    res = sincronizar_seguimiento(repo)
+    log.info("seguimiento_notion: %s", res)
+    return res
+
+
 def construir_scheduler():
     """Arma el BlockingScheduler con los tres jobs. Devuelve (scheduler, repo)."""
     from apscheduler.schedulers.blocking import BlockingScheduler
@@ -108,6 +116,11 @@ def construir_scheduler():
     if config.RESUMEN_EQUIPO_EMAIL:
         sched.add_job(lambda: job_resumen_equipo(repo), "interval",
                       hours=max(1, config.RESUMEN_CADA_HORAS), id="resumen_equipo",
+                      next_run_time=__import__("datetime").datetime.now())
+    # Sandbox: panel de revisión en Notion (solo si NOTION_DB_SEGUIMIENTO está configurado).
+    if config.NOTION_DB_SEGUIMIENTO:
+        sched.add_job(lambda: job_seguimiento_notion(repo), "interval", minutes=15,
+                      id="seguimiento_notion",
                       next_run_time=__import__("datetime").datetime.now())
 
     log.info("Scheduler listo | DB=%s | SMTP=%s | DRY_RUN=%s | poll=%ds",

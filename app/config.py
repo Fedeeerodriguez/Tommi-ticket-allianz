@@ -76,6 +76,9 @@ NOTION_DB_ASESORES = os.getenv("NOTION_DB_ASESORES", "")
 NOTION_DB_EMISIONES = os.getenv("NOTION_DB_EMISIONES", "")
 NOTION_DB_COBRANZAS = os.getenv("NOTION_DB_COBRANZAS", "")
 NOTION_DB_CLIENTES = os.getenv("NOTION_DB_CLIENTES", "")
+# Base de REVISIÓN (sandbox): panel 'Ticket Allianz Seguimiento' donde el equipo evalúa las
+# respuestas/acciones propuestas (Veredicto: Pendiente/Aprobado/Rechazado). Vacío = no sincroniza.
+NOTION_DB_SEGUIMIENTO = os.getenv("NOTION_DB_SEGUIMIENTO", "")
 
 # Supabase Storage para adjuntos (PDFs). En la DB solo va texto + referencia.
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
