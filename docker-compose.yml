@@ -83,6 +83,9 @@ services:
       # API del panel: token opcional (si se setea, el frontend debe mandarlo) + CORS del front.
       API_TOKEN: ${API_TOKEN:-}
       CORS_ORIGINS: ${CORS_ORIGINS:-}
-    ports:
-      - "${API_PORT:-8090}:8090"
+    # Sin `ports:` a propósito: en EasyPanel el dominio enruta al contenedor por el puerto
+    # interno 8090 (Dominios → servicio `api` → puerto 8090). Publicar al host genera
+    # conflictos entre servicios del mismo proyecto.
+    expose:
+      - "8090"
     logging: *logging
