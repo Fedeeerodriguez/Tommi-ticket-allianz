@@ -49,7 +49,10 @@ class RepositorioPostgres:
     def _connect(dsn: str):
         try:
             import psycopg  # v3
-            return psycopg.connect(dsn, autocommit=True), "psycopg"
+            # prepare_threshold=None desactiva los prepared statements: el pooler de
+            # Supabase corre en modo transacción y no los mantiene entre conexiones
+            # del pool → si no, revienta con InvalidSqlStatementName ("_pg3_0" ...).
+            return psycopg.connect(dsn, autocommit=True, prepare_threshold=None), "psycopg"
         except ImportError:
             import psycopg2
             c = psycopg2.connect(dsn)
