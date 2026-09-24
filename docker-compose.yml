@@ -1,14 +1,66 @@
-# Tommi-ticket-allianz — servicio de seguimiento de tickets Allianz.
+# Tommi-ticket-allianz — gestor de tickets Allianz (vive FUERA de Tomi producción).
 #
-# Es un WORKER (no expone HTTP): corre el scheduler autónomo (polling Gmail API + inactividad
-# + SLA + retención). Seguro por default: DRY_RUN=true → compone y clasifica, pero NO envía ni
-# escribe nada. Para ir en vivo se pone DRY_RUN=false.
+# Dos servicios desde la misma imagen:
+#   · tickets-allianz : WORKER (scheduler autónomo: Gmail intake + SLA + retención + resumen +
+#                       sync Notion). No expone HTTP.
+#   · api             : API HTTP (FastAPI/uvicorn) que consume el frontend de Tomi para el panel
+#                       'Ticket Allianz Seguimiento'. Expone el puerto 8090.
 #
-# EasyPanel: crear un servicio tipo "Compose" apuntando a este archivo. Las variables se cargan
-# en la pestaña Environment del servicio (se interpolan en los ${VAR} de abajo). NUNCA se hornean
-# secretos en la imagen (ver .dockerignore).
-#
-# Local: `cp .env.example .env`, completar, y `docker compose up -d --build` (compose lee .env).
+# Seguro por default: DRY_RUN=true → compone/clasifica pero NO envía nada. EasyPanel: servicio
+# "Compose" apuntando a este archivo; las variables se cargan en Environment (interpolan los ${VAR}).
+# Local: `cp .env.example .env`, completar, `docker compose up -d --build`.
+
+x-common-env: &common-env
+  # --- Gmail API (OAuth headless) ---
+  GOOGLE_TOKEN: ${GOOGLE_TOKEN:-}
+  GMAIL_QUERY: ${GMAIL_QUERY:-is:unread}
+  GMAIL_MAX_POR_CICLO: ${GMAIL_MAX_POR_CICLO:-40}
+  GMAIL_PAUSA_MS: ${GMAIL_PAUSA_MS:-250}
+  GMAIL_MARCAR_LEIDOS: ${GMAIL_MARCAR_LEIDOS:-}
+  # --- Base de datos (Supabase, esquema aislado tickets_allianz) ---
+  DATABASE_URL: ${DATABASE_URL:-}
+  DB_SCHEMA: ${DB_SCHEMA:-tickets_allianz}
+  # --- LLM (orquestador + redactor + L2) ---
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  MODELO_L2: ${MODELO_L2:-gpt-4.1-mini}
+  USAR_LLM_RESUMEN: ${USAR_LLM_RESUMEN:-true}
+  # --- Notion (rieles Fase F + registro + panel de seguimiento) ---
+  NOTION_TOKEN: ${NOTION_TOKEN:-}
+  NOTION_DB_TICKETS_ALLIANZ: ${NOTION_DB_TICKETS_ALLIANZ:-}
+  NOTION_DB_EMISIONES: ${NOTION_DB_EMISIONES:-}
+  NOTION_DB_ASESORES: ${NOTION_DB_ASESORES:-}
+  NOTION_DB_CLIENTES: ${NOTION_DB_CLIENTES:-}
+  NOTION_DB_DAF: ${NOTION_DB_DAF:-}
+  NOTION_DB_COBRANZAS: ${NOTION_DB_COBRANZAS:-}
+  NOTION_DB_SEGUIMIENTO: ${NOTION_DB_SEGUIMIENTO:-}
+  # --- Allianz (directorio de destino) ---
+  ALLIANZ_DEST: ${ALLIANZ_DEST:-}
+  ALLIANZ_DIRECTORIO: ${ALLIANZ_DIRECTORIO:-}
+  ALLIANZ_DOMINIOS: ${ALLIANZ_DOMINIOS:-allianz.com,allianz.com.mx}
+  # --- WATI (WhatsApp) ---
+  WATI_API_URL: ${WATI_API_URL:-}
+  WATI_API_TOKEN: ${WATI_API_TOKEN:-}
+  WATI_PLANTILLA_ASESOR: ${WATI_PLANTILLA_ASESOR:-avances}
+  WATI_PLANTILLA_CLIENTE: ${WATI_PLANTILLA_CLIENTE:-}
+  WATI_PLANTILLA_CECI: ${WATI_PLANTILLA_CECI:-}
+  CECI_WHATSAPP: ${CECI_WHATSAPP:-}
+  # --- SLA ---
+  SLA_DEFAULT_HORAS: ${SLA_DEFAULT_HORAS:-72}
+  SLA_AVISO_HORAS: ${SLA_AVISO_HORAS:-24}
+  # --- Copiloto / resumen interno ---
+  RESUMEN_EQUIPO_EMAIL: ${RESUMEN_EQUIPO_EMAIL:-}
+  RESUMEN_CADA_HORAS: ${RESUMEN_CADA_HORAS:-4}
+  # --- Motor ---
+  DRY_RUN: ${DRY_RUN:-true}
+  POLL_SEGUNDOS: ${POLL_SEGUNDOS:-90}
+  RETENCION_DIAS: ${RETENCION_DIAS:-180}
+  TZ: ${TZ:-America/Mexico_City}
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
 
 services:
   tickets-allianz:
@@ -17,46 +69,20 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     command: ["python", "-m", "app.run_scheduler"]
+    environment: *common-env
+    logging: *logging
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["uvicorn", "app.api:app", "--host", "0.0.0.0", "--port", "8090"]
     environment:
-      # --- Gmail API (OAuth headless): pegar el JSON del token generado en local ---
-      GOOGLE_TOKEN: ${GOOGLE_TOKEN:-}
-      GMAIL_QUERY: ${GMAIL_QUERY:-is:unread}
-      # --- Base de datos (Supabase de Tommy, esquema aislado) ---
-      DATABASE_URL: ${DATABASE_URL:-}
-      DB_SCHEMA: ${DB_SCHEMA:-tickets_allianz}
-      # --- LLM (orquestador + redactor + L2) ---
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      MODELO_L2: ${MODELO_L2:-gpt-4.1-mini}
-      USAR_LLM_RESUMEN: ${USAR_LLM_RESUMEN:-true}
-      # --- Notion (rieles Fase F + registro) ---
-      NOTION_TOKEN: ${NOTION_TOKEN:-}
-      NOTION_DB_TICKETS_ALLIANZ: ${NOTION_DB_TICKETS_ALLIANZ:-}
-      NOTION_DB_EMISIONES: ${NOTION_DB_EMISIONES:-}
-      NOTION_DB_ASESORES: ${NOTION_DB_ASESORES:-}
-      NOTION_DB_CLIENTES: ${NOTION_DB_CLIENTES:-}
-      NOTION_DB_DAF: ${NOTION_DB_DAF:-}
-      NOTION_DB_COBRANZAS: ${NOTION_DB_COBRANZAS:-}
-      # --- Allianz (directorio de destino) ---
-      ALLIANZ_DEST: ${ALLIANZ_DEST:-}
-      ALLIANZ_DIRECTORIO: ${ALLIANZ_DIRECTORIO:-}
-      ALLIANZ_DOMINIOS: ${ALLIANZ_DOMINIOS:-allianz.com,allianz.com.mx}
-      # --- WATI (WhatsApp). Sin credenciales corre en modo laboratorio (no envía) ---
-      WATI_API_URL: ${WATI_API_URL:-}
-      WATI_API_TOKEN: ${WATI_API_TOKEN:-}
-      WATI_PLANTILLA_ASESOR: ${WATI_PLANTILLA_ASESOR:-avances}
-      WATI_PLANTILLA_CLIENTE: ${WATI_PLANTILLA_CLIENTE:-}
-      WATI_PLANTILLA_CECI: ${WATI_PLANTILLA_CECI:-}
-      CECI_WHATSAPP: ${CECI_WHATSAPP:-}
-      # --- SLA (Fase C) ---
-      SLA_DEFAULT_HORAS: ${SLA_DEFAULT_HORAS:-72}
-      SLA_AVISO_HORAS: ${SLA_AVISO_HORAS:-24}
-      # --- Motor ---
-      DRY_RUN: ${DRY_RUN:-true}
-      POLL_SEGUNDOS: ${POLL_SEGUNDOS:-90}
-      RETENCION_DIAS: ${RETENCION_DIAS:-180}
-      TZ: ${TZ:-America/Mexico_City}
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
+      <<: *common-env
+      # API del panel: token opcional (si se setea, el frontend debe mandarlo) + CORS del front.
+      API_TOKEN: ${API_TOKEN:-}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+    ports:
+      - "${API_PORT:-8090}:8090"
+    logging: *logging
