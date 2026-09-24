@@ -231,6 +231,7 @@ class RepositorioSQLite:
             create table if not exists acciones(
               id integer primary key autoincrement, ticket_id int, tipo_accion text, canal text,
               estado text default 'sugerida', payload text, resultado text, programada_para text,
+              veredicto text default 'pendiente', nota_revision text, borrador_editado text,
               created_at text default (datetime('now')));
             """
         )

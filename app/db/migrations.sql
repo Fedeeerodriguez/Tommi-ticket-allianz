@@ -69,6 +69,9 @@ create table if not exists tickets_allianz.acciones (
   payload         jsonb,
   resultado       jsonb,
   programada_para text,
+  veredicto        text default 'pendiente',
+  nota_revision    text,
+  borrador_editado text,
   created_at      timestamptz not null default now()
 );
 
@@ -82,6 +85,10 @@ alter table tickets_allianz.tickets add column if not exists vence_en          t
 -- Fase F — teléfonos de cliente/asesor (de Notion Emisiones) para el ruteo por WATI.
 alter table tickets_allianz.tickets add column if not exists telefono_cliente  text;
 alter table tickets_allianz.tickets add column if not exists telefono_asesor   text;
+-- Panel de revisión (sandbox): veredicto del equipo por acción + borrador editable a mano.
+alter table tickets_allianz.acciones add column if not exists veredicto        text default 'pendiente';
+alter table tickets_allianz.acciones add column if not exists nota_revision    text;
+alter table tickets_allianz.acciones add column if not exists borrador_editado text;
 
 -- ─────────────────────────── índices ───────────────────────────
 create index if not exists ix_correos_ticket   on tickets_allianz.correos     (ticket_id);
