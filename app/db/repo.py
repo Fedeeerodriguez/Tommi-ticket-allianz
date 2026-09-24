@@ -30,6 +30,8 @@ class Repositorio(Protocol):
                      programada_para: Optional[str] = None) -> int: ...
     def actualizar_accion(self, accion_id: int, estado: str,
                           resultado: Optional[dict] = None) -> None: ...
+    def set_veredicto(self, accion_id: int, veredicto: str, nota: Optional[str] = None) -> int: ...
+    def set_borrador(self, accion_id: int, borrador: str) -> int: ...
     def listar_acciones(self, ticket_id: Optional[int] = None, estado: Optional[str] = None) -> list[dict]: ...
     def listar_tickets(self, limite: int = 100) -> list[dict]: ...
     def obtener_ticket(self, ticket_id: int) -> Optional[dict]: ...
@@ -139,6 +141,18 @@ class RepositorioPostgres:
         with self.conn.cursor() as cur:
             cur.execute(f"update {self._t('acciones')} set estado=%s, resultado=%s::jsonb where id=%s",
                         (estado, res, accion_id))
+
+    def set_veredicto(self, accion_id, veredicto, nota=None) -> int:
+        with self.conn.cursor() as cur:
+            cur.execute(f"update {self._t('acciones')} set veredicto=%s, nota_revision=%s where id=%s",
+                        (veredicto, nota, accion_id))
+            return cur.rowcount
+
+    def set_borrador(self, accion_id, borrador) -> int:
+        with self.conn.cursor() as cur:
+            cur.execute(f"update {self._t('acciones')} set borrador_editado=%s where id=%s",
+                        (borrador, accion_id))
+            return cur.rowcount
 
     def listar_acciones(self, ticket_id=None, estado=None) -> list[dict]:
         cond, args = [], []
@@ -307,6 +321,17 @@ class RepositorioSQLite:
         res = json.dumps(resultado, ensure_ascii=False) if resultado is not None else None
         self.conn.execute("update acciones set estado=?, resultado=? where id=?", (estado, res, accion_id))
         self.conn.commit()
+
+    def set_veredicto(self, accion_id, veredicto, nota=None) -> int:
+        cur = self.conn.execute("update acciones set veredicto=?, nota_revision=? where id=?",
+                                (veredicto, nota, accion_id))
+        self.conn.commit()
+        return cur.rowcount
+
+    def set_borrador(self, accion_id, borrador) -> int:
+        cur = self.conn.execute("update acciones set borrador_editado=? where id=?", (borrador, accion_id))
+        self.conn.commit()
+        return cur.rowcount
 
     def listar_acciones(self, ticket_id=None, estado=None) -> list[dict]:
         cond, args = [], []

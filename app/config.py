@@ -120,6 +120,12 @@ GMAIL_MARCAR_LEIDOS = _bool("GMAIL_MARCAR_LEIDOS", "false" if _bool("DRY_RUN", "
 RESUMEN_EQUIPO_EMAIL = os.getenv("RESUMEN_EQUIPO_EMAIL", "")
 RESUMEN_CADA_HORAS = int(os.getenv("RESUMEN_CADA_HORAS", "4"))  # cada cuánto manda el digest
 
+# API del panel de seguimiento (la consume el frontend de Tomi; vive ACÁ, fuera de Tomi prod).
+# API_TOKEN: si está seteado, exige `Authorization: Bearer <token>`. CORS_ORIGINS: orígenes del
+# frontend permitidos (CSV). Vacío = permite todos (solo para dev).
+API_TOKEN = os.getenv("API_TOKEN", "")
+CORS_ORIGINS = _csv("CORS_ORIGINS", "")
+
 # Modo seguro: en dry-run NO se envía nada a nadie.
 DRY_RUN = _bool("DRY_RUN", "true")
 
