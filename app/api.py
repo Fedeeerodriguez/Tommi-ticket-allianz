@@ -4,10 +4,10 @@ El frontend de Tomi la consume por HTTP para mostrar/aprobar/editar lo que el ge
 Así el gestor de tickets queda desacoplado de la implementación de Tomi en producción.
 
 Endpoints (todos bajo /api/tickets-allianz):
-  GET  /api/tickets-allianz                        -> tickets no resueltos + acciones propuestas
-  POST /api/tickets-allianz/accion/{id}/veredicto  -> {veredicto, nota}
-  PUT  /api/tickets-allianz/accion/{id}/borrador   -> {borrador}
-  GET  /api/health                                 -> ping
+  GET  /api/tickets-allianz                            -> tickets + correo entrante + acciones propuestas
+  POST /api/tickets-allianz/accion/{id}/calificacion   -> {calificacion: buena|regular|mala, nota}
+  PUT  /api/tickets-allianz/accion/{id}/borrador       -> {borrador}
+  GET  /api/health                                     -> ping
 
 Seguridad: si `API_TOKEN` está seteado, exige `Authorization: Bearer <token>`. CORS por
 `CORS_ORIGINS`. NO envía nada al cliente/Allianz: solo lee/edita el estado de revisión.
@@ -36,7 +36,9 @@ app.add_middleware(
 )
 
 _VIVOS = {"sugerida", "pendiente_ceci", "pendiente_wati", "simulada"}
-_VEREDICTOS = {"pendiente", "aprobado", "rechazado"}
+# Calificación de la respuesta que propone el agente (feedback del equipo en el sandbox).
+# Se guarda en la columna `veredicto` (reutilizada) para no migrar la base.
+_CALIF = {"pendiente", "buena", "regular", "mala"}
 _repo = None
 
 
@@ -86,9 +88,12 @@ def listar(_=Depends(_auth)):
         for a in repo.listar_acciones(ticket_id=t["id"]):
             if a.get("estado") not in _VIVOS:
                 continue
+            cal = (a.get("veredicto") or "pendiente")
+            if cal not in _CALIF:      # veredictos viejos (aprobado/rechazado) → pendiente
+                cal = "pendiente"
             acc.append({
                 "id": a["id"], "tipo_accion": a.get("tipo_accion"), "canal": a.get("canal"),
-                "estado": a.get("estado"), "veredicto": a.get("veredicto") or "pendiente",
+                "estado": a.get("estado"), "calificacion": cal,
                 "nota_revision": a.get("nota_revision"), "borrador": _borrador(a),
                 "editado": bool(a.get("borrador_editado")),
             })
@@ -96,27 +101,40 @@ def listar(_=Depends(_auth)):
             "id": t["id"], "nro_ticket": t.get("nro_ticket"), "poliza": t.get("poliza"),
             "cliente_nombre": t.get("cliente_nombre"), "estado": t.get("estado"),
             "vence": t.get("vence_en"), "asunto_hilo": t.get("asunto_hilo"),
-            "delicado": bool(t.get("delicado")), "acciones": acc,
-            "pendientes": sum(1 for x in acc if x["veredicto"] == "pendiente"),
+            "delicado": bool(t.get("delicado")), "correo": _correo_ticket(repo, t["id"]),
+            "acciones": acc,
+            "pendientes": sum(1 for x in acc if x["calificacion"] == "pendiente"),
         })
     resumen = {"tickets": len(items), "acciones": sum(len(i["acciones"]) for i in items),
                "pendientes": sum(i["pendientes"] for i in items)}
     return {"resumen": resumen, "items": items}
 
 
-class VeredictoIn(BaseModel):
-    veredicto: str
+def _correo_ticket(repo, ticket_id: int) -> Optional[dict]:
+    """Último correo entrante del ticket: 'qué decía el correo' que revisa el equipo."""
+    correos = repo.listar_correos(ticket_id, limite=1)
+    if not correos:
+        return None
+    c = correos[0]
+    return {"remitente": c.get("remitente"), "asunto": c.get("asunto"),
+            "cuerpo": c.get("cuerpo_texto"), "fecha": c.get("fecha")}
+
+
+class CalificacionIn(BaseModel):
+    calificacion: str
     nota: Optional[str] = None
 
 
-@app.post("/api/tickets-allianz/accion/{accion_id}/veredicto")
-def poner_veredicto(accion_id: int, body: VeredictoIn, _=Depends(_auth)):
-    v = (body.veredicto or "").strip().lower()
-    if v not in _VEREDICTOS:
-        raise HTTPException(status_code=400, detail=f"veredicto inválido (usar {sorted(_VEREDICTOS)})")
-    if _get_repo().set_veredicto(accion_id, v, body.nota) == 0:
+@app.post("/api/tickets-allianz/accion/{accion_id}/calificacion")
+def poner_calificacion(accion_id: int, body: CalificacionIn, _=Depends(_auth)):
+    """Califica la respuesta propuesta: buena / regular / mala (o pendiente). Se guarda en la
+    columna `veredicto`. No envía nada; es feedback del equipo para evaluar al agente."""
+    c = (body.calificacion or "").strip().lower()
+    if c not in _CALIF:
+        raise HTTPException(status_code=400, detail=f"calificación inválida (usar {sorted(_CALIF)})")
+    if _get_repo().set_veredicto(accion_id, c, body.nota) == 0:
         raise HTTPException(status_code=404, detail="acción no encontrada")
-    return {"ok": True, "accion_id": accion_id, "veredicto": v}
+    return {"ok": True, "accion_id": accion_id, "calificacion": c}
 
 
 class BorradorIn(BaseModel):

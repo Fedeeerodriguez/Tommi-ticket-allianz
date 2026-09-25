@@ -36,6 +36,7 @@ class Repositorio(Protocol):
     def listar_tickets(self, limite: int = 100) -> list[dict]: ...
     def obtener_ticket(self, ticket_id: int) -> Optional[dict]: ...
     def listar_eventos(self, ticket_id: int) -> list[dict]: ...
+    def listar_correos(self, ticket_id: int, limite: int = 20) -> list[dict]: ...
     def purgar_antiguos(self, dias: int, dry: bool = False) -> dict: ...
 
 
@@ -181,6 +182,12 @@ class RepositorioPostgres:
     def listar_eventos(self, ticket_id: int) -> list[dict]:
         with self.conn.cursor() as cur:
             cur.execute(f"select * from {self._t('ticket_eventos')} where ticket_id=%s order by created_at", (ticket_id,))
+            return self._rows(cur)
+
+    def listar_correos(self, ticket_id: int, limite: int = 20) -> list[dict]:
+        with self.conn.cursor() as cur:
+            cur.execute(f"select * from {self._t('correos')} where ticket_id=%s "
+                        f"order by fecha desc nulls last, id desc limit %s", (ticket_id, limite))
             return self._rows(cur)
 
     def purgar_antiguos(self, dias: int, dry: bool = False) -> dict:
@@ -357,6 +364,11 @@ class RepositorioSQLite:
 
     def listar_eventos(self, ticket_id: int) -> list[dict]:
         cur = self.conn.execute("select * from ticket_eventos where ticket_id=? order by created_at", (ticket_id,))
+        return [dict(r) for r in cur.fetchall()]
+
+    def listar_correos(self, ticket_id: int, limite: int = 20) -> list[dict]:
+        cur = self.conn.execute("select * from correos where ticket_id=? order by fecha desc, id desc limit ?",
+                                (ticket_id, limite))
         return [dict(r) for r in cur.fetchall()]
 
     def purgar_antiguos(self, dias: int, dry: bool = False) -> dict:
