@@ -12,6 +12,7 @@ Canales: 'wati' (WhatsApp), 'email' (Allianz), 'interno' (Ceci/panel).
 """
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta, timezone
 
 from app import config
@@ -21,6 +22,38 @@ from app.tramites import Ruta, identificar_tramite, instrucciones_cliente
 from . import resumen
 
 _DIAS_RECORDATORIO = 2
+
+# Estados en los que una acción sigue "viva" (aún no despachada/descartada). Sirve para no
+# apilar duplicados: mientras haya una acción viva del mismo tipo, no se crea otra.
+_ACC_VIVA = ("sugerida", "pendiente_ceci", "pendiente_wati", "simulada")
+
+# Señales fuertes de que Allianz confirmó que el trámite quedó resuelto → cerrar el ticket
+# (conservador: solo frases claras de cierre, para no cerrar algo que sigue abierto).
+# `_G` = hueco corto (<=20 chars) que NO contiene "no" → tolera "póliza fue emitida",
+# "trámite quedó concluido", sin cerrar por una negación ("la póliza no fue emitida").
+_G = r"(?:(?!\bno\b).){0,20}?"
+_RESUELTO_RE = re.compile(
+    r"(?:pago|dep[oó]sito)" + _G + r"aplicad|"
+    r"aplicad[oa]\s+correctamente|"
+    r"tr[aá]mite" + _G + r"(?:concluid|finalizad|complet|resuelt)|"
+    r"p[oó]liza" + _G + r"(?:emitid|generad|expedid)|"
+    r"solicitud" + _G + r"(?:aprobad|concluid|complet)|"
+    r"proceso" + _G + r"(?:concluid|finalizad|complet)",
+    re.IGNORECASE)
+
+
+def _ya_hay_accion(repo: Repositorio, ticket_id: int, tipo: str) -> bool:
+    """True si el ticket ya tiene una acción viva de ese tipo (evita apilar duplicados por ciclo)."""
+    try:
+        acc = repo.listar_acciones(ticket_id=ticket_id) or []
+    except Exception:  # noqa: BLE001
+        return False
+    return any(a.get("tipo_accion") == tipo and a.get("estado") in _ACC_VIVA for a in acc)
+
+
+def _allianz_resuelto(texto: str) -> bool:
+    """True si el correo de Allianz confirma que el trámite quedó resuelto/cerrado."""
+    return bool(_RESUELTO_RE.search(texto or ""))
 
 
 def _mas_dias(dias: int) -> str:
@@ -66,6 +99,23 @@ def decidir_y_encolar(repo: Repositorio, ticket_id: int, ticket: dict,
 
     tipo = clf.tipo
     if tipo == TipoCorreo.A_RESPUESTA_TICKET:
+        # Cierre (bug fix): si Allianz confirma que el trámite quedó resuelto, cerramos el ticket
+        # (avisamos que se resolvió) y NO re-exigimos ni seguimos con recordatorios de SLA.
+        if _allianz_resuelto(correo.cuerpo_texto or ""):
+            plan.append({"tipo_accion": "avisar_cliente", "canal": "wati", "rol": "cliente",
+                         "destinatario": cliente_dest, "numero": tel_cliente,
+                         "mensaje": _cierre_cliente(ctx)})
+            plan.append({"tipo_accion": "avisar_asesor", "canal": "wati", "rol": "asesor",
+                         "destinatario": asesor_dest, "numero": tel_asesor,
+                         "mensaje": _cierre_asesor(ctx)})
+            _persistir(repo, ticket_id, plan)
+            try:
+                repo.actualizar_ticket(ticket_id, estado="resuelto")
+                repo.agregar_evento(ticket_id, None, "cierre_auto",
+                                    "Allianz confirmó la resolución → ticket cerrado automáticamente.")
+            except Exception:  # noqa: BLE001
+                pass
+            return plan
         plan.append(_msg("avisar_cliente", "wati", "cliente", cliente_dest, ctx, numero=tel_cliente))
         plan.append(_msg("avisar_asesor", "wati", "asesor", asesor_dest, ctx, numero=tel_asesor))
         # Asertividad (v2): si el orquestador detecta que Allianz respondió FUERA DE TEMA,
@@ -138,6 +188,18 @@ def _msg(tipo_accion: str, canal: str, rol: str, destinatario, ctx: dict, numero
             "numero": numero, "mensaje": resumen.generar(rol, ctx)}
 
 
+def _cierre_cliente(ctx: dict) -> str:
+    nombre = (ctx.get("cliente_nombre") or "").split()[0] if ctx.get("cliente_nombre") else None
+    hola = f"Hola {nombre}! " if nombre else "Hola! "
+    return (f"{hola}Buenas noticias: Allianz confirmó que tu trámite quedó resuelto, así que "
+            f"cerramos el ticket. Cualquier cosa, quedamos a tu disposición. 💛")
+
+
+def _cierre_asesor(ctx: dict) -> str:
+    return (f"Ticket {ctx.get('nro_ticket') or '—'} resuelto: Allianz confirmó la gestión, "
+            f"lo cerramos.")
+
+
 def _plan_tramite(repo: Repositorio, ticket_id: int, ctx: dict, correo: Correo,
                   cliente_dest, asesor_dest) -> list[dict]:
     """Rutea una consulta de trámite según el catálogo de Ceci:
@@ -206,6 +268,9 @@ def escanear_inactividad(repo: Repositorio, dias: int = 3) -> list[dict]:
         except Exception:  # noqa: BLE001
             continue
         if ts < umbral:
+            # Dedup (bug fix): no apilar una reactivación por cada corrida; una viva alcanza.
+            if _ya_hay_accion(repo, t["id"], "reactivacion"):
+                continue
             rol = "cliente" if estado == "esperando_cliente" else (
                 "asesor" if estado == "esperando_asesor" else "seguimiento")
             numero = t.get("telefono_cliente") if rol == "cliente" else (
@@ -240,9 +305,10 @@ def escanear_vencimientos(repo: Repositorio, ahora: datetime | None = None,
         falta = vd - ahora
         if falta > umbral:
             continue  # todavía lejos del vencimiento
-        # Evitar duplicar el recordatorio SLA si ya hay uno sugerido para este ticket.
-        if any(a.get("tipo_accion") == "recordatorio_sla"
-               for a in repo.listar_acciones(ticket_id=t["id"], estado="sugerida")):
+        # Dedup (bug fix): antes solo miraba estado='sugerida', pero la acción pasa a
+        # 'pendiente_wati' tras el despacho → se apilaba uno por ciclo. Ahora dedup por
+        # cualquier recordatorio_sla vivo del ticket.
+        if _ya_hay_accion(repo, t["id"], "recordatorio_sla"):
             continue
         vencido = falta.total_seconds() <= 0
         etiqueta = "VENCIÓ" if vencido else f"vence en ~{int(falta.total_seconds() // 3600)}h"
