@@ -14,8 +14,10 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 
 from app import config
+from app.agentes import guardarrailes
 from app.db import Repositorio
 from app.models import Clasificacion, Correo, TipoCorreo
 from app.tramites import Ruta, identificar_tramite, instrucciones_cliente
@@ -51,9 +53,21 @@ def _ya_hay_accion(repo: Repositorio, ticket_id: int, tipo: str) -> bool:
     return any(a.get("tipo_accion") == tipo and a.get("estado") in _ACC_VIVA for a in acc)
 
 
+# "ATENDIDA OP3D-14798": así cierra Allianz las solicitudes en su sistema de tickets.
+# Se descarta si en los 25 caracteres previos hay una negación ("no ha sido atendida").
+_ATENDIDA_RE = re.compile(r"\batendid[ao]s?\b", re.IGNORECASE)
+_NEGACION_RE = re.compile(r"\b(?:no|aun|aún|todav[ií]a|sin|pendiente)\b", re.IGNORECASE)
+
+
 def _allianz_resuelto(texto: str) -> bool:
     """True si el correo de Allianz confirma que el trámite quedó resuelto/cerrado."""
-    return bool(_RESUELTO_RE.search(texto or ""))
+    texto = texto or ""
+    if _RESUELTO_RE.search(texto):
+        return True
+    for m in _ATENDIDA_RE.finditer(texto):
+        if not _NEGACION_RE.search(texto[max(0, m.start() - 25):m.start()]):
+            return True
+    return False
 
 
 def _mas_dias(dias: int) -> str:
@@ -71,6 +85,11 @@ def decidir_y_encolar(repo: Repositorio, ticket_id: int, ticket: dict,
         "cliente_nombre": ticket.get("cliente_nombre") or notion.get("cliente_nombre"),
         "producto": notion.get("producto"),
         "asunto": correo.asunto,
+        # Lo que Allianz escribió en ESTE correo (sin avisos del sistema ni hilo citado): la IA
+        # solo puede contar hechos que estén acá. Y quién lo escribió (empleado de Allianz,
+        # NUNCA el cliente: era la causa de los "Hola Silvia" en tickets de otra persona).
+        "novedad_allianz": guardarrailes.limpiar_mensaje_allianz(correo.cuerpo_texto),
+        "autor_mensaje_allianz": guardarrailes.autor_del_asunto(correo.asunto),
         # v2: historial del hilo (bitácora) para que el orquestador tenga contexto de qué pasó.
         "historial": _historial_ticket(repo, ticket_id),
     }
@@ -122,7 +141,13 @@ def decidir_y_encolar(repo: Repositorio, ticket_id: int, ticket: dict,
         # el bot re-exige en el hilo (no lo da por bueno). Ese correo saliente pasa igual por
         # el guardarraíl de Fase E (si es crítico → visto bueno de Ceci). Dedup para no apilar.
         orq = _orquestar_allianz(ctx, correo)
-        if orq.get("fuera_de_tema") and orq.get("cuerpo_allianz") and not _ya_pendiente_allianz(repo, ticket_id):
+        if orq.get("descartado"):
+            repo.agregar_evento(ticket_id, None, "borrador_descartado",
+                                f"Correo a Allianz de la IA descartado: {orq['descartado']}")
+        # Solo con cuerpo VALIDADO (los guardarraíles lo anulan si inventa) y si el trámite no
+        # quedó resuelto según la IA. Sin cuerpo válido no se re-exige: mejor nada que inventar.
+        if (orq.get("fuera_de_tema") and orq.get("cuerpo_allianz") and not orq.get("tramite_resuelto")
+                and not _ya_pendiente_allianz(repo, ticket_id)):
             plan.append({"tipo_accion": "enviar_a_allianz", "canal": "email", "rol": "allianz",
                          "destinatario": None,
                          "mensaje": "Re-exigencia: Allianz respondió fuera de tema.",
@@ -141,11 +166,14 @@ def decidir_y_encolar(repo: Repositorio, ticket_id: int, ticket: dict,
                      "mensaje": "Recordatorio: chequear si Allianz respondió la solicitud del cliente."})
     elif tipo == TipoCorreo.D_REENVIO_ASESOR:
         orq = _orquestar_allianz(ctx, correo)   # el cerebro redacta el cuerpo (asertivo) si hay LLM
+        nota = orq.get("nota_asertividad")
+        if orq.get("descartado"):
+            nota = f"Borrador de la IA descartado ({orq['descartado']}); se usa la plantilla."
         plan.append({"tipo_accion": "enviar_a_allianz", "canal": "email", "rol": "allianz",
                      "destinatario": None,
                      "mensaje": "Levantar el ticket ante Allianz (requiere Directorio + autorización).",
                      "cuerpo": orq.get("cuerpo_allianz"),
-                     "nota_asertividad": orq.get("nota_asertividad")})
+                     "nota_asertividad": nota})
         plan.append(_msg("avisar_asesor", "wati", "asesor", asesor_dest, ctx, numero=tel_asesor))
 
     return _persistir(repo, ticket_id, plan)
@@ -181,11 +209,15 @@ def _orquestar_allianz(ctx: dict, correo: Correo) -> dict:
         return {}
 
 
-def _msg(tipo_accion: str, canal: str, rol: str, destinatario, ctx: dict, numero=None) -> dict:
+def _msg(tipo_accion: str, canal: str, rol: str, destinatario, ctx: dict, numero=None) -> Optional[dict]:
     # `numero` = teléfono para WATI (Fase F). Si viene, el despacho rutea al WhatsApp real;
     # si no, cae a `destinatario` (y si es un email → pendiente_wati).
+    # None = no hay nada concreto que decirle (cliente): no se encola ningún mensaje de relleno.
+    texto = resumen.generar(rol, ctx)
+    if not texto:
+        return None
     return {"tipo_accion": tipo_accion, "canal": canal, "rol": rol, "destinatario": destinatario,
-            "numero": numero, "mensaje": resumen.generar(rol, ctx)}
+            "numero": numero, "mensaje": texto}
 
 
 def _cierre_cliente(ctx: dict) -> str:
@@ -239,7 +271,8 @@ def _plan_tramite(repo: Repositorio, ticket_id: int, ctx: dict, correo: Correo,
     return _persistir(repo, ticket_id, plan)
 
 
-def _persistir(repo: Repositorio, ticket_id: int, plan: list[dict]) -> list[dict]:
+def _persistir(repo: Repositorio, ticket_id: int, plan: list[Optional[dict]]) -> list[dict]:
+    plan = [a for a in plan if a]
     for a in plan:
         repo.crear_accion(ticket_id, a["tipo_accion"], a["canal"],
                           {"rol": a.get("rol"), "destinatario": a.get("destinatario"),

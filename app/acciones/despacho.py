@@ -72,7 +72,9 @@ def _asunto_allianz(ticket: dict) -> str:
 
 def _cuerpo_allianz(ticket: dict, pay: dict) -> str:
     lineas = ["Estimados,", ""]
-    detalle = pay.get("mensaje") or "Solicitamos gestionar el trámite referido."
+    # `pay["mensaje"]` es la nota INTERNA de la acción ("Re-exigencia: …", "Levantar el ticket…"):
+    # nunca va en el correo a Allianz. Sin borrador validado, el cuerpo es neutro.
+    detalle = "Solicitamos por favor su apoyo para gestionar el trámite referido y nos confirmen los siguientes pasos."
     lineas.append(detalle)
     lineas.append("")
     datos = []

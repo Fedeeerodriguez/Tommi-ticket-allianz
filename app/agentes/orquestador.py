@@ -19,6 +19,7 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 from app import config
+from app.agentes import guardarrailes
 
 log = logging.getLogger(__name__)
 
@@ -37,15 +38,33 @@ class PlanAllianz(BaseModel):
     nota_asertividad: str = Field(
         description="Nota interna breve (para Babilonia/Ceci) explicando el criterio: qué faltó "
                     "y qué se re-exige. Vacío si todo en orden.")
+    tramite_resuelto: bool = Field(
+        description="True si el último mensaje de Allianz dice que el trámite/solicitud ya fue "
+                    "atendido, resuelto, emitido o concluido. En ese caso NO se re-exige nada.")
 
 
 _SISTEMA = (
     "Sos Tommy, orquestador de Babilonia (correduría de seguros que opera con Allianz). "
     "Redactás la respuesta que Babilonia enviará A ALLIANZ en el hilo de un ticket. "
     "Objetivo: hacer avanzar el trámite del cliente. Tono profesional, cordial y FIRME. "
-    "Sos ASERTIVO: si Allianz respondió fuera de tema, con evasivas o pidiendo algo ya enviado, "
-    "no lo das por bueno: reiterás con precisión lo solicitado y pedís acción concreta y plazo. "
-    "No revelás datos sensibles de más ni inventás información que no esté en el contexto. "
+    "Sos ASERTIVO: si Allianz respondió fuera de tema o con evasivas, no lo das por bueno: "
+    "reiterás con precisión lo solicitado y pedís una acción concreta.\n\n"
+    "REGLAS DURAS (no negociables; ante la duda, escribí MENOS):\n"
+    "1. SOLO hechos ESCRITOS en el último mensaje de Allianz, en el `historial` o en los campos "
+    "del contexto. Prohibido deducir, suponer o completar datos.\n"
+    "2. JAMÁS afirmes que Babilonia o el cliente enviaron, adjuntaron, entregaron, cargaron o "
+    "pagaron algo. No tenés constancia de eso. Si hace falta, PEDÍ que Allianz confirme qué "
+    "recibió (\"solicitamos confirmar si cuentan con…\").\n"
+    "3. NOMBRES: solo los que aparecen textualmente en el mensaje de Allianz o en el contexto, "
+    "y solo del caso de ESTE ticket. Quien firma o \"escribió un mensaje\" en Allianz es un "
+    "empleado de Allianz, no el cliente: no lo menciones en el cuerpo. El asegurado suele figurar "
+    "después del número de póliza (ej. \"GMMI 98577 MARTHA ZARATE URIBE\"); si no está claro, "
+    "no nombres a nadie y referite al ticket.\n"
+    "4. No inventes requisitos, documentos, montos, fechas ni plazos que no estén escritos. "
+    "Podés pedir un plazo, nunca afirmarlo.\n"
+    "5. Si Allianz dice que el trámite fue ATENDIDO, resuelto, emitido o concluido: marcá "
+    "`tramite_resuelto`=true, `fuera_de_tema`=false, y no re-exijas nada.\n"
+    "6. No reveles datos sensibles (médicos, bancarios) más allá de lo que Allianz ya escribió.\n"
     "Escribís SOLO el cuerpo del correo (sin asunto ni firma corporativa larga)."
 )
 _USUARIO = (
@@ -61,7 +80,8 @@ _USUARIO = (
 def _construir_llm():
     from langchain_openai import ChatOpenAI
 
-    llm = ChatOpenAI(model=config.MODELO_L2, temperature=0.3, max_tokens=400,
+    # temperature=0: misma entrada → misma salida; nada de "creatividad" en correos a Allianz.
+    llm = ChatOpenAI(model=config.MODELO_L2, temperature=0, max_tokens=400,
                      api_key=config.OPENAI_API_KEY)
     return llm.with_structured_output(PlanAllianz)
 
@@ -69,7 +89,9 @@ def _construir_llm():
 def redactar_allianz(ctx: dict, mensaje_allianz: str = "") -> Optional[dict]:
     """Redacta el cuerpo del correo a Allianz (asertivo) para el contexto dado.
 
-    Devuelve {"cuerpo_allianz", "fuera_de_tema", "nota_asertividad"} o None (defensivo)."""
+    Devuelve {"cuerpo_allianz", "fuera_de_tema", "nota_asertividad", "tramite_resuelto"} o None.
+    Si el cuerpo rompe una regla dura (guardarraíles), se descarta: `cuerpo_allianz`=None y
+    `descartado` explica el motivo (el despacho cae al cuerpo de plantilla)."""
     if not (config.USAR_LLM_RESUMEN and config.hay_llm()):
         return None
     try:
@@ -85,8 +107,16 @@ def redactar_allianz(ctx: dict, mensaje_allianz: str = "") -> Optional[dict]:
         cuerpo = (salida.cuerpo_allianz or "").strip()
         if not cuerpo:
             return None
-        return {"cuerpo_allianz": cuerpo, "fuera_de_tema": bool(salida.fuera_de_tema),
-                "nota_asertividad": (salida.nota_asertividad or "").strip()}
+        resuelto = bool(salida.tramite_resuelto)
+        plan = {"cuerpo_allianz": cuerpo, "fuera_de_tema": bool(salida.fuera_de_tema) and not resuelto,
+                "nota_asertividad": (salida.nota_asertividad or "").strip(),
+                "tramite_resuelto": resuelto}
+        motivo = guardarrailes.validar_cuerpo_allianz(cuerpo, ctx, mensaje_allianz or "")
+        if motivo:
+            log.warning("orquestador: cuerpo descartado (%s)", motivo)
+            plan["cuerpo_allianz"] = None
+            plan["descartado"] = motivo
+        return plan
     except Exception as ex:  # noqa: BLE001
         log.warning("orquestador (%s) falló, uso cuerpo de plantilla: %s", config.MODELO_L2, ex)
         return None
