@@ -157,6 +157,12 @@ MOTOR_ETAPAS = _bool("MOTOR_ETAPAS", "false")
 # y se escala (correo con copia a la ejecutiva + aviso a Ceci) M h hábiles después.
 RECORDATORIO_HORAS_HABILES = int(os.getenv("RECORDATORIO_HORAS_HABILES", "72"))
 ESCALA_HORAS_HABILES = int(os.getenv("ESCALA_HORAS_HABILES", "24"))
+# Copia del correo de escalación a Allianz (cuando Allianz no responde). ⚠️ por confirmar con Fede.
+ESCALA_CC = _csv("ESCALA_CC", "penny.ortiz@allianz.com.mx")
+# Los recordatorios por WhatsApp solo salen en horario de oficina de CDMX (UTC-6, sin horario de
+# verano desde 2022), de lunes a viernes. Fuera de horario esperan al siguiente escaneo.
+HORARIO_AVISOS = os.getenv("HORARIO_AVISOS", "9-19")
+UTC_OFFSET_MX = int(os.getenv("UTC_OFFSET_MX", "-6"))
 # Buzones automáticos de Allianz (DAF, cobranzas, recordatorio de pago, emisiones). Con el motor
 # por etapa, lo que mandan sin ser de un ticket NO crea ticket (fuera de alcance).
 ALLIANZ_BUZONES_AVISOS = _csv("ALLIANZ_BUZONES_AVISOS",

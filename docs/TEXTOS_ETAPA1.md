@@ -129,3 +129,29 @@ Los parámetros se mapean con `WATI_PARAMS_ETAPAS` (`nombre_en_WATI=dato`). Dato
 
 Default: `ticket=ticket,tramite=tramite,cliente=cliente,telefono=telefono,mensaje=mensaje`. Si la plantilla usa `{{1}}`, `{{2}}`… sería `1=ticket,2=tramite,…`.
 Sin `WATI_PLANTILLA_ETAPAS`, salen por las plantillas de siempre (`WATI_PLANTILLA_ASESOR` / `_CLIENTE` / `_CECI`) con un solo parámetro `mensaje`.
+
+## Recordatorios y escalamiento
+
+Salen solo de lunes a viernes de 9 a 19 h (CDMX), sin feriados, y una sola vez cada uno.
+
+| Cuándo | Para | Texto |
+|---|---|---|
+| Allianz pidió algo y venció el plazo (o 3 días hábiles) | Cliente | Hola Hortencia, te recuerdo que Allianz sigue esperando: la carta laboral firmada. Mándamelo por aquí y yo lo envío. |
+| Allianz pidió algo y venció el plazo (o 3 días hábiles) | Asesor | Ticket 2576612 · Hortencia González Gama: sigue pendiente lo que pidió Allianz → la carta laboral firmada. Ya le recordamos al cliente. |
+| 1 día hábil después, sigue sin llegar | Asesor | Ticket 2576612 · Hortencia González Gama: el cliente todavía no manda lo que pidió Allianz (la carta laboral firmada). Si vence el plazo, Allianz rechaza el ticket. Contacta al cliente. |
+| 1 día hábil después, sigue sin llegar | Ceci | Ticket 2576612 · Hortencia González Gama: el cliente todavía no manda lo que pidió Allianz (la carta laboral firmada). Si vence el plazo, Allianz rechaza el ticket. |
+| Mandamos lo pedido y Allianz no responde en 3 días hábiles | Ceci | Ticket 2576612 · Hortencia González Gama: Allianz no responde desde que mandamos los documentos (26/10). Si sigue sin responder, se escala con copia a la ejecutiva. |
+| 1 día hábil después, Allianz sigue sin responder | Ceci | Ticket 2576612 · Hortencia González Gama: Allianz sigue sin responder. Dejé listo un correo en el hilo con copia a penny.ortiz@allianz.com.mx para que lo apruebes. |
+
+**Correo de escalación a Allianz** (en el hilo del ticket, con copia a la ejecutiva; **queda para que Ceci lo apruebe**, uno por uno):
+
+```
+Buen día,
+
+Damos seguimiento a la solicitud 1950110 de Hortencia González Gama (ticket 2576612). El 26/10 enviamos la documentación solicitada y a la fecha no hemos recibido respuesta.
+
+¿Nos apoyan con el estatus, por favor?
+
+Quedamos atentos.
+Babilonia
+```

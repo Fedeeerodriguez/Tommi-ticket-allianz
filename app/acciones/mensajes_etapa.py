@@ -67,6 +67,57 @@ TEXTOS: dict[str, dict[str, str]] = {
 }
 
 
+# Recordatorios (paso 6). Clave: (motivo, momento) → rol → texto. momento = recordatorio | escalado.
+TEXTOS_RECORDATORIO: dict[tuple[str, str], dict[str, str]] = {
+    ("requerimiento", "recordatorio"): {
+        "cliente": "Hola {nombre}, te recuerdo que Allianz sigue esperando: {que_piden}. "
+                   "Mándamelo por aquí y yo lo envío.",
+        "asesor": "Ticket {tk} · {cliente}: sigue pendiente lo que pidió Allianz → {que_piden}. "
+                  "Ya le recordamos al cliente.",
+    },
+    ("requerimiento", "escalado"): {
+        "asesor": "Ticket {tk} · {cliente}: el cliente todavía no manda lo que pidió Allianz ({que_piden}). "
+                  "Si vence el plazo, Allianz rechaza el ticket. Contacta al cliente.",
+        "ceci": "Ticket {tk} · {cliente}: el cliente todavía no manda lo que pidió Allianz ({que_piden}). "
+                "Si vence el plazo, Allianz rechaza el ticket.",
+    },
+    ("esperando_allianz", "recordatorio"): {
+        "ceci": "Ticket {tk} · {cliente}: Allianz no responde desde que mandamos los documentos ({desde}). "
+                "Si sigue sin responder, se escala con copia a la ejecutiva.",
+    },
+    ("esperando_allianz", "escalado"): {
+        "ceci": "Ticket {tk} · {cliente}: Allianz sigue sin responder. Dejé listo un correo en el hilo con "
+                "copia a {cc} para que lo apruebes.",
+    },
+}
+
+# Correo de escalación a Allianz (en el hilo del ticket, formal: usted).
+CORREO_ESCALACION = (
+    "Buen día,\n\n"
+    "Damos seguimiento a la solicitud {sol} de {cliente} (ticket {tk}). El {desde} enviamos la "
+    "documentación solicitada y a la fecha no hemos recibido respuesta.\n\n"
+    "¿Nos apoyan con el estatus, por favor?\n\n"
+    "Quedamos atentos.\nBabilonia"
+)
+
+
+def texto_recordatorio(rol: str, motivo: str, momento: str, ctx: dict,
+                       avisos_omitidos: Optional[list[str]] = None) -> Optional[str]:
+    t = TEXTOS_RECORDATORIO.get((motivo, momento), {}).get(rol)
+    if rol == "ceci" and not t:
+        t = TEXTOS_RECORDATORIO.get((motivo, momento), {}).get("asesor") or "Ticket {tk} · {cliente}: recordatorio."
+    if not t:
+        return None
+    if rol == "cliente" and not ctx.get("nombre"):
+        t = t.replace("Hola {nombre}, ", "Hola, ")
+    lineas = [_puntuacion(t.format(**ctx))]
+    if rol == "ceci":
+        lineas += [f"⚠️ {a}" for a in (avisos_omitidos or [])]
+        if config.PANEL_URL and ctx.get("ticket_id"):
+            lineas.append(f"Panel: {config.PANEL_URL.rstrip('/')}/tickets/{ctx['ticket_id']}")
+    return "\n".join(lineas)
+
+
 # Nombre de cada etapa como lo lee el equipo (va en el parámetro "tipo de trámite" de WATI).
 ETIQUETAS = {
     "apertura": "Solicitud abierta en Allianz",
@@ -81,6 +132,10 @@ ETIQUETAS = {
     "nota_ejecutiva": "Nota de la ejecutiva",
     "copia_ejecutiva": "La ejecutiva pide respuesta",
     "rebote_ticket_cerrado": "Respuesta no entregada (ticket cerrado)",
+    "recordatorio_requerimiento": "Recordatorio: Allianz espera documentos",
+    "escalado_requerimiento": "Urgente: documentos pendientes",
+    "recordatorio_esperando_allianz": "Allianz sin respuesta",
+    "escalado_esperando_allianz": "Escalado a Allianz",
 }
 
 

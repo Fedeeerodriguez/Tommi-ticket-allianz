@@ -73,6 +73,17 @@ def job_sla(repo, emisor) -> dict:
     return {"encoladas": len(encoladas), "despacho": desp}
 
 
+def job_recordatorios(repo, emisor) -> dict:
+    """Etapa 1: recordatorios y escalamiento del proceso largo (solo con MOTOR_ETAPAS)."""
+    from app.acciones.recordatorios import escanear_recordatorios
+    res = escanear_recordatorios(repo)
+    desp = despachar_pendientes(repo, emisor) if res["plan"] else {"conteo": {}}
+    log.info("recordatorios: %s recordados · %s escalados · %s cortados%s · despacho=%s",
+             len(res["recordados"]), len(res["escalados"]), len(res["cortados"]),
+             " (fuera de horario)" if res["fuera_de_horario"] else "", desp.get("conteo"))
+    return {**res, "despacho": desp}
+
+
 def job_retencion(repo) -> dict:
     """Purga (o cuenta, en DRY_RUN) lo más viejo que RETENCION_DIAS."""
     res = repo.purgar_antiguos(config.RETENCION_DIAS, dry=config.DRY_RUN)
@@ -112,6 +123,8 @@ def construir_scheduler():
     sched.add_job(lambda: job_inactividad(repo, emisor), "cron", hour=8, minute=0, id="inactividad")
     sched.add_job(lambda: job_sla(repo, emisor), "interval", minutes=60, id="sla")
     sched.add_job(lambda: job_retencion(repo), "cron", hour=3, minute=30, id="retencion")
+    if config.MOTOR_ETAPAS:
+        sched.add_job(lambda: job_recordatorios(repo, emisor), "interval", minutes=30, id="recordatorios")
     # Modo copiloto: resumen interno al equipo (solo si RESUMEN_EQUIPO_EMAIL está configurado).
     if config.RESUMEN_EQUIPO_EMAIL:
         sched.add_job(lambda: job_resumen_equipo(repo), "interval",

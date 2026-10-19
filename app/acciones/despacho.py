@@ -95,6 +95,18 @@ def _guardar_si_critico(repo: Repositorio, accion: dict, ticket: dict, pay: dict
     """Fase E: si la acción es crítica y el ticket NO está autorizado, retiene el borrador para
     el visto bueno de Ceci y devuelve 'pendiente_ceci'. Si no es crítica o Ceci ya autorizó,
     devuelve None (sigue el envío normal)."""
+    # Escalación a Allianz (Etapa 1): se aprueba de a UNA acción (no alcanza con el ticket autorizado).
+    if pay.get("requiere_visto_bueno"):
+        res = accion.get("resultado")
+        if isinstance(res, str):
+            try:
+                res = json.loads(res)
+            except Exception:  # noqa: BLE001
+                res = {}
+        if (res or {}).get("aprobado_por"):
+            return None
+        retener_para_ceci(repo, accion, ticket, borrador)
+        return "pendiente_ceci"
     if not es_accion_critica(ticket, pay):
         return None
     if ticket.get("autorizado"):
@@ -209,12 +221,13 @@ def _despachar_una(repo: Repositorio, accion: dict, emisor: Emisor, ahora: datet
         cuerpo = pay.get("cuerpo") or _cuerpo_allianz(ticket, pay)
         # Guardarraíl 2 crítico (Fase E): si es delicado/crítico y Ceci no lo autorizó, se
         # compone el borrador pero NO se manda: espera el visto bueno de Ceci.
+        cc = [c for c in (pay.get("cc") or []) if c] or None
         hold = _guardar_si_critico(repo, accion, ticket, pay,
                                    {"destino": destino, "asunto": asunto, "cuerpo": cuerpo,
-                                    "canal": "email"})
+                                    "canal": "email", "cc": cc})
         if hold:
             return hold
-        res = emisor.enviar([destino], asunto, cuerpo,
+        res = emisor.enviar([destino], asunto, cuerpo, cc=cc,
                             hilo_id=ticket.get("gmail_thread_id"),
                             in_reply_to=ticket.get("ultimo_message_id"))
         if res.get("simulado"):
