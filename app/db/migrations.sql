@@ -98,6 +98,7 @@ alter table tickets_allianz.tickets add column if not exists etapa         text;
 alter table tickets_allianz.tickets add column if not exists etapa_desde   timestamptz;
 alter table tickets_allianz.tickets add column if not exists etapa_ronda   integer default 1;
 alter table tickets_allianz.tickets add column if not exists nro_solicitud text;
+alter table tickets_allianz.tickets add column if not exists identificado_por text;
 
 create table if not exists tickets_allianz.avisos (
   id            bigint generated always as identity primary key,

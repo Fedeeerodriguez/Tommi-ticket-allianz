@@ -18,6 +18,7 @@ alter table tickets_allianz.tickets add column if not exists etapa         text;
 alter table tickets_allianz.tickets add column if not exists etapa_desde   timestamptz;  -- cuándo entró a la etapa
 alter table tickets_allianz.tickets add column if not exists etapa_ronda   integer default 1; -- sube si Allianz pide algo de nuevo después de C4
 alter table tickets_allianz.tickets add column if not exists nro_solicitud text;         -- n° de solicitud de Allianz
+alter table tickets_allianz.tickets add column if not exists identificado_por text;      -- solicitud / poliza / nombre / manual (Ceci)
 
 -- avisos: un aviso por (ticket, etapa, ronda, destinatario). La clave única hace
 -- imposible mandar el mismo aviso dos veces (la causa de los "4+ avisos").
@@ -63,10 +64,10 @@ commit;
 
 -- ───────────── 3) Verificación (tiene que devolver 3 filas con "ok") ─────────────
 select 'tickets: columnas nuevas' as chequeo,
-       case when count(*) = 6 then 'ok' else 'FALTA' end as resultado
+       case when count(*) = 7 then 'ok' else 'FALTA' end as resultado
   from information_schema.columns
  where table_schema = 'tickets_allianz' and table_name = 'tickets'
-   and column_name in ('proceso','producto','etapa','etapa_desde','etapa_ronda','nro_solicitud')
+   and column_name in ('proceso','producto','etapa','etapa_desde','etapa_ronda','nro_solicitud','identificado_por')
 union all
 select 'tabla avisos',        case when to_regclass('tickets_allianz.avisos') is not null then 'ok' else 'FALTA' end
 union all
@@ -78,6 +79,7 @@ select 'tabla recordatorios', case when to_regclass('tickets_allianz.recordatori
 -- drop table if exists tickets_allianz.recordatorios;
 -- alter table tickets_allianz.tickets
 --   drop column if exists proceso, drop column if exists producto, drop column if exists etapa,
---   drop column if exists etapa_desde, drop column if exists etapa_ronda, drop column if exists nro_solicitud;
+--   drop column if exists etapa_desde, drop column if exists etapa_ronda, drop column if exists nro_solicitud,
+--   drop column if exists identificado_por;
 -- commit;
 -- El respaldo tickets_allianz.tickets_respaldo_20261019 se puede borrar cuando todo esté estable.

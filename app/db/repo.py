@@ -23,7 +23,8 @@ _COLS_TICKET = ["nro_ticket", "poliza", "cliente_nombre", "cliente_correo", "ase
                 "telefono_cliente", "telefono_asesor"]
 # Etapa 1 (docs/migracion_etapa1_2026-10-19.sql). Solo se insertan si vienen con valor: así el
 # código no rompe en una base donde todavía no se corrió la migración.
-_COLS_TICKET_ETAPA = ["proceso", "producto", "etapa", "etapa_desde", "etapa_ronda", "nro_solicitud"]
+_COLS_TICKET_ETAPA = ["proceso", "producto", "etapa", "etapa_desde", "etapa_ronda", "nro_solicitud",
+                      "identificado_por"]
 RECORDATORIO_VIVO = ("activo", "escalado")
 
 
@@ -368,7 +369,8 @@ class RepositorioSQLite:
         # Bases de dev creadas antes de la Etapa 1: sumar las columnas que falten.
         tiene = {r["name"] for r in self.conn.execute("pragma table_info(tickets)")}
         for col, tipo in (("proceso", "text"), ("producto", "text"), ("etapa", "text"),
-                          ("etapa_desde", "text"), ("etapa_ronda", "int default 1"), ("nro_solicitud", "text")):
+                          ("etapa_desde", "text"), ("etapa_ronda", "int default 1"), ("nro_solicitud", "text"),
+                          ("identificado_por", "text")):
             if col not in tiene:
                 self.conn.execute(f"alter table tickets add column {col} {tipo}")
         self.conn.commit()
