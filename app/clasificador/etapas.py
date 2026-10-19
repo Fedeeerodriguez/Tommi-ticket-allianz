@@ -286,9 +286,14 @@ def _mensaje(texto: str, titulo_m: Optional[re.Match]) -> str:
 
 
 def _que_piden(mensaje: str) -> str:
-    t = re.split(r"\n\s*(?:sin\s+m[aá]s|atentamente|saludos|quedamos|en\s+caso\s+de\s+cualquier)", mensaje,
-                 maxsplit=1, flags=re.I)[0]
-    t = re.sub(r"^\s*(?:buen[oa]?s?\s+d[ií]as?|hola[^\n]*|estimad[oa][^\n]*)[.:,]?\s*", "", t, flags=re.I)
+    # Se corta en la despedida. OJO: "Quedamos en espera de la información faltante: 1.- …" NO es
+    # despedida, es el pedido (correo real del 2582367).
+    t = re.split(r"\n\s*(?:sin\s+m[aá]s|atentamente|saludos|quedamos\s+(?:atent|a\s+sus|a\s+la\s+orden)|"
+                 r"quedo\s+atent|en\s+caso\s+de\s+cualquier)", mensaje, maxsplit=1, flags=re.I)[0]
+    t = re.sub(r"^\s*(?:buen[oa]?s?\s+d[ií]as?|buenas\s+tardes|hola[^\n]*|estimad[oa][^\n]*)[.:,]?\s*", "", t, flags=re.I)
+    t = re.sub(r"^\s*gracias\s+por[^\n.]*[.!]?\s*", "", t, flags=re.I)  # "Gracias por el envío de …"
+    t = re.sub(r"^\s*(?:quedamos|quedo)\s+(?:en|a\s+la)\s+espera\s+de\s+(?:la\s+)?(?:informaci[oó]n|"
+               r"documentaci[oó]n)?\s*(?:faltante|pendiente|siguiente)?\s*:?\s*", "", t, flags=re.I)
     return _plano(t)[:500]
 
 

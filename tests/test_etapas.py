@@ -212,6 +212,27 @@ def test_c5_largo_es_cobrado():
     assert r.proceso == "largo" and "cobrada" in r.accion.nota
 
 
+def test_que_piden_no_se_corta_en_quedamos_en_espera():
+    # Real (ticket 2582367): el pedido arranca con "Quedamos en espera de la información faltante".
+    r = det(f"{TK} RAUL MARIN escribió un mensaje", correo("RAUL MARIN", "1945278 ANA NUEVO NEGOCIO", """Buen día.
+
+Gracias por el envío de la quimica sanguienea.
+
+Quedamos en espera de la información faltante:
+
+1.- Historia clínica completa y actualizada, por su médico
+tratante, indicando antecedente de cirugías.
+
+Sin más por el momento y para evitar que su solicitud caduque, a
+partir de este momento tiene 09 días hábiles para enviar lo
+solicitado.
+
+Atentamente
+Selección de riesgos."""))
+    assert r.etapa == Etapa.REQUERIMIENTO and r.plazo == (9, "dias_habiles")
+    assert r.que_piden.startswith("1.- Historia clínica completa") and "química" not in r.que_piden
+
+
 def test_no_atendida_no_cierra():
     r = det(f"{TK} RAUL MARIN escribió un mensaje", correo(
         "RAUL MARIN", "1945278 ANA PRUEBA SANCHEZ NUEVO NEGOCIO",

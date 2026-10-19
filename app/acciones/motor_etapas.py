@@ -181,14 +181,14 @@ def _recordatorios(repo: Repositorio, ticket_id: int, e: Etapa, etapa: dict, ron
 
 
 def _encolar(repo: Repositorio, ticket_id: int, rol: str, texto: str, etapa: str, ronda: int,
-             numero: Optional[str], correo_id: Optional[int]) -> Optional[dict]:
+             numero: Optional[str], correo_id: Optional[int], params: dict) -> Optional[dict]:
     """Registra el aviso (único) y lo encola. None si ese aviso ya había salido."""
     aviso_id = repo.registrar_aviso(ticket_id, etapa, rol, ronda=ronda, canal="wati", texto=texto,
                                     correo_id=correo_id)
     if aviso_id is None:
         return None
     payload = {"rol": rol, "destinatario": None, "numero": numero, "mensaje": texto,
-               "etapa": etapa, "ronda": ronda, "aviso_id": aviso_id}
+               "etapa": etapa, "ronda": ronda, "aviso_id": aviso_id, "params": params}
     accion_id = repo.crear_accion(ticket_id, TIPO_ACCION[rol], "wati", payload)
     return {"accion_id": accion_id, "aviso_id": aviso_id, "tipo_accion": TIPO_ACCION[rol], **payload}
 
@@ -262,6 +262,8 @@ def decidir_por_etapa(repo: Repositorio, ticket_id: int, etapa: dict, correo_id:
             ticket = repo.obtener_ticket(ticket_id) or ticket
     ctx = {**mensajes_etapa.contexto(ticket, etapa, ident.datos if ident and ident.ok else None, vence),
            "ticket_id": ticket_id}
+    tel_cliente = (ident.datos.get("telefono_cliente") if ident and ident.ok else None)
+    params = mensajes_etapa.params_wati(ctx, e.value, tel_cliente)
 
     omitidos = res["avisos_omitidos"]
     for rol in roles:
@@ -282,14 +284,14 @@ def decidir_por_etapa(repo: Repositorio, ticket_id: int, etapa: dict, correo_id:
             continue
         t = mensajes_etapa.texto(rol, e.value, ctx)
         if t:
-            a = _encolar(repo, ticket_id, rol, t, e.value, ronda_aviso, str(numero), correo_id)
+            a = _encolar(repo, ticket_id, rol, t, e.value, ronda_aviso, str(numero), correo_id, params)
             if a:
                 res["plan"].append(a)
 
     # Ceci: si la etapa la incluye, o si hubo algo que no se pudo avisar (para que lo asigne a mano).
     if "ceci" in roles or omitidos:
         t = mensajes_etapa.texto("ceci", e.value, ctx, omitidos)
-        a = _encolar(repo, ticket_id, "ceci", t, e.value, ronda_aviso, None, correo_id)
+        a = _encolar(repo, ticket_id, "ceci", t, e.value, ronda_aviso, None, correo_id, params)
         if a:
             res["plan"].append(a)
 

@@ -66,6 +66,13 @@ WATI_PLANTILLA_ASESOR = os.getenv("WATI_PLANTILLA_ASESOR", "avances")     # plan
 WATI_PLANTILLA_CLIENTE = os.getenv("WATI_PLANTILLA_CLIENTE", "")          # solo cuando se le pide algo
 WATI_PLANTILLA_CECI = os.getenv("WATI_PLANTILLA_CECI", "")               # intervención/visto bueno de Ceci
 CECI_WHATSAPP = os.getenv("CECI_WHATSAPP", "")                           # número fijo de Ceci (pendiente)
+# Etapa 1: plantilla "actualización de trámite" para los avisos por etapa (a Ceci, asesor y cliente).
+# Vacía → se usan las plantillas por rol de arriba con el parámetro {mensaje}. Los parámetros se
+# mapean "nombre_en_WATI=dato"; datos disponibles: ticket, tramite, etapa, cliente, telefono,
+# mensaje, poliza, solicitud.
+WATI_PLANTILLA_ETAPAS = os.getenv("WATI_PLANTILLA_ETAPAS", "")
+WATI_PARAMS_ETAPAS = _csv("WATI_PARAMS_ETAPAS", "ticket=ticket,tramite=tramite,cliente=cliente,"
+                                                "telefono=telefono,mensaje=mensaje")
 
 # Base de datos: misma Supabase de Tommy, esquema aislado.
 DATABASE_URL = os.getenv("DATABASE_URL", "")

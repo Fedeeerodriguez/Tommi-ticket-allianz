@@ -103,6 +103,18 @@ def _guardar_si_critico(repo: Repositorio, accion: dict, ticket: dict, pay: dict
     return "pendiente_ceci"
 
 
+def params_plantilla_etapas(pay: dict) -> dict:
+    """Parámetros de la plantilla WATI de etapas según WATI_PARAMS_ETAPAS ('nombre_wati=dato')."""
+    datos = {**(pay.get("params") or {}), "mensaje": pay.get("mensaje", "")}
+    out = {}
+    for par in config.WATI_PARAMS_ETAPAS:
+        nombre, _, dato = par.partition("=")
+        nombre, dato = nombre.strip(), (dato or nombre).strip()
+        if nombre:
+            out[nombre] = datos.get(dato) or "—"
+    return out
+
+
 def _despachar_una(repo: Repositorio, accion: dict, emisor: Emisor, ahora: datetime) -> str:
     canal = (accion.get("canal") or "").lower()
     tipo = accion.get("tipo_accion") or ""
@@ -138,7 +150,12 @@ def _despachar_una(repo: Repositorio, accion: dict, emisor: Emisor, ahora: datet
             return "pendiente_wati"
         from app.wati import wati_desde_config
         wati = wati_desde_config()
-        res = wati.enviar_plantilla(numero, plantilla, {"mensaje": pay.get("mensaje", "")})
+        params = {"mensaje": pay.get("mensaje", "")}
+        # Avisos del motor por etapa → plantilla "actualización de trámite" (si está configurada).
+        if pay.get("etapa") and config.WATI_PLANTILLA_ETAPAS:
+            plantilla = config.WATI_PLANTILLA_ETAPAS
+            params = params_plantilla_etapas(pay)
+        res = wati.enviar_plantilla(numero, plantilla, params)
         if res.get("simulado"):
             repo.actualizar_accion(aid, "simulada", res)
             return "simulada"
