@@ -190,6 +190,28 @@ presente ticket queda cerrado”."""))
     assert r.etapa == Etapa.ATENDIDA and r.accion.cerrar
 
 
+@pytest.mark.parametrize("msg", [
+    "Buen día, la solicitud ha sido autorizada. Saludos.",
+    "Se informa que su solicitud pasa a cobro.",
+    "Le informamos que la solicitud se encuentra en proceso de cobro.",
+])
+def test_c3_autorizado_para_cobro_corta_recordatorio(msg):
+    r = det(f"{TK} RAUL MARIN escribió un mensaje", correo("RAUL MARIN", "1945278 ANA PRUEBA SANCHEZ NUEVO NEGOCIO", msg))
+    assert r.etapa == Etapa.AUTORIZADO and len(r.accion.avisar) == 3
+    assert r.accion.cancela_recordatorio and not r.accion.cerrar and "cobro" in r.accion.nota
+
+
+def test_no_autorizado_no_avanza():
+    r = det(f"{TK} RAUL MARIN escribió un mensaje", correo(
+        "RAUL MARIN", "1945278 ANA NUEVO NEGOCIO", "Aún no autorizado: favor de enviar el cuestionario médico."))
+    assert r.etapa == Etapa.REQUERIMIENTO
+
+
+def test_c5_largo_es_cobrado():
+    r = det(f"{TK} RAUL MARIN escribió un mensaje", correo("RAUL MARIN", "1945278 ANA NUEVO NEGOCIO", "Solicitud atendida."))
+    assert r.proceso == "largo" and "cobrada" in r.accion.nota
+
+
 def test_no_atendida_no_cierra():
     r = det(f"{TK} RAUL MARIN escribió un mensaje", correo(
         "RAUL MARIN", "1945278 ANA PRUEBA SANCHEZ NUEVO NEGOCIO",
@@ -214,6 +236,7 @@ poder ofrecer las coberturas solicitadas.
 Atentamente
 Selección de riesgos."""))
     assert r.etapa == Etapa.DECLINADO and r.accion.delicado and "cliente" not in r.accion.avisar
+    assert "contactá al cliente" in r.accion.nota
 
 
 def test_persona_sin_patron_va_a_revision():

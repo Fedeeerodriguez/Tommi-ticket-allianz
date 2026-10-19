@@ -71,17 +71,23 @@ ACCIONES: dict[tuple[Etapa, str], Accion] = {
     (Etapa.REQUERIMIENTO, "*"): Accion(
         LOS_3, recordatorio=True, responder_allianz=True,
         nota="Avisar QUÉ piden. El documento se manda como correo nuevo en el hilo (no reenviar)."),
-    (Etapa.AUTORIZADO, "*"): Accion(LOS_3, nota="Autorizado: en proceso de cobro."),
+    # Confirmado 19/10: C3 autorizado = Allianz autoriza el cobro; C5 atendida = ya se cobró.
+    (Etapa.AUTORIZADO, "*"): Accion(LOS_3, cancela_recordatorio=True,
+                                    nota="Autorizado para cobro: Allianz autorizó, sigue el cobro."),
     (Etapa.DOCUMENTOS_ENVIADOS, "*"): Accion(
         LOS_3, recordatorio=True, cancela_recordatorio=True,
         nota="Se cumplió el requerimiento; ahora esperamos a Allianz."),
+    (Etapa.ATENDIDA, "largo"): Accion(LOS_3, cancela_recordatorio=True, cerrar=True,
+                                      nota="Atendida y cobrada: fin del trámite."),
     (Etapa.ATENDIDA, "*"): Accion(LOS_3, cancela_recordatorio=True, cerrar=True),
+    # Delicados: al cliente no le sale nada; el asesor lo contacta (confirmado 19/10).
     (Etapa.RECHAZADO, "*"): Accion(
         ("ceci", "asesor"), cancela_recordatorio=True, cerrar=True, delicado=True,
-        nota="Allianz rechazó el ticket: para seguir hay que ingresar una cotización nueva."),
+        nota="Allianz rechazó el ticket (venció el plazo). Asesor: contactá al cliente; "
+             "para seguir hay que cotizar de nuevo."),
     (Etapa.DECLINADO, "*"): Accion(
         ("ceci", "asesor"), cancela_recordatorio=True, cerrar=True, delicado=True,
-        nota="Riesgo declinado: el asesor se lo comunica al cliente."),
+        nota="Selección de riesgos declinó el riesgo. Asesor: contactá al cliente."),
     (Etapa.CERRADO_INACTIVIDAD, "*"): Accion(LOS_3, cancela_recordatorio=True, cerrar=True),
     (Etapa.RECORDATORIO_ALLIANZ, "*"): Accion(nota="Recordatorio automático de Allianz: se ignora."),
     (Etapa.COPIA_EJECUTIVA, "*"): Accion(nota="Copia del mismo mensaje: ya se avisó con el original."),
@@ -138,7 +144,9 @@ _RE_DECLINADO = re.compile(r"\bdeclinad[oa]\b", re.I)
 _RE_ATENDIDA = re.compile(r"\batendid[ao]\b", re.I)
 _RE_CERRADO = re.compile(r"folio\s+cerrado|(?:ticket|folio)\s+queda\s+cerrado", re.I)
 _RE_NEGACION = re.compile(r"\b(?:no|a[uú]n|todav[ií]a|sin|pendiente)\b", re.I)
-_RE_AUTORIZADO = re.compile(r"\bautorizad[oa]\b|\bha\s+sido\s+autoriz|\bse\s+autoriz[oó]\b", re.I)
+_RE_AUTORIZADO = re.compile(
+    r"\bautorizad[oa]\b|\bha\s+sido\s+autoriz|\bse\s+autoriz[oó]\b|"
+    r"(?:pasa|turna\w*|envi\w*)\s+a\s+cobro|en\s+proceso\s+de\s+cobro", re.I)
 _RE_INACTIVIDAD_CIERRE = re.compile(r"cerr\w*\s+(?:\w+\s+){0,3}por\s+(?:inactividad|falta\s+de\s+respuesta)", re.I)
 _RE_RECORDATORIO = re.compile(
     r"recordatorio|por\s+cerrar|pr[oó]xim\w*\s+a\s+cerrar|por\s+inactividad|sin\s+respuesta", re.I)
