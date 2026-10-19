@@ -90,7 +90,52 @@ alter table tickets_allianz.acciones add column if not exists veredicto        t
 alter table tickets_allianz.acciones add column if not exists nota_revision    text;
 alter table tickets_allianz.acciones add column if not exists borrador_editado text;
 
+-- Etapa 1 (proceso largo, 19/10) — etapa del ticket + avisos únicos + recordatorios.
+-- Versión con respaldo y vuelta atrás: docs/migracion_etapa1_2026-10-19.sql
+alter table tickets_allianz.tickets add column if not exists proceso       text;
+alter table tickets_allianz.tickets add column if not exists producto      text;
+alter table tickets_allianz.tickets add column if not exists etapa         text;
+alter table tickets_allianz.tickets add column if not exists etapa_desde   timestamptz;
+alter table tickets_allianz.tickets add column if not exists etapa_ronda   integer default 1;
+alter table tickets_allianz.tickets add column if not exists nro_solicitud text;
+
+create table if not exists tickets_allianz.avisos (
+  id            bigint generated always as identity primary key,
+  ticket_id     bigint not null,
+  etapa         text   not null,
+  ronda         integer not null default 1,
+  destinatario  text   not null,
+  canal         text,
+  texto         text,
+  accion_id     bigint,
+  correo_id     bigint,
+  created_at    timestamptz not null default now(),
+  constraint uq_avisos_unico unique (ticket_id, etapa, ronda, destinatario)
+);
+
+create table if not exists tickets_allianz.recordatorios (
+  id             bigint generated always as identity primary key,
+  ticket_id      bigint not null,
+  motivo         text   not null,
+  destinatarios  text[] not null default '{}',
+  vence_en       timestamptz not null,
+  escala_en      timestamptz,
+  estado         text   not null default 'activo',
+  correo_id      bigint,
+  recordado_en   timestamptz,
+  escalado_en    timestamptz,
+  cerrado_en     timestamptz,
+  nota           text,
+  created_at     timestamptz not null default now()
+);
+
 -- ─────────────────────────── índices ───────────────────────────
+create index if not exists ix_tickets_etapa         on tickets_allianz.tickets (etapa);
+create index if not exists ix_tickets_solicitud     on tickets_allianz.tickets (nro_solicitud);
+create index if not exists ix_avisos_ticket         on tickets_allianz.avisos (ticket_id);
+create index if not exists ix_recordatorios_vence   on tickets_allianz.recordatorios (estado, vence_en);
+create unique index if not exists uq_recordatorio_vivo
+  on tickets_allianz.recordatorios (ticket_id, motivo) where estado in ('activo', 'escalado');
 create index if not exists ix_correos_ticket   on tickets_allianz.correos     (ticket_id);
 create index if not exists ix_eventos_ticket    on tickets_allianz.ticket_eventos (ticket_id);
 create index if not exists ix_acciones_ticket   on tickets_allianz.acciones    (ticket_id);

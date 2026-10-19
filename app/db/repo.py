@@ -11,10 +11,24 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from typing import Any, Optional, Protocol
+from datetime import datetime, timezone
+from typing import Any, Iterable, Optional, Protocol
 
 from app import config
 from app.models import Clasificacion, Correo
+
+_COLS_TICKET = ["nro_ticket", "poliza", "cliente_nombre", "cliente_correo", "asesor_correo",
+                "daf", "estado", "delicado", "autorizado", "abierto_por",
+                "gmail_thread_id", "asunto_hilo", "ultimo_message_id", "vence_en",
+                "telefono_cliente", "telefono_asesor"]
+# Etapa 1 (docs/migracion_etapa1_2026-10-19.sql). Solo se insertan si vienen con valor: así el
+# código no rompe en una base donde todavía no se corrió la migración.
+_COLS_TICKET_ETAPA = ["proceso", "producto", "etapa", "etapa_desde", "etapa_ronda", "nro_solicitud"]
+RECORDATORIO_VIVO = ("activo", "escalado")
+
+
+def _cols_ticket(datos: dict) -> list[str]:
+    return _COLS_TICKET + [c for c in _COLS_TICKET_ETAPA if datos.get(c) is not None]
 
 
 class Repositorio(Protocol):
@@ -38,6 +52,20 @@ class Repositorio(Protocol):
     def listar_eventos(self, ticket_id: int) -> list[dict]: ...
     def listar_correos(self, ticket_id: int, limite: int = 20) -> list[dict]: ...
     def purgar_antiguos(self, dias: int, dry: bool = False) -> dict: ...
+    # --- Etapa 1: etapa del ticket, avisos únicos, recordatorios ---
+    def buscar_ticket_por_solicitud(self, nro_solicitud: str) -> Optional[dict]: ...
+    def registrar_aviso(self, ticket_id: int, etapa: str, destinatario: str, ronda: int = 1,
+                        canal: Optional[str] = None, texto: Optional[str] = None,
+                        accion_id: Optional[int] = None, correo_id: Optional[int] = None) -> Optional[int]: ...
+    def listar_avisos(self, ticket_id: int) -> list[dict]: ...
+    def crear_recordatorio(self, ticket_id: int, motivo: str, destinatarios: Iterable[str],
+                           vence_en: datetime, escala_en: Optional[datetime] = None,
+                           correo_id: Optional[int] = None, nota: Optional[str] = None) -> Optional[int]: ...
+    def listar_recordatorios(self, ticket_id: Optional[int] = None,
+                             estados: Optional[Iterable[str]] = None) -> list[dict]: ...
+    def actualizar_recordatorio(self, recordatorio_id: int, **campos: Any) -> None: ...
+    def cerrar_recordatorios(self, ticket_id: int, estado: str, motivo: Optional[str] = None,
+                             nota: Optional[str] = None) -> int: ...
 
 
 # ------------------------------------------------------------------ Postgres
@@ -103,10 +131,7 @@ class RepositorioPostgres:
         return None
 
     def crear_ticket(self, datos: dict) -> int:
-        cols = ["nro_ticket", "poliza", "cliente_nombre", "cliente_correo", "asesor_correo",
-                "daf", "estado", "delicado", "autorizado", "abierto_por",
-                "gmail_thread_id", "asunto_hilo", "ultimo_message_id", "vence_en",
-                "telefono_cliente", "telefono_asesor"]
+        cols = _cols_ticket(datos)
         vals = [datos.get(c) for c in cols]
         ph = ",".join(["%s"] * len(cols))
         with self.conn.cursor() as cur:
@@ -212,6 +237,75 @@ class RepositorioPostgres:
             cur.execute(f"delete from {self._t('correos')} where created_at < {corte}", (dias,))
         return resumen
 
+    # --- Etapa 1 ---
+    def buscar_ticket_por_solicitud(self, nro_solicitud):
+        if not nro_solicitud:
+            return None
+        with self.conn.cursor() as cur:
+            cur.execute(f"select * from {self._t('tickets')} where nro_solicitud=%s "
+                        f"order by created_at desc limit 1", (nro_solicitud,))
+            return self._row(cur)
+
+    def registrar_aviso(self, ticket_id, etapa, destinatario, ronda=1, canal=None, texto=None,
+                        accion_id=None, correo_id=None):
+        """Devuelve el id, o None si ese aviso ya se había registrado (no se repite)."""
+        with self.conn.cursor() as cur:
+            cur.execute(
+                f"insert into {self._t('avisos')} "
+                f"(ticket_id, etapa, ronda, destinatario, canal, texto, accion_id, correo_id) "
+                f"values (%s,%s,%s,%s,%s,%s,%s,%s) "
+                f"on conflict (ticket_id, etapa, ronda, destinatario) do nothing returning id",
+                (ticket_id, etapa, ronda, destinatario, canal, texto, accion_id, correo_id))
+            fila = cur.fetchone()
+            return int(fila[0]) if fila else None
+
+    def listar_avisos(self, ticket_id):
+        with self.conn.cursor() as cur:
+            cur.execute(f"select * from {self._t('avisos')} where ticket_id=%s order by created_at, id", (ticket_id,))
+            return self._rows(cur)
+
+    def crear_recordatorio(self, ticket_id, motivo, destinatarios, vence_en, escala_en=None,
+                           correo_id=None, nota=None):
+        """Devuelve el id, o None si ya hay uno vivo (activo/escalado) para ese ticket y motivo."""
+        with self.conn.cursor() as cur:
+            cur.execute(
+                f"insert into {self._t('recordatorios')} "
+                f"(ticket_id, motivo, destinatarios, vence_en, escala_en, correo_id, nota) "
+                f"values (%s,%s,%s,%s,%s,%s,%s) "
+                f"on conflict (ticket_id, motivo) where estado in ('activo', 'escalado') do nothing returning id",
+                (ticket_id, motivo, list(destinatarios), vence_en, escala_en, correo_id, nota))
+            fila = cur.fetchone()
+            return int(fila[0]) if fila else None
+
+    def listar_recordatorios(self, ticket_id=None, estados=None):
+        cond, args = [], []
+        if ticket_id is not None:
+            cond.append("ticket_id=%s"); args.append(ticket_id)
+        if estados:
+            cond.append("estado = any(%s)"); args.append(list(estados))
+        where = (" where " + " and ".join(cond)) if cond else ""
+        with self.conn.cursor() as cur:
+            cur.execute(f"select * from {self._t('recordatorios')}{where} order by vence_en, id", args)
+            return self._rows(cur)
+
+    def actualizar_recordatorio(self, recordatorio_id, **campos):
+        if not campos:
+            return
+        sets = ", ".join(f"{k}=%s" for k in campos)
+        with self.conn.cursor() as cur:
+            cur.execute(f"update {self._t('recordatorios')} set {sets} where id=%s",
+                        [*campos.values(), recordatorio_id])
+
+    def cerrar_recordatorios(self, ticket_id, estado, motivo=None, nota=None):
+        """Corta los recordatorios vivos del ticket (todos, o solo los de `motivo`)."""
+        cond, args = "", [estado, nota, ticket_id, list(RECORDATORIO_VIVO)]
+        if motivo:
+            cond = " and motivo=%s"; args.append(motivo)
+        with self.conn.cursor() as cur:
+            cur.execute(f"update {self._t('recordatorios')} set estado=%s, nota=coalesce(%s, nota), "
+                        f"cerrado_en=now() where ticket_id=%s and estado = any(%s){cond}", args)
+            return cur.rowcount
+
     @staticmethod
     def _row(cur) -> Optional[dict]:
         fila = cur.fetchone()
@@ -257,9 +351,40 @@ class RepositorioSQLite:
               estado text default 'sugerida', payload text, resultado text, programada_para text,
               veredicto text default 'pendiente', nota_revision text, borrador_editado text,
               created_at text default (datetime('now')));
+            create table if not exists avisos(
+              id integer primary key autoincrement, ticket_id int not null, etapa text not null,
+              ronda int not null default 1, destinatario text not null, canal text, texto text,
+              accion_id int, correo_id int, created_at text default (datetime('now')),
+              unique (ticket_id, etapa, ronda, destinatario));
+            create table if not exists recordatorios(
+              id integer primary key autoincrement, ticket_id int not null, motivo text not null,
+              destinatarios text not null default '[]', vence_en text not null, escala_en text,
+              estado text not null default 'activo', correo_id int, recordado_en text,
+              escalado_en text, cerrado_en text, nota text, created_at text default (datetime('now')));
+            create unique index if not exists uq_recordatorio_vivo
+              on recordatorios (ticket_id, motivo) where estado in ('activo', 'escalado');
             """
         )
+        # Bases de dev creadas antes de la Etapa 1: sumar las columnas que falten.
+        tiene = {r["name"] for r in self.conn.execute("pragma table_info(tickets)")}
+        for col, tipo in (("proceso", "text"), ("producto", "text"), ("etapa", "text"),
+                          ("etapa_desde", "text"), ("etapa_ronda", "int default 1"), ("nro_solicitud", "text")):
+            if col not in tiene:
+                self.conn.execute(f"alter table tickets add column {col} {tipo}")
         self.conn.commit()
+
+    @staticmethod
+    def _ts(v):
+        """datetime → texto ISO en UTC (comparable como string en SQLite)."""
+        if isinstance(v, datetime):
+            v = (v if v.tzinfo else v.replace(tzinfo=timezone.utc)).astimezone(timezone.utc).isoformat()
+        return v
+
+    @staticmethod
+    def _recordatorio(r) -> dict:
+        d = dict(r)
+        d["destinatarios"] = json.loads(d.get("destinatarios") or "[]")
+        return d
 
     def guardar_correo(self, correo: Correo, clf: Clasificacion, entidades: dict) -> tuple[int, bool]:
         cur = self.conn.cursor()
@@ -291,11 +416,8 @@ class RepositorioSQLite:
         return None
 
     def crear_ticket(self, datos: dict) -> int:
-        cols = ["nro_ticket", "poliza", "cliente_nombre", "cliente_correo", "asesor_correo",
-                "daf", "estado", "delicado", "autorizado", "abierto_por",
-                "gmail_thread_id", "asunto_hilo", "ultimo_message_id", "vence_en",
-                "telefono_cliente", "telefono_asesor"]
-        vals = [datos.get(c) for c in cols]
+        cols = _cols_ticket(datos)
+        vals = [self._ts(datos.get(c)) for c in cols]
         cur = self.conn.cursor()
         cur.execute(f"insert into tickets({','.join(cols)}) values({','.join('?'*len(cols))})", vals)
         self.conn.commit()
@@ -305,7 +427,8 @@ class RepositorioSQLite:
         if not campos:
             return
         sets = ", ".join(f"{k}=?" for k in campos) + ", ultima_actividad=datetime('now')"
-        self.conn.execute(f"update tickets set {sets} where id=?", [*campos.values(), ticket_id])
+        self.conn.execute(f"update tickets set {sets} where id=?",
+                          [*(self._ts(v) for v in campos.values()), ticket_id])
         self.conn.commit()
 
     def vincular_correo(self, correo_id: int, ticket_id: int) -> None:
@@ -391,6 +514,67 @@ class RepositorioSQLite:
         cur.execute("delete from correos where created_at < datetime('now', ?)", (corte,))
         self.conn.commit()
         return resumen
+
+    # --- Etapa 1 ---
+    def buscar_ticket_por_solicitud(self, nro_solicitud):
+        if not nro_solicitud:
+            return None
+        r = self.conn.execute("select * from tickets where nro_solicitud=? order by created_at desc, id desc limit 1",
+                              (nro_solicitud,)).fetchone()
+        return dict(r) if r else None
+
+    def registrar_aviso(self, ticket_id, etapa, destinatario, ronda=1, canal=None, texto=None,
+                        accion_id=None, correo_id=None):
+        cur = self.conn.execute(
+            "insert or ignore into avisos(ticket_id,etapa,ronda,destinatario,canal,texto,accion_id,correo_id) "
+            "values(?,?,?,?,?,?,?,?)", (ticket_id, etapa, ronda, destinatario, canal, texto, accion_id, correo_id))
+        self.conn.commit()
+        return int(cur.lastrowid) if cur.rowcount else None
+
+    def listar_avisos(self, ticket_id):
+        cur = self.conn.execute("select * from avisos where ticket_id=? order by created_at, id", (ticket_id,))
+        return [dict(r) for r in cur.fetchall()]
+
+    def crear_recordatorio(self, ticket_id, motivo, destinatarios, vence_en, escala_en=None,
+                           correo_id=None, nota=None):
+        cur = self.conn.execute(
+            "insert or ignore into recordatorios(ticket_id,motivo,destinatarios,vence_en,escala_en,correo_id,nota) "
+            "values(?,?,?,?,?,?,?)",
+            (ticket_id, motivo, json.dumps(list(destinatarios)), self._ts(vence_en), self._ts(escala_en),
+             correo_id, nota))
+        self.conn.commit()
+        return int(cur.lastrowid) if cur.rowcount else None
+
+    def listar_recordatorios(self, ticket_id=None, estados=None):
+        cond, args = [], []
+        if ticket_id is not None:
+            cond.append("ticket_id=?"); args.append(ticket_id)
+        if estados:
+            estados = list(estados)
+            cond.append(f"estado in ({','.join('?' * len(estados))})"); args.extend(estados)
+        where = (" where " + " and ".join(cond)) if cond else ""
+        cur = self.conn.execute(f"select * from recordatorios{where} order by vence_en, id", args)
+        return [self._recordatorio(r) for r in cur.fetchall()]
+
+    def actualizar_recordatorio(self, recordatorio_id, **campos):
+        if not campos:
+            return
+        if "destinatarios" in campos:
+            campos["destinatarios"] = json.dumps(list(campos["destinatarios"]))
+        sets = ", ".join(f"{k}=?" for k in campos)
+        self.conn.execute(f"update recordatorios set {sets} where id=?",
+                          [*(self._ts(v) for v in campos.values()), recordatorio_id])
+        self.conn.commit()
+
+    def cerrar_recordatorios(self, ticket_id, estado, motivo=None, nota=None):
+        cond, args = "", [estado, nota, self._ts(datetime.now(timezone.utc)), ticket_id, *RECORDATORIO_VIVO]
+        if motivo:
+            cond = " and motivo=?"; args.append(motivo)
+        cur = self.conn.execute(
+            f"update recordatorios set estado=?, nota=coalesce(?, nota), cerrado_en=? "
+            f"where ticket_id=? and estado in (?, ?){cond}", args)
+        self.conn.commit()
+        return cur.rowcount
 
 
 def get_repo() -> Repositorio:

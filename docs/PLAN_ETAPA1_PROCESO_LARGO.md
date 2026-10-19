@@ -1,6 +1,6 @@
 # Plan Etapa 1 — Proceso largo (Auto · Vida · GMM · OP3D · HOFP)
 
-Estado: **aprobado 19/10, en desarrollo**. ✅ Paso 1. Base: reglas de `app/clasificador/etapas.py` (rama `feat/etapas-allianz`), validadas contra 79 correos reales.
+Estado: **aprobado 19/10, en desarrollo**. ✅ Pasos 1–2 (SQL del paso 2 listo para correr: `docs/migracion_etapa1_2026-10-19.sql`). Base: reglas de `app/clasificador/etapas.py` (rama `feat/etapas-allianz`), validadas contra 79 correos reales.
 
 ## Qué hay que lograr
 Cada correo del proceso largo:
