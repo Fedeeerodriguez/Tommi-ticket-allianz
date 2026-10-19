@@ -14,6 +14,7 @@ import re
 
 from app import config
 from app.clasificador.allianz import SubtipoAllianz, clasificar_allianz, es_correo_allianz
+from app.clasificador.etapas import detectar_etapa
 from app.models import Clasificacion, Correo, TipoCorreo
 
 # Mapeo subtipo Allianz → taxonomía coarse (TipoCorreo) para el pipeline/engine existente.
@@ -83,6 +84,9 @@ def clasificar_l1(correo: Correo) -> Clasificacion:
                 "nro_solicitud": info.nro_solicitud, "actor": info.actor,
                 "actor_tipo": info.actor_tipo, "plazos": info.plazos, "critico": info.critico,
             }.items() if v not in (None, [], "")}
+            # Etapa del proceso (docs/REGLAS_ETAPAS.md). Por ahora solo informativa: la matriz de
+            # avisos (Fase 2 del plan) es la que va a decidir qué se manda con esto.
+            ent["etapa"] = detectar_etapa(asunto, cuerpo, correo.remitente).como_dict()
             clf = Clasificacion(
                 _SUBTIPO_A_TIPO[info.subtipo], 0.92,
                 f"Allianz {info.subtipo.value}" + (f" (actor {info.actor_tipo})" if info.actor_tipo else ""),

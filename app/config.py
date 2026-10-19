@@ -52,6 +52,9 @@ ALLIANZ_DEST = os.getenv("ALLIANZ_DEST", "")
 
 # Dominios/correos de Allianz para las reglas L1 (ajustar con los reales).
 ALLIANZ_DOMINIOS = _csv("ALLIANZ_DOMINIOS", "allianz.com,allianz.com.mx")
+# Ejecutivas comerciales de Allianz que trabajan de NUESTRO lado (reenvían tickets, suben documentos).
+# Tal como aparecen en el asunto "<NOMBRE> escribió un mensaje" (se compara sin mayúsculas).
+EJECUTIVAS_ALLIANZ = _csv("EJECUTIVAS_ALLIANZ", "PENNY YAMILI ORTIZ,BLANCA ISABEL XULUC")
 # Directorio Allianz por tipo de trámite (JSON: {"cambio_conducto_cobro": "cliente.optimax@..."}).
 # Pendiente la página de Allianz "trámite-por-trámite". Si un trámite no está acá, cae a ALLIANZ_DEST.
 ALLIANZ_DIRECTORIO = os.getenv("ALLIANZ_DIRECTORIO", "")
