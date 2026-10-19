@@ -83,11 +83,11 @@ ACCIONES: dict[tuple[Etapa, str], Accion] = {
     # Delicados: al cliente no le sale nada; el asesor lo contacta (confirmado 19/10).
     (Etapa.RECHAZADO, "*"): Accion(
         ("ceci", "asesor"), cancela_recordatorio=True, cerrar=True, delicado=True,
-        nota="Allianz rechazó el ticket (venció el plazo). Asesor: contactá al cliente; "
+        nota="Allianz rechazó el ticket (venció el plazo). Asesor: contacta al cliente; "
              "para seguir hay que cotizar de nuevo."),
     (Etapa.DECLINADO, "*"): Accion(
         ("ceci", "asesor"), cancela_recordatorio=True, cerrar=True, delicado=True,
-        nota="Selección de riesgos declinó el riesgo. Asesor: contactá al cliente."),
+        nota="Selección de riesgos declinó el riesgo. Asesor: contacta al cliente."),
     (Etapa.CERRADO_INACTIVIDAD, "*"): Accion(LOS_3, cancela_recordatorio=True, cerrar=True),
     (Etapa.RECORDATORIO_ALLIANZ, "*"): Accion(nota="Recordatorio automático de Allianz: se ignora."),
     (Etapa.COPIA_EJECUTIVA, "*"): Accion(nota="Copia del mismo mensaje: ya se avisó con el original."),

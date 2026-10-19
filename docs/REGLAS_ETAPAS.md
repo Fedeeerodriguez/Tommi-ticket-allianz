@@ -54,8 +54,8 @@ Sin IA: son reglas fijas. Si ninguna aplica, el correo va a **REVISAR** (panel) 
 | Autorizado (C3: Allianz autoriza el cobro) | los 3 | corta | no | — |
 | Documentos enviados | los 3 | corta el del requerimiento y arranca "esperando a Allianz" | no | — |
 | Atendida / folio cerrado (C5: ya se cobró) | los 3 | corta | no | **sí** |
-| Rechazado (venció el plazo) | Ceci y asesor: "contactá al cliente" (hay que cotizar de nuevo) | corta | no | **sí** |
-| Declinado | Ceci y asesor: "contactá al cliente" | corta | no | **sí** |
+| Rechazado (venció el plazo) | Ceci y asesor: "contacta al cliente" (hay que cotizar de nuevo) | corta | no | **sí** |
+| Declinado | Ceci y asesor: "contacta al cliente" | corta | no | **sí** |
 | Cerrado por inactividad | los 3 | corta | no | **sí** |
 | Recordatorio de Allianz | nadie | — | — | — |
 | Copia de ejecutiva | nadie (ya se avisó con el original). Si pide "brindar respuesta" → alerta a Ceci | — | — | — |

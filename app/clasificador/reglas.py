@@ -64,6 +64,17 @@ def _nos_copiaron(correo: Correo) -> bool:
 
 
 def clasificar_l1(correo: Correo) -> Clasificacion:
+    clf = _clasificar_l1(correo)
+    # Etapa del proceso (docs/REGLAS_ETAPAS.md) para TODO correo de Allianz, sea ticket o no: los
+    # avisos de emisión llegan como "sistema" y el motor por etapa (MOTOR_ETAPAS) igual los usa.
+    if es_correo_allianz(correo.remitente) and "etapa" not in (clf.entidades or {}):
+        etapa = detectar_etapa(correo.asunto or "", correo.cuerpo_texto or "", correo.remitente)
+        if etapa.etapa.value != "no_aplica":
+            clf.entidades = {**(clf.entidades or {}), "etapa": etapa.como_dict()}
+    return clf
+
+
+def _clasificar_l1(correo: Correo) -> Clasificacion:
     asunto = correo.asunto or ""
     cuerpo = correo.cuerpo_texto or ""
     texto = f"{asunto}\n{cuerpo}"
@@ -84,8 +95,7 @@ def clasificar_l1(correo: Correo) -> Clasificacion:
                 "nro_solicitud": info.nro_solicitud, "actor": info.actor,
                 "actor_tipo": info.actor_tipo, "plazos": info.plazos, "critico": info.critico,
             }.items() if v not in (None, [], "")}
-            # Etapa del proceso (docs/REGLAS_ETAPAS.md). Por ahora solo informativa: la matriz de
-            # avisos (Fase 2 del plan) es la que va a decidir qué se manda con esto.
+            # Etapa del proceso (docs/REGLAS_ETAPAS.md): con MOTOR_ETAPAS=1 decide los avisos.
             ent["etapa"] = detectar_etapa(asunto, cuerpo, correo.remitente).como_dict()
             clf = Clasificacion(
                 _SUBTIPO_A_TIPO[info.subtipo], 0.92,

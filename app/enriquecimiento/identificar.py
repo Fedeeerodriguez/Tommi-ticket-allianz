@@ -27,7 +27,8 @@ log = logging.getLogger(__name__)
 Buscador = Callable[[str, str, object, int], tuple[list[dict], bool]]
 
 CAMPOS_TICKET = ("cliente_nombre", "cliente_correo", "telefono_cliente", "asesor_correo", "telefono_asesor")
-_CAMPOS_DATOS = CAMPOS_TICKET + ("asesor_nombre", "daf_nombre", "poliza", "nro_solicitud", "emision_id")
+_CAMPOS_RUTEO = ("telefono_cliente", "telefono_asesor", "asesor_correo")
+_CAMPOS_DATOS = CAMPOS_TICKET +("asesor_nombre", "daf_nombre", "poliza", "nro_solicitud", "emision_id")
 
 
 @dataclass
@@ -43,8 +44,12 @@ class Identificacion:
         return self.estado == "identificado"
 
     def campos_ticket(self) -> dict:
-        """Lo que se guarda en el ticket (solo valores con dato)."""
-        return {k: self.datos[k] for k in CAMPOS_TICKET if self.datos.get(k) not in (None, "")}
+        """Lo que se guarda en el ticket. Los datos de ruteo (a quién se le escribe) se pisan
+        SIEMPRE con lo identificado, aunque falten: no puede sobrevivir un teléfono del
+        enriquecimiento viejo. El nombre/correo del cliente, solo si vienen con dato."""
+        campos = {k: _texto_plano(self.datos.get(k)) for k in _CAMPOS_RUTEO}
+        campos.update({k: self.datos[k] for k in ("cliente_nombre", "cliente_correo") if self.datos.get(k)})
+        return campos
 
 
 # ----------------------------------------------------------------- comparación
@@ -70,8 +75,17 @@ def nombres_compatibles(a: Optional[str], b: Optional[str]) -> bool:
     return len(chico) >= 2 and chico <= grande
 
 
+def _texto_plano(v) -> Optional[str]:
+    """Notion puede devolver el teléfono como número (5512345678.0 en un rollup)."""
+    if v in (None, ""):
+        return None
+    if isinstance(v, float) and v.is_integer():
+        v = int(v)
+    return str(v).strip() or None
+
+
 def _digitos(v) -> str:
-    return re.sub(r"\D", "", str(v or ""))[-10:]
+    return re.sub(r"\D", "", _texto_plano(v) or "")[-10:]
 
 
 def _asesor(d: dict) -> str:

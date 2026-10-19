@@ -236,7 +236,7 @@ poder ofrecer las coberturas solicitadas.
 Atentamente
 Selección de riesgos."""))
     assert r.etapa == Etapa.DECLINADO and r.accion.delicado and "cliente" not in r.accion.avisar
-    assert "contactá al cliente" in r.accion.nota
+    assert "contacta al cliente" in r.accion.nota
 
 
 def test_persona_sin_patron_va_a_revision():

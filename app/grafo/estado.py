@@ -31,6 +31,10 @@ class EstadoCorreo(TypedDict, total=False):
     ticket_id: Optional[int]
     ticket: dict[str, Any]          # ticket_repr (datos resueltos)
 
+    # Motor por etapa (Etapa 1): ticket al que pertenece un aviso de emisión + lo que decidió.
+    emision_ticket_id: Optional[int]
+    etapa_resultado: dict[str, Any]
+
     # Salidas
     registro_notion: dict[str, Any]
     acciones: list[dict[str, Any]]

@@ -143,6 +143,20 @@ RETENCION_DIAS = int(os.getenv("RETENCION_DIAS", "180"))
 SLA_DEFAULT_HORAS = int(os.getenv("SLA_DEFAULT_HORAS", "72"))
 SLA_AVISO_HORAS = int(os.getenv("SLA_AVISO_HORAS", "24"))
 
+# Etapa 1 — motor por etapa del proceso largo (docs/PLAN_ETAPA1_PROCESO_LARGO.md). Apagado por
+# default: con MOTOR_ETAPAS=1 el proceso largo deja de usar el motor viejo por tipo de correo.
+MOTOR_ETAPAS = _bool("MOTOR_ETAPAS", "false")
+# Recordatorio: se vence a las N h hábiles (o antes, si el correo de Allianz da un plazo menor)
+# y se escala (correo con copia a la ejecutiva + aviso a Ceci) M h hábiles después.
+RECORDATORIO_HORAS_HABILES = int(os.getenv("RECORDATORIO_HORAS_HABILES", "72"))
+ESCALA_HORAS_HABILES = int(os.getenv("ESCALA_HORAS_HABILES", "24"))
+# Buzones automáticos de Allianz (DAF, cobranzas, recordatorio de pago, emisiones). Con el motor
+# por etapa, lo que mandan sin ser de un ticket NO crea ticket (fuera de alcance).
+ALLIANZ_BUZONES_AVISOS = _csv("ALLIANZ_BUZONES_AVISOS",
+                              "aviso.electronico,notificaciones.optimaxx,comunicados.agentes")
+# Link al panel de tickets que va en los avisos a Ceci (opcional).
+PANEL_URL = os.getenv("PANEL_URL", "")
+
 # Intervalo de polling IMAP (segundos).
 POLL_SEGUNDOS = int(os.getenv("POLL_SEGUNDOS", "90"))
 
