@@ -174,6 +174,22 @@ ALLIANZ_BUZONES_AVISOS = _csv("ALLIANZ_BUZONES_AVISOS",
 # Link al panel de tickets que va en los avisos a Ceci (opcional).
 PANEL_URL = os.getenv("PANEL_URL", "")
 
+# Etapa 2 — proceso corto y trámites (docs/PLAN_ETAPA2_CORTO_TRAMITES.md). Qué procesos maneja el
+# motor por etapa: "largo" (Etapa 1) → sumar "corto" y "tramite". Los que no están siguen con el
+# motor viejo.
+MOTOR_ETAPAS_PROCESOS = _csv("MOTOR_ETAPAS_PROCESOS", "largo")
+# Recordatorio de pago del proceso corto (desde que Ceci aprueba la guía de aportación).
+RECORDATORIO_PAGO_HORAS_HABILES = int(os.getenv("RECORDATORIO_PAGO_HORAS_HABILES",
+                                                str(RECORDATORIO_HORAS_HABILES)))
+# Aprobación de la guía de aportación por Telegram. Sin token/chat (o apagado) se aprueba desde el
+# panel. Es un canal interno (solo Ceci): no depende de DRY_RUN; lo que sale al cliente sí.
+TELEGRAM_APROBACIONES = _bool("TELEGRAM_APROBACIONES", "false")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CECI_CHAT_ID = os.getenv("TELEGRAM_CECI_CHAT_ID", "")
+# Texto de la guía de aportación (speech de Ceci). Vacío → texto provisorio de mensajes_etapa.py.
+# Variables: {nombre} {cliente} {producto} {poliza} {sol} {tk}. "\n" = salto de línea.
+GUIA_APORTACION_TEXTO = os.getenv("GUIA_APORTACION_TEXTO", "").replace("\\n", "\n")
+
 # Intervalo de polling IMAP (segundos).
 POLL_SEGUNDOS = int(os.getenv("POLL_SEGUNDOS", "90"))
 
@@ -205,6 +221,11 @@ def hay_notion() -> bool:
 
 def hay_wati() -> bool:
     return bool(WATI_API_URL and WATI_API_TOKEN)
+
+
+def hay_telegram() -> bool:
+    """Aprobaciones por Telegram encendidas y configuradas."""
+    return bool(TELEGRAM_APROBACIONES and TELEGRAM_BOT_TOKEN and TELEGRAM_CECI_CHAT_ID)
 
 
 def directorio_allianz(clave: str) -> str:

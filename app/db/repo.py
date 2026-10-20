@@ -24,7 +24,9 @@ _COLS_TICKET = ["nro_ticket", "poliza", "cliente_nombre", "cliente_correo", "ase
 # Etapa 1 (docs/migracion_etapa1_2026-10-19.sql). Solo se insertan si vienen con valor: así el
 # código no rompe en una base donde todavía no se corrió la migración.
 _COLS_TICKET_ETAPA = ["proceso", "producto", "etapa", "etapa_desde", "etapa_ronda", "nro_solicitud",
-                      "identificado_por"]
+                      "identificado_por",
+                      # Etapa 2 (docs/migracion_etapa2_2026-10-20.sql): asunto del trámite ("[EXT] …").
+                      "titulo_hilo"]
 RECORDATORIO_VIVO = ("activo", "escalado")
 
 
@@ -67,6 +69,17 @@ class Repositorio(Protocol):
     def actualizar_recordatorio(self, recordatorio_id: int, **campos: Any) -> None: ...
     def cerrar_recordatorios(self, ticket_id: int, estado: str, motivo: Optional[str] = None,
                              nota: Optional[str] = None) -> int: ...
+    # --- Etapa 2: aprobaciones de Ceci (guía de aportación) + valores del worker ---
+    def crear_aprobacion(self, ticket_id: int, tipo: str, texto: str, ronda: int = 1,
+                         correo_id: Optional[int] = None) -> Optional[int]: ...
+    def obtener_aprobacion(self, aprobacion_id: int) -> Optional[dict]: ...
+    def listar_aprobaciones(self, ticket_id: Optional[int] = None,
+                            estados: Optional[Iterable[str]] = None) -> list[dict]: ...
+    def actualizar_aprobacion(self, aprobacion_id: int, **campos: Any) -> None: ...
+    def resolver_aprobacion(self, aprobacion_id: int, estado: str, por: str,
+                            texto: Optional[str] = None) -> bool: ...
+    def leer_valor(self, clave: str) -> Optional[str]: ...
+    def guardar_valor(self, clave: str, valor: str) -> None: ...
 
 
 # ------------------------------------------------------------------ Postgres
@@ -307,6 +320,63 @@ class RepositorioPostgres:
                         f"cerrado_en=now() where ticket_id=%s and estado = any(%s){cond}", args)
             return cur.rowcount
 
+    # --- Etapa 2 ---
+    def crear_aprobacion(self, ticket_id, tipo, texto, ronda=1, correo_id=None):
+        """Devuelve el id, o None si ya existe la de ese (ticket, tipo, ronda): no se pide dos veces."""
+        with self.conn.cursor() as cur:
+            cur.execute(
+                f"insert into {self._t('aprobaciones')} (ticket_id, tipo, ronda, texto, correo_id) "
+                f"values (%s,%s,%s,%s,%s) on conflict (ticket_id, tipo, ronda) do nothing returning id",
+                (ticket_id, tipo, ronda, texto, correo_id))
+            fila = cur.fetchone()
+            return int(fila[0]) if fila else None
+
+    def obtener_aprobacion(self, aprobacion_id):
+        with self.conn.cursor() as cur:
+            cur.execute(f"select * from {self._t('aprobaciones')} where id=%s", (aprobacion_id,))
+            return self._row(cur)
+
+    def listar_aprobaciones(self, ticket_id=None, estados=None):
+        cond, args = [], []
+        if ticket_id is not None:
+            cond.append("ticket_id=%s"); args.append(ticket_id)
+        if estados:
+            cond.append("estado = any(%s)"); args.append(list(estados))
+        where = (" where " + " and ".join(cond)) if cond else ""
+        with self.conn.cursor() as cur:
+            cur.execute(f"select * from {self._t('aprobaciones')}{where} order by created_at, id", args)
+            return self._rows(cur)
+
+    def actualizar_aprobacion(self, aprobacion_id, **campos):
+        if not campos:
+            return
+        sets = ", ".join(f"{k}=%s" for k in campos)
+        with self.conn.cursor() as cur:
+            cur.execute(f"update {self._t('aprobaciones')} set {sets}, actualizado_en=now() where id=%s",
+                        [*campos.values(), aprobacion_id])
+
+    def resolver_aprobacion(self, aprobacion_id, estado, por, texto=None):
+        """Atómico: solo resuelve si sigue pendiente (Telegram y el panel no la aprueban dos veces)."""
+        with self.conn.cursor() as cur:
+            cur.execute(
+                f"update {self._t('aprobaciones')} set estado=%s, resuelto_por=%s, resuelto_en=now(), "
+                f"actualizado_en=now(), texto=coalesce(%s, texto), "
+                f"version=version + (case when %s::text is null then 0 else 1 end) "
+                f"where id=%s and estado='pendiente'", (estado, por, texto, texto, aprobacion_id))
+            return cur.rowcount == 1
+
+    def leer_valor(self, clave):
+        with self.conn.cursor() as cur:
+            cur.execute(f"select valor from {self._t('valores')} where clave=%s", (clave,))
+            fila = cur.fetchone()
+            return fila[0] if fila else None
+
+    def guardar_valor(self, clave, valor):
+        with self.conn.cursor() as cur:
+            cur.execute(f"insert into {self._t('valores')} (clave, valor) values (%s,%s) "
+                        f"on conflict (clave) do update set valor=excluded.valor, actualizado_en=now()",
+                        (clave, valor))
+
     @staticmethod
     def _row(cur) -> Optional[dict]:
         fila = cur.fetchone()
@@ -365,13 +435,22 @@ class RepositorioSQLite:
               escalado_en text, cerrado_en text, nota text, created_at text default (datetime('now')));
             create unique index if not exists uq_recordatorio_vivo
               on recordatorios (ticket_id, motivo) where estado in ('activo', 'escalado');
+            create table if not exists aprobaciones(
+              id integer primary key autoincrement, ticket_id int not null, tipo text not null,
+              ronda int not null default 1, texto text not null, version int not null default 1,
+              estado text not null default 'pendiente', telegram_chat_id text, telegram_msg_id text,
+              resuelto_por text, resuelto_en text, correo_id int,
+              created_at text default (datetime('now')), actualizado_en text default (datetime('now')),
+              unique (ticket_id, tipo, ronda));
+            create table if not exists valores(
+              clave text primary key, valor text, actualizado_en text default (datetime('now')));
             """
         )
         # Bases de dev creadas antes de la Etapa 1: sumar las columnas que falten.
         tiene = {r["name"] for r in self.conn.execute("pragma table_info(tickets)")}
         for col, tipo in (("proceso", "text"), ("producto", "text"), ("etapa", "text"),
                           ("etapa_desde", "text"), ("etapa_ronda", "int default 1"), ("nro_solicitud", "text"),
-                          ("identificado_por", "text")):
+                          ("identificado_por", "text"), ("titulo_hilo", "text")):
             if col not in tiene:
                 self.conn.execute(f"alter table tickets add column {col} {tipo}")
         self.conn.commit()
@@ -578,6 +657,56 @@ class RepositorioSQLite:
             f"where ticket_id=? and estado in (?, ?){cond}", args)
         self.conn.commit()
         return cur.rowcount
+
+    # --- Etapa 2 ---
+    def crear_aprobacion(self, ticket_id, tipo, texto, ronda=1, correo_id=None):
+        cur = self.conn.execute(
+            "insert or ignore into aprobaciones(ticket_id,tipo,ronda,texto,correo_id) values(?,?,?,?,?)",
+            (ticket_id, tipo, ronda, texto, correo_id))
+        self.conn.commit()
+        return int(cur.lastrowid) if cur.rowcount else None
+
+    def obtener_aprobacion(self, aprobacion_id):
+        r = self.conn.execute("select * from aprobaciones where id=?", (aprobacion_id,)).fetchone()
+        return dict(r) if r else None
+
+    def listar_aprobaciones(self, ticket_id=None, estados=None):
+        cond, args = [], []
+        if ticket_id is not None:
+            cond.append("ticket_id=?"); args.append(ticket_id)
+        if estados:
+            estados = list(estados)
+            cond.append(f"estado in ({','.join('?' * len(estados))})"); args.extend(estados)
+        where = (" where " + " and ".join(cond)) if cond else ""
+        cur = self.conn.execute(f"select * from aprobaciones{where} order by created_at, id", args)
+        return [dict(r) for r in cur.fetchall()]
+
+    def actualizar_aprobacion(self, aprobacion_id, **campos):
+        if not campos:
+            return
+        sets = ", ".join(f"{k}=?" for k in campos)
+        self.conn.execute(f"update aprobaciones set {sets}, actualizado_en=? where id=?",
+                          [*(self._ts(v) for v in campos.values()), self._ts(datetime.now(timezone.utc)),
+                           aprobacion_id])
+        self.conn.commit()
+
+    def resolver_aprobacion(self, aprobacion_id, estado, por, texto=None):
+        ahora = self._ts(datetime.now(timezone.utc))
+        cur = self.conn.execute(
+            "update aprobaciones set estado=?, resuelto_por=?, resuelto_en=?, actualizado_en=?, "
+            "texto=coalesce(?, texto), version=version + (case when ? is null then 0 else 1 end) "
+            "where id=? and estado='pendiente'", (estado, por, ahora, ahora, texto, texto, aprobacion_id))
+        self.conn.commit()
+        return cur.rowcount == 1
+
+    def leer_valor(self, clave):
+        r = self.conn.execute("select valor from valores where clave=?", (clave,)).fetchone()
+        return r["valor"] if r else None
+
+    def guardar_valor(self, clave, valor):
+        self.conn.execute("insert into valores(clave, valor) values(?,?) "
+                          "on conflict(clave) do update set valor=excluded.valor", (clave, valor))
+        self.conn.commit()
 
 
 def get_repo() -> Repositorio:

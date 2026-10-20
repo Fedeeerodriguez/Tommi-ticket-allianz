@@ -1,4 +1,5 @@
-"""Paso 4 de la Etapa 1 — motor por ETAPA del proceso largo (reemplaza al motor por tipo de correo).
+"""Motor por ETAPA (reemplaza al motor por tipo de correo). Etapa 1: proceso largo; Etapa 2: proceso
+corto (guía de aportación con aprobación de Ceci + recordatorio de pago) y trámites.
 
 Detrás de MOTOR_ETAPAS=1. Por cada correo ya clasificado en su etapa (`app/clasificador/etapas.py`):
   1. decide si la etapa del ticket avanza (solo avanza; un correo viejo o repetido no la hace
@@ -54,35 +55,54 @@ ESTADO_POR_ETAPA = {
     Etapa.DECLINADO: EstadoTicket.RESUELTO,
     Etapa.CERRADO_INACTIVIDAD: EstadoTicket.RESUELTO,
 }
+# Proceso corto: después de la confirmación de datos se espera el pago del cliente (guía de aportación).
+ESTADO_POR_ETAPA_PROCESO = {("corto", Etapa.CONFIRMACION_DATOS): EstadoTicket.ESPERANDO_CLIENTE}
+
+
+def estado_para(etapa: Etapa, proceso: Optional[str]) -> Optional[EstadoTicket]:
+    return ESTADO_POR_ETAPA_PROCESO.get((proceso, etapa)) or ESTADO_POR_ETAPA.get(etapa)
 
 TIPO_ACCION = {"ceci": "avisar_ceci", "asesor": "avisar_asesor", "cliente": "avisar_cliente"}
 
 # Motivos de recordatorio y a quién se le recuerda.
 REC_REQUERIMIENTO = "requerimiento"          # esperamos al cliente
 REC_ESPERANDO_ALLIANZ = "esperando_allianz"  # mandamos lo pedido; esperamos a Allianz
-_DEST_REC = {REC_REQUERIMIENTO: ("cliente", "asesor"), REC_ESPERANDO_ALLIANZ: ("ceci",)}
+REC_PAGO = "pago"                            # proceso corto: el cliente tiene que depositar (guía)
+_DEST_REC = {REC_REQUERIMIENTO: ("cliente", "asesor"), REC_ESPERANDO_ALLIANZ: ("ceci",),
+             REC_PAGO: ("cliente", "asesor")}
+# Lo que espera al cliente: se cumple cuando mandamos algo a Allianz (C4).
+_ESPERAN_AL_CLIENTE = (REC_REQUERIMIENTO, REC_PAGO)
+
+GUIA = "guia_aportacion"  # tipo de aprobación (tabla aprobaciones) y etapa de su aviso
+
+
+def procesos_activos() -> set[str]:
+    return {p.strip().lower() for p in config.MOTOR_ETAPAS_PROCESOS if p.strip()}
 
 
 def usa_motor_etapas(etapa: Optional[dict], ticket: Optional[dict] = None) -> bool:
-    """¿Este correo lo maneja el motor por etapa? Solo el proceso largo (corto y trámites siguen
-    con el motor viejo hasta F6/F7). Copias/notas/rebotes sin proceso propio heredan el del ticket."""
+    """¿Este correo lo maneja el motor por etapa? Los procesos de MOTOR_ETAPAS_PROCESOS (largo en la
+    Etapa 1; corto y trámite se suman en la Etapa 2); el resto sigue con el motor viejo.
+    Copias/notas/rebotes sin proceso propio heredan el del ticket (y si no hay, cuentan como largo)."""
     if not (config.MOTOR_ETAPAS and etapa) or etapa.get("etapa") in (None, Etapa.NO_APLICA.value):
         return False
-    proceso = etapa.get("proceso") or (ticket or {}).get("proceso")
-    return proceso in ("largo", None)
+    proceso = etapa.get("proceso") or (ticket or {}).get("proceso") or "largo"
+    return proceso in procesos_activos()
 
 
 EMISIONES = (Etapa.POLIZA_EMITIDA.value, Etapa.EMISION_REGISTRADA.value)
 
 
 def ticket_para_emision(repo: Repositorio, etapa: dict) -> Optional[int]:
-    """Los avisos de emisión no traen n° de ticket: se cruzan con un ticket del proceso largo que
-    ya esté en el motor por etapa (por póliza, n° de solicitud o nombre). Si no hay uno solo → None
-    (no se crea un ticket nuevo por cada emisión)."""
+    """Los avisos de emisión no traen n° de ticket: se cruzan con un ticket que ya esté en el motor
+    por etapa (por póliza, n° de solicitud o nombre). Si no hay uno solo → None (no se crea un
+    ticket nuevo por cada emisión)."""
     from app.enriquecimiento.identificar import mismo_nombre
 
+    activos = procesos_activos()
+
     def en_motor(t):
-        return t if t and t.get("etapa") and (t.get("proceso") in (None, "largo")) else None
+        return t if t and t.get("etapa") and ((t.get("proceso") or "largo") in activos) else None
 
     if etapa.get("poliza"):
         t = en_motor(repo.buscar_ticket(None, etapa["poliza"], None))
@@ -171,11 +191,12 @@ def _vencimiento(motivo: str, etapa: dict, desde: datetime) -> tuple[datetime, d
 
 
 def _recordatorios(repo: Repositorio, ticket_id: int, e: Etapa, etapa: dict, ronda_nueva: bool,
-                   ahora: datetime, correo_id: Optional[int]) -> tuple[Optional[datetime], list[str]]:
+                   ahora: datetime, correo_id: Optional[int],
+                   proceso: str = "largo") -> tuple[Optional[datetime], list[str]]:
     """Arranca / corta recordatorios según la etapa. Devuelve (vencimiento del nuevo, bitácora)."""
     log_ = []
     vence = None
-    acc = accion_para(e, "largo")
+    acc = accion_para(e, proceso)
     if e == Etapa.REQUERIMIENTO:
         # Allianz respondió → deja de esperarse a Allianz; si es otra ronda, el pedido viejo se reemplaza.
         if repo.cerrar_recordatorios(ticket_id, "cumplido", REC_ESPERANDO_ALLIANZ, "Allianz respondió"):
@@ -188,8 +209,9 @@ def _recordatorios(repo: Repositorio, ticket_id: int, e: Etapa, etapa: dict, ron
                                    correo_id, nota=(etapa.get("que_piden") or "")[:600]):
             log_.append(f"recordatorio al cliente/asesor para el {vence:%d/%m %H:%M} UTC")
     elif e == Etapa.DOCUMENTOS_ENVIADOS:
-        if repo.cerrar_recordatorios(ticket_id, "cumplido", REC_REQUERIMIENTO, "se mandó lo pedido (C4)"):
-            log_.append("se cortó el recordatorio del requerimiento")
+        for motivo in _ESPERAN_AL_CLIENTE:  # requerimiento (largo/trámite) o pago (corto)
+            if repo.cerrar_recordatorios(ticket_id, "cumplido", motivo, "se mandó lo pedido (C4)"):
+                log_.append(f"se cortó el recordatorio de {'pago' if motivo == REC_PAGO else 'requerimiento'}")
         vence, escala = _vencimiento(REC_ESPERANDO_ALLIANZ, etapa, ahora)
         if repo.crear_recordatorio(ticket_id, REC_ESPERANDO_ALLIANZ, _DEST_REC[REC_ESPERANDO_ALLIANZ], vence,
                                    escala, correo_id, nota="esperando respuesta de Allianz"):
@@ -200,6 +222,9 @@ def _recordatorios(repo: Repositorio, ticket_id: int, e: Etapa, etapa: dict, ron
         if n:
             log_.append(f"se cortaron {n} recordatorio(s)")
     return vence, log_
+
+
+_asunto = mensajes_etapa._asunto
 
 
 def rol_activo(rol: str) -> bool:
@@ -233,6 +258,9 @@ def decidir_por_etapa(repo: Repositorio, ticket_id: int, etapa: dict, correo_id:
         return {"aplicada": False, "motivo": f"etapa desconocida: {etapa.get('etapa')}", "plan": []}
     proceso = etapa.get("proceso") or ticket.get("proceso") or "largo"
     acc = accion_para(e, proceso)
+    if e in SIN_AVANCE and etapa.get("proceso") is None:
+        # Copias/notas/rebotes no traen proceso: hablan como el ticket.
+        proceso = ticket.get("proceso") or "largo"
     actual = ticket.get("etapa")
     ronda = int(ticket.get("etapa_ronda") or 1)
     res: dict = {"etapa": e.value, "etapa_anterior": actual, "plan": [], "avisos_omitidos": [],
@@ -245,7 +273,9 @@ def decidir_por_etapa(repo: Repositorio, ticket_id: int, etapa: dict, correo_id:
                      ("poliza", etapa.get("poliza")),
                      # El nombre como lo escribe Allianz (sirve para leer el panel y enganchar la emisión).
                      # No identifica a nadie: eso lo decide `identificado_por`.
-                     ("cliente_nombre", etapa.get("cliente"))):
+                     ("cliente_nombre", etapa.get("cliente")),
+                     # El asunto del trámite va en todos sus avisos (Etapa 2; columna nueva).
+                     ("titulo_hilo", _asunto(etapa.get("titulo_hilo")) if proceso == "tramite" else None)):
         if val and not ticket.get(col):
             campos[col] = val
 
@@ -267,8 +297,9 @@ def decidir_por_etapa(repo: Repositorio, ticket_id: int, etapa: dict, correo_id:
         campos.update(etapa=e.value, etapa_desde=ahora, etapa_ronda=ronda)
         etapa_vigente = e
     # El estado lo manda la etapa (deshace lo que haya puesto el motor viejo al upsertear).
-    if etapa_vigente in ESTADO_POR_ETAPA:
-        campos["estado"] = ESTADO_POR_ETAPA[etapa_vigente].value
+    est = estado_para(etapa_vigente, ticket.get("proceso") or proceso) if etapa_vigente else None
+    if est:
+        campos["estado"] = est.value
     if campos:
         repo.actualizar_ticket(ticket_id, **campos)
         ticket = {**ticket, **campos}
@@ -280,7 +311,8 @@ def decidir_por_etapa(repo: Repositorio, ticket_id: int, etapa: dict, correo_id:
     # Recordatorios (solo cuando la etapa realmente cambió).
     vence = None
     if e not in SIN_AVANCE:
-        vence, res["recordatorios"] = _recordatorios(repo, ticket_id, e, etapa, ronda_nueva, ahora, correo_id)
+        vence, res["recordatorios"] = _recordatorios(repo, ticket_id, e, etapa, ronda_nueva, ahora, correo_id,
+                                                     proceso)
 
     # Emisión registrada: solo registra póliza/solicitud (ya hecho arriba). Revisar: al panel.
     # A quién avisar: lo que decidió el detector para ESTE correo (ej. la copia de la ejecutiva que
@@ -290,9 +322,15 @@ def decidir_por_etapa(repo: Repositorio, ticket_id: int, etapa: dict, correo_id:
     if e == Etapa.REVISAR:
         repo.agregar_evento(ticket_id, correo_id, "revisar", f"Ninguna regla aplica: {etapa.get('motivo', '')}"[:200])
 
+    # Guía de aportación (corto, C2): no sale a nadie hasta que Ceci la apruebe. Si las aprobaciones
+    # van por Telegram, Ceci no recibe además el aviso por WhatsApp.
+    guia = bool(acc.aprobacion_telegram and e not in SIN_AVANCE)
+    if guia and config.hay_telegram():
+        roles = [r for r in roles if r != "ceci"]
+
     # ¿A quién se le puede escribir?
     ident: Optional[Identificacion] = None
-    if any(r in ("asesor", "cliente") for r in roles):
+    if guia or any(r in ("asesor", "cliente") for r in roles):
         ident = identificar_y_guardar(repo, ticket, etapa, buscar=buscar, correo_id=correo_id)
         res["identificacion"] = {"estado": ident.estado, "via": ident.via, "motivo": ident.motivo}
         if ident.ok:
@@ -303,6 +341,17 @@ def decidir_por_etapa(repo: Repositorio, ticket_id: int, etapa: dict, correo_id:
     params = mensajes_etapa.params_wati(ctx, e.value, tel_cliente)
 
     omitidos = res["avisos_omitidos"]
+    if guia:
+        texto_guia = mensajes_etapa.guia_aportacion(ctx)
+        ap = repo.crear_aprobacion(ticket_id, GUIA, texto_guia, ronda=ronda, correo_id=correo_id)
+        res["aprobacion"] = ap
+        if ap:
+            repo.agregar_evento(ticket_id, correo_id, "guia_por_aprobar",
+                                "Guía de aportación lista: espera la aprobación de Ceci"
+                                + (" (Telegram)" if config.hay_telegram() else " (panel)"))
+            if not (ident and ident.ok):
+                omitidos.append(f"No pude identificar al cliente/asesor ({ident.motivo if ident else 'sin datos'}): "
+                                f"asígnalo en el panel antes de aprobar la guía.")
     for rol in roles:
         if rol == "ceci":
             continue
@@ -319,7 +368,7 @@ def decidir_por_etapa(repo: Repositorio, ticket_id: int, etapa: dict, correo_id:
         if not numero:
             omitidos.append(f"Falta el teléfono del {rol} en Notion: no se le avisó.")
             continue
-        t = mensajes_etapa.texto(rol, e.value, ctx)
+        t = mensajes_etapa.texto(rol, e.value, ctx, proceso=proceso)
         if t:
             a = _encolar(repo, ticket_id, rol, t, e.value, ronda_aviso, str(numero), correo_id, params)
             if a:
@@ -327,7 +376,7 @@ def decidir_por_etapa(repo: Repositorio, ticket_id: int, etapa: dict, correo_id:
 
     # Ceci: si la etapa la incluye, o si hubo algo que no se pudo avisar (para que lo asigne a mano).
     if "ceci" in roles or omitidos:
-        t = mensajes_etapa.texto("ceci", e.value, ctx, omitidos)
+        t = mensajes_etapa.texto("ceci", e.value, ctx, omitidos, proceso=proceso)
         a = _encolar(repo, ticket_id, "ceci", t, e.value, ronda_aviso, None, correo_id, params)
         if a:
             res["plan"].append(a)

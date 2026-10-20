@@ -144,3 +144,35 @@ create index if not exists ix_acciones_estado   on tickets_allianz.acciones    (
 create index if not exists ix_tickets_poliza    on tickets_allianz.tickets     (poliza);
 create index if not exists ix_tickets_cliente   on tickets_allianz.tickets     (cliente_correo);
 create index if not exists ix_tickets_vence     on tickets_allianz.tickets     (vence_en);
+
+-- Etapa 2 (proceso corto + trámites, 20/10) — aprobaciones de Ceci + valores del worker.
+alter table tickets_allianz.tickets add column if not exists titulo_hilo text;
+
+-- aprobaciones: lo que Ceci tiene que aprobar antes de que salga (hoy: la guía de aportación
+-- del proceso corto). Una por (ticket, tipo, ronda): no se le pide dos veces lo mismo.
+create table if not exists tickets_allianz.aprobaciones (
+  id                bigint generated always as identity primary key,
+  ticket_id         bigint  not null,
+  tipo              text    not null,                -- guia_aportacion
+  ronda             integer not null default 1,
+  texto             text    not null,                -- lo que va a salir (Ceci lo puede corregir)
+  version           integer not null default 1,      -- sube cada vez que Ceci lo corrige
+  estado            text    not null default 'pendiente',  -- pendiente / aprobada / descartada
+  telegram_chat_id  text,
+  telegram_msg_id   text,                            -- el mensaje con los botones
+  resuelto_por      text,                            -- telegram:<usuario> / panel:<usuario>
+  resuelto_en       timestamptz,
+  correo_id         bigint,                          -- el correo de Allianz que la disparó
+  created_at        timestamptz not null default now(),
+  actualizado_en    timestamptz not null default now(),
+  constraint uq_aprobaciones_unica unique (ticket_id, tipo, ronda)
+);
+create index if not exists ix_aprobaciones_estado on tickets_allianz.aprobaciones (estado);
+
+-- valores: datos chicos del worker (hoy: hasta qué mensaje de Telegram ya se leyó).
+create table if not exists tickets_allianz.valores (
+  clave           text primary key,
+  valor           text,
+  actualizado_en  timestamptz not null default now()
+);
+

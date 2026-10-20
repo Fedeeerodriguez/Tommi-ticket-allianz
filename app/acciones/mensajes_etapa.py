@@ -1,4 +1,5 @@
-"""Textos FIJOS por etapa (sin IA) — Etapa 1, proceso largo. Tabla del paso 5 del plan.
+"""Textos FIJOS por etapa (sin IA). Etapa 1: proceso largo (paso 5 del plan). Etapa 2: proceso corto
+(guía de aportación, pago) y trámites (siempre con n° de ticket + cliente + asunto).
 
 Lo único variable es lo que sale del correo de Allianz ("qué piden", recortado) y los datos del
 ticket. Tuteo mexicano: clientes y asesores son de México. Ceci recibe el texto del asesor (o
@@ -66,38 +67,126 @@ TEXTOS: dict[str, dict[str, str]] = {
     },
 }
 
+# Etapa 2: lo que cambia por proceso (lo que no está acá usa TEXTOS).
+TEXTOS_PROCESO: dict[tuple[str, str], dict[str, str]] = {
+    # --- Trámites (los abrimos nosotros): SIEMPRE n° de ticket + cliente + asunto (pedido de Ceci).
+    ("tramite", "apertura"): {
+        "asesor": "Ticket {tk} · {cliente}{con_asunto}: Allianz recibió el trámite.",
+        "cliente": "Hola {nombre}, Allianz ya recibió tu trámite{de_asunto} (ticket {tk}). Te aviso cada avance.",
+    },
+    ("tramite", "requerimiento"): {
+        "asesor": "Ticket {tk} · {cliente}{con_asunto}: Allianz pide → {que_piden}. Plazo: {plazo}.",
+        "cliente": "Hola {nombre}, para avanzar con tu trámite{de_asunto}, Allianz necesita: {que_piden}. "
+                   "Tienes hasta el {fecha}. Mándamelo por aquí y yo lo envío.",
+    },
+    ("tramite", "documentos_enviados"): {
+        "asesor": "Ticket {tk} · {cliente}{con_asunto}: le respondimos a Allianz, esperamos respuesta.",
+        "cliente": "Hola {nombre}, ya le mandamos a Allianz lo de tu trámite{de_asunto}. Te aviso cuando respondan.",
+    },
+    ("tramite", "atendida"): {
+        "asesor": "Ticket {tk} · {cliente}{con_asunto}: Allianz lo atendió. Ticket cerrado.",
+        "cliente": "Hola {nombre}, ¡listo! Allianz atendió tu trámite{de_asunto}.",
+    },
+    ("tramite", "cerrado_inactividad"): {
+        "asesor": "Ticket {tk} · {cliente}{con_asunto}: Allianz cerró el ticket por inactividad. "
+                  "Contacta al cliente para retomarlo.",
+        "cliente": "Hola {nombre}, Allianz cerró tu trámite{de_asunto} por falta de respuesta. Tu asesor te va "
+                   "a contactar para retomarlo.",
+    },
+    ("tramite", "rechazado"): {
+        "asesor": "Ticket {tk} · {cliente}{con_asunto}: Allianz rechazó el trámite. Contacta al cliente.",
+    },
+    # --- Proceso corto (Elite / Patrimonial / OptiMaxx Plus).
+    ("corto", "confirmacion_datos"): {
+        "ceci": "Ticket {tk} · {cliente}{con_producto}: Allianz confirmó los datos{con_poliza}. La guía de "
+                "aportación está lista para que la apruebes.",
+    },
+    ("corto", "documentos_enviados"): {
+        "asesor": "Ticket {tk} · {cliente}: se envió a Allianz el comprobante de pago, esperamos la emisión.",
+        "cliente": "Hola {nombre}, ya enviamos tu comprobante de pago a Allianz. Te aviso cuando tu póliza "
+                   "quede emitida.",
+    },
+    ("corto", "atendida"): {
+        "asesor": "Ticket {tk} · {cliente}: Allianz lo atendió. Ticket cerrado.",
+        "cliente": "Hola {nombre}, ¡listo! Allianz atendió tu solicitud.",
+    },
+    # Aviso de la guía aprobada por Ceci (el texto de la guía va aparte: es el que ella aprobó).
+    ("corto", "guia_aportacion"): {
+        "asesor": "Ticket {tk} · {cliente}: le mandamos al cliente la guía de aportación (aprobada por Ceci):\n\n{guia}",
+        "cliente": "{guia}",
+    },
+}
+
+# Guía de aportación PROVISORIA hasta tener el speech de Ceci (GUIA_APORTACION_TEXTO). Lo que está
+# entre [corchetes] lo completa Ceci antes de aprobar: con corchetes no se puede aprobar.
+GUIA_PROVISORIA = (
+    "Hola {nombre}, Allianz ya confirmó tu solicitud de {producto_cliente}{con_poliza}. Para activarla "
+    "falta tu aportación inicial:\n"
+    "• Monto: [completar]\n"
+    "• Datos para depositar: [completar]\n"
+    "• Referencia: póliza {poliza}\n"
+    "Cuando deposites, mándame por aquí el comprobante y tu estado de cuenta, y yo lo envío a Allianz."
+)
+FALTA_COMPLETAR = "[completar"
+
+
+def guia_aportacion(ctx: dict) -> str:
+    plantilla = config.GUIA_APORTACION_TEXTO or GUIA_PROVISORIA
+    if not ctx.get("nombre"):
+        plantilla = plantilla.replace("Hola {nombre}, ", "Hola, ")
+    return _puntuacion(plantilla.format_map(_Faltante(ctx)))
+
+
+class _Faltante(dict):
+    """Una variable desconocida en el speech de Ceci queda marcada para completar (no rompe)."""
+
+    def __missing__(self, k):
+        return f"[completar {k}]"
+
 
 # Recordatorios (paso 6). Clave: (motivo, momento) → rol → texto. momento = recordatorio | escalado.
 TEXTOS_RECORDATORIO: dict[tuple[str, str], dict[str, str]] = {
     ("requerimiento", "recordatorio"): {
         "cliente": "Hola {nombre}, te recuerdo que Allianz sigue esperando: {que_piden}. "
                    "Mándamelo por aquí y yo lo envío.",
-        "asesor": "Ticket {tk} · {cliente}: sigue pendiente lo que pidió Allianz → {que_piden}.{ya_cliente}",
+        "asesor": "Ticket {tk} · {cliente}{con_asunto}: sigue pendiente lo que pidió Allianz → {que_piden}.{ya_cliente}",
     },
     ("requerimiento", "escalado"): {
-        "asesor": "Ticket {tk} · {cliente}: el cliente todavía no manda lo que pidió Allianz ({que_piden}). "
+        "asesor": "Ticket {tk} · {cliente}{con_asunto}: el cliente todavía no manda lo que pidió Allianz ({que_piden}). "
                   "Si vence el plazo, Allianz rechaza el ticket. Contacta al cliente.",
-        "ceci": "Ticket {tk} · {cliente}: el cliente todavía no manda lo que pidió Allianz ({que_piden}). "
+        "ceci": "Ticket {tk} · {cliente}{con_asunto}: el cliente todavía no manda lo que pidió Allianz ({que_piden}). "
                 "Si vence el plazo, Allianz rechaza el ticket.",
     },
     ("esperando_allianz", "recordatorio"): {
-        "ceci": "Ticket {tk} · {cliente}: Allianz no responde desde que mandamos los documentos ({desde}). "
+        "ceci": "Ticket {tk} · {cliente}{con_asunto}: Allianz no responde desde que le mandamos lo pedido ({desde}). "
                 "Si sigue sin responder, se escala con copia a la ejecutiva.",
     },
     ("esperando_allianz", "escalado"): {
-        "ceci": "Ticket {tk} · {cliente}: Allianz sigue sin responder. Dejé listo un correo en el hilo con "
+        "ceci": "Ticket {tk} · {cliente}{con_asunto}: Allianz sigue sin responder. Dejé listo un correo en el hilo con "
                 "copia a {cc} para que lo apruebes.",
     },
     ("esperando_allianz", "escalado_sin_correo"): {  # ESCALAR_A_ALLIANZ apagado
-        "ceci": "Ticket {tk} · {cliente}: Allianz sigue sin responder. Conviene escribirles en el hilo con "
+        "ceci": "Ticket {tk} · {cliente}{con_asunto}: Allianz sigue sin responder. Conviene escribirles en el hilo con "
                 "copia a {cc}.",
+    },
+    # Etapa 2 — proceso corto: el cliente tiene que depositar (desde que Ceci aprobó la guía).
+    ("pago", "recordatorio"): {
+        "cliente": "Hola {nombre}, te recuerdo que falta tu aportación para activar tu {producto_cliente}. "
+                   "Cuando deposites, mándame por aquí el comprobante y tu estado de cuenta.",
+        "asesor": "Ticket {tk} · {cliente}: el cliente todavía no manda el comprobante de pago de la guía "
+                  "de aportación.{ya_cliente}",
+    },
+    ("pago", "escalado"): {
+        "asesor": "Ticket {tk} · {cliente}: sigue sin llegar el comprobante de pago de la guía de aportación. "
+                  "Contacta al cliente.",
+        "ceci": "Ticket {tk} · {cliente}: sigue sin llegar el comprobante de pago de la guía de aportación.",
     },
 }
 
 # Correo de escalación a Allianz (en el hilo del ticket, formal: usted).
 CORREO_ESCALACION = (
     "Buen día,\n\n"
-    "Damos seguimiento a la solicitud {sol} de {cliente} (ticket {tk}). El {desde} enviamos la "
+    "Damos seguimiento {referencia}. El {desde} enviamos la "
     "documentación solicitada y a la fecha no hemos recibido respuesta.\n\n"
     "¿Nos apoyan con el estatus, por favor?\n\n"
     "Quedamos atentos.\nBabilonia"
@@ -144,6 +233,9 @@ ETIQUETAS = {
     "recordatorio_esperando_allianz": "Allianz sin respuesta",
     "escalado_esperando_allianz": "Escalado a Allianz",
     "escalado_sin_correo_esperando_allianz": "Allianz sigue sin responder",
+    "guia_aportacion": "Guía de aportación",
+    "recordatorio_pago": "Recordatorio: falta el pago",
+    "escalado_pago": "Urgente: falta el pago",
 }
 
 
@@ -204,8 +296,22 @@ def contexto(ticket: dict, etapa: dict, datos: Optional[dict] = None,
     # Nombres de Notion a veces traen ruido ("María .  del Carmen"): fuera puntos sueltos y espacios dobles.
     cliente = re.sub(r"\s+", " ", re.sub(r"(?<!\w)\.(?!\w)", " ", cliente)).strip()
     sol = etapa.get("nro_solicitud") or ticket.get("nro_solicitud")
+    poliza = etapa.get("poliza") or ticket.get("poliza")
+    tk = etapa.get("nro_ticket") or ticket.get("nro_ticket") or "—"
+    asunto = _asunto(etapa.get("titulo_hilo")) if (etapa.get("proceso") or ticket.get("proceso")) == "tramite" \
+        else None
+    asunto = asunto or ticket.get("titulo_hilo") or ""
+    cliente_ref = cliente or "cliente sin identificar"
+    if asunto:
+        referencia = f"al trámite «{asunto}» de {cliente_ref} (ticket {tk})"
+    elif sol:
+        referencia = f"a la solicitud {sol} de {cliente_ref} (ticket {tk})"
+    elif poliza:
+        referencia = f"a la póliza {poliza} de {cliente_ref} (ticket {tk})"
+    else:
+        referencia = f"al ticket {tk} de {cliente_ref}"
     return {
-        "tk": etapa.get("nro_ticket") or ticket.get("nro_ticket") or "—",
+        "tk": tk,
         "cliente": cliente or "cliente sin identificar",
         "nombre": _primer_nombre(cliente),
         "producto": ramo or "—",
@@ -216,7 +322,14 @@ def contexto(ticket: dict, etapa: dict, datos: Optional[dict] = None,
         "con_sol": f" {sol}" if sol else "",
         "ya_cliente": "",
         "sol": sol or "—",
-        "poliza": etapa.get("poliza") or ticket.get("poliza") or "—",
+        "poliza": poliza or "—",
+        "con_poliza": f" (póliza {poliza})" if poliza else "",
+        # Trámites: el asunto con que lo abrimos ("Aplicación de mensualidad").
+        "asunto": asunto or "—",
+        "con_asunto": f" · {asunto}" if asunto else "",
+        "de_asunto": f" «{asunto}»" if asunto else "",
+        "referencia": referencia,
+        "guia": "",
         "que_piden": _pedido(etapa.get("que_piden")) or "información adicional",
         "plazo": _plazo(etapa.get("plazo")),
         "fecha": vence.strftime("%d/%m/%Y") if vence else "—",
@@ -224,9 +337,10 @@ def contexto(ticket: dict, etapa: dict, datos: Optional[dict] = None,
     }
 
 
-def texto(rol: str, etapa: str, ctx: dict, avisos_omitidos: Optional[list[str]] = None) -> Optional[str]:
-    """Texto para `rol` en `etapa`. None si esa etapa no le habla a ese rol."""
-    t = TEXTOS.get(etapa, {})
+def texto(rol: str, etapa: str, ctx: dict, avisos_omitidos: Optional[list[str]] = None,
+          proceso: Optional[str] = None) -> Optional[str]:
+    """Texto para `rol` en `etapa` (y proceso). None si esa etapa no le habla a ese rol."""
+    t = {**TEXTOS.get(etapa, {}), **TEXTOS_PROCESO.get((proceso or "", etapa), {})}
     if rol == "ceci":
         base = t.get("ceci") or t.get("asesor") or f"Ticket {{tk}} · {{cliente}}: {etapa.replace('_', ' ')}."
         lineas = [_puntuacion(base.format(**ctx))]
@@ -244,3 +358,9 @@ def texto(rol: str, etapa: str, ctx: dict, avisos_omitidos: Optional[list[str]] 
 
 def _puntuacion(t: str) -> str:
     return t.replace("….", "…").replace("..", ".")
+
+
+def _asunto(titulo: Optional[str]) -> Optional[str]:
+    """'[EXT] Aplicaciónes de mensualidad' → 'Aplicaciónes de mensualidad'."""
+    t = re.sub(r"^\s*\[EXT\]\s*", "", titulo or "", flags=re.I).strip()
+    return t[:200] or None
