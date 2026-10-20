@@ -28,7 +28,7 @@ from pydantic import BaseModel
 
 from app import config
 from app.acciones.mensajes_etapa import ETIQUETAS
-from app.acciones.motor_etapas import _parse_ts
+from app.acciones.motor_etapas import RANGO, _parse_ts
 from app.db import get_repo
 
 app = FastAPI(title="Ticket Allianz Seguimiento API", version="1.0")
@@ -133,6 +133,9 @@ def listar(filtro: Optional[str] = None, _=Depends(_auth)):
 
 
 # ─────────────────────────── Etapa 1: etapa, recordatorios, Ceci ───────────────────────────
+_ETAPAS_CON_RONDA = {e.value for e in RANGO}
+
+
 def _seguro(fn, defecto):
     """Las tablas de la Etapa 1 pueden no existir todavía (migración sin correr): el panel sigue."""
     try:
@@ -185,8 +188,11 @@ def linea_tiempo(ticket_id: int, _=Depends(_auth)):
     pasos: dict[tuple, dict] = {}
     for a in repo.listar_avisos(ticket_id):
         k = (a.get("etapa"), a.get("ronda"))
+        # La "ronda" solo significa algo en las etapas que avanzan (requerimiento 2, 3…); en notas,
+        # rebotes y recordatorios es un id interno.
+        ronda = a.get("ronda") if a.get("etapa") in _ETAPAS_CON_RONDA else None
         p = pasos.setdefault(k, {"etapa": a.get("etapa"), "etapa_nombre": ETIQUETAS.get(a.get("etapa"), a.get("etapa")),
-                                 "ronda": a.get("ronda"), "fecha": a.get("created_at"), "avisos": []})
+                                 "ronda": ronda, "fecha": a.get("created_at"), "avisos": []})
         p["avisos"].append({"para": a.get("destinatario"), "canal": a.get("canal"), "texto": a.get("texto"),
                             "fecha": a.get("created_at")})
     eventos = [{"tipo": e.get("tipo_evento"), "detalle": e.get("resumen"), "fecha": e.get("created_at")}

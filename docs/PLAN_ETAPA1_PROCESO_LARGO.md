@@ -1,6 +1,6 @@
 # Plan Etapa 1 — Proceso largo (Auto · Vida · GMM · OP3D · HOFP)
 
-Estado: **aprobado 19/10, en desarrollo**. ✅ Pasos 1–6 (paso 5: falta la plantilla WATI y aprobar `docs/TEXTOS_ETAPA1.md`) (SQL del paso 2 listo para correr: `docs/migracion_etapa1_2026-10-19.sql`). Paso 3 sobre 57 tickets reales: 52 identificados (0 equivocados), 5 a Ceci. Base: reglas de `app/clasificador/etapas.py` (rama `feat/etapas-allianz`), validadas contra 79 correos reales.
+Estado: **aprobado 19/10, en desarrollo**. ✅ Pasos 1–7 (paso 7: pantalla en `tomi-babilonia` rama `feat/panel-etapas-allianz`) (paso 5: falta la plantilla WATI y aprobar `docs/TEXTOS_ETAPA1.md`) (SQL del paso 2 listo para correr: `docs/migracion_etapa1_2026-10-19.sql`). Paso 3 sobre 57 tickets reales: 52 identificados (0 equivocados), 5 a Ceci. Base: reglas de `app/clasificador/etapas.py` (rama `feat/etapas-allianz`), validadas contra 79 correos reales.
 
 ## Qué hay que lograr
 Cada correo del proceso largo:
