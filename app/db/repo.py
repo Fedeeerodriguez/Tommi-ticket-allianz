@@ -324,7 +324,8 @@ class RepositorioPostgres:
 # ------------------------------------------------------------------ SQLite (dev)
 class RepositorioSQLite:
     def __init__(self, ruta: str):
-        self.conn = sqlite3.connect(ruta)
+        # check_same_thread=False: la API (FastAPI) atiende en otro hilo. Es la base de dev/tests.
+        self.conn = sqlite3.connect(ruta, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self._crear()
 
