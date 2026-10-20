@@ -1,6 +1,6 @@
 # Plan Etapa 2 — Proceso corto (Elite · Patrimonial · OptiMaxx Plus) y trámites
 
-Estado: **en desarrollo (20/10)**. Rama `feat/etapas-allianz`, sobre la Etapa 1.
+Estado: **desarrollo terminado (20/10), pasos 1–8**; falta encender (`docs/ENCENDIDO_ETAPA2.md`). Rama `feat/etapas-allianz`, sobre la Etapa 1. Probado junto con la Etapa 1: `tests/test_todo_junto.py` + informe `python -m app.run_replay_etapas` (semana de prueba + 485 correos reales, 0 errores).
 Objetivo: que **todo** correo de Allianz pase por el motor por etapa (no solo el proceso largo) y probar las dos etapas juntas antes de encender.
 
 ## Los dos procesos

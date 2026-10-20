@@ -36,4 +36,4 @@ Todo lo nuevo está detrás de `MOTOR_ETAPAS`. Apagarlo (`MOTOR_ETAPAS=false` + 
 - **Recordatorios:** pasan a días hábiles de México y solo en horario de oficina. La reactivación diaria y el SLA viejo dejan de tocar esos tickets.
 - **Avisos automáticos sin ticket:** DAF, cobranzas y recordatorios de pago ya no crean tickets.
 - **Avisos de emisión:** los de clientes que no seguimos tampoco crean tickets.
-- **Sin cambios:** el proceso corto y los trámites siguen con el motor de hoy, hasta F6 y F7.
+- **Proceso corto y trámites:** siguen con el motor de hoy hasta que se sumen a `MOTOR_ETAPAS_PROCESOS` (Etapa 2, `docs/ENCENDIDO_ETAPA2.md`).
