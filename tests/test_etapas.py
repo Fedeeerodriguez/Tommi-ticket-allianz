@@ -406,3 +406,54 @@ def test_texto_en_nfd_de_allianz():
     cuerpo = unicodedata.normalize("NFD", correo("SISTEMA", "NUEVO NEGOCIO EDUCACIÓN",
                                                  "Le confirmamos que recibimos su solicitud para trámite"))
     assert det(asunto, cuerpo).etapa == Etapa.CONFIRMACION_DATOS
+
+
+# ============================================================ ETAPA 2 — recorridos completos de corto y trámite
+_TR = "[Allianz México Ticket-2587626]"
+_CC = "Call Center Ahorro <callcenter.ahorro@allianz.com.mx>"
+
+
+def test_tramite_nuestra_respuesta_es_documentos_enviados():
+    r = det(f"{_TR} integraciones@babilonia.ai escribió un mensaje", correo(
+        "integraciones@babilonia.ai", "[EXT] Aplicaciónes de mensualidad",
+        "Buen día, anexo el estado de cuenta con la fecha de pago.\nSaludos."), _CC)
+    assert (r.etapa, r.proceso, r.actor_tipo) == (Etapa.DOCUMENTOS_ENVIADOS, "tramite", "propio")
+
+
+@pytest.mark.parametrize("msg,etapa", [
+    ("Buen día, le informamos que su solicitud fue atendida. Se aplicó la mensualidad.", Etapa.ATENDIDA),
+    ("Estimado cliente, el ticket queda cerrado.", Etapa.ATENDIDA),
+])
+def test_tramite_c3_atendido_cierra(msg, etapa):
+    r = det(f"{_TR} OSBALDO PINEDA escribió un mensaje",
+            correo("OSBALDO PINEDA", "[EXT] Aplicaciónes de mensualidad", msg), _CC)
+    assert (r.etapa, r.proceso) == (etapa, "tramite") and r.accion.cerrar
+
+
+def test_tramite_c3_1_cerrado_por_inactividad():
+    r = det(f"{_TR} Sistema escribió un mensaje", correo(
+        "SISTEMA", "[EXT] Aplicaciónes de mensualidad",
+        "Estimado cliente, su ticket fue cerrado por falta de respuesta."), _CC)
+    assert (r.etapa, r.proceso) == (Etapa.CERRADO_INACTIVIDAD, "tramite") and r.accion.cerrar
+
+
+def test_tramite_con_poliza_en_el_asunto():
+    r = det(f"{_TR} Sistema escribió un mensaje", correo(
+        "SISTEMA", "[EXT] Aplicación de pago póliza OPPT-48211 Ana Prueba",
+        "Esta es una respuesta automática para confirmar que hemos recibido su solicitud."), _CC)
+    assert (r.etapa, r.proceso, r.poliza, r.producto) == (Etapa.APERTURA, "tramite", "OPPT-48211", "OPPT")
+
+
+def test_corto_pago_elite_en_el_hilo_es_documentos_enviados():
+    r = det("[Allianz México Ticket-2567479] hola@babilonia.ai escribió un mensaje", correo(
+        "hola@babilonia.ai", "[EXT] Emisión póliza No. Póliza: SVIP-21799 No. Solicitud: 25287681",
+        "Buen día, anexo comprobante de pago y estado de cuenta del cliente."))
+    assert (r.etapa, r.proceso, r.poliza) == (Etapa.DOCUMENTOS_ENVIADOS, "corto", "SVIP-21799")
+
+
+def test_corto_requerimiento_de_allianz():
+    r = det("[Allianz México Ticket-2567479] WENDY PRUEBA escribió un mensaje", correo(
+        "WENDY PRUEBA", "[EXT] Emisión póliza No. Póliza: OPPT-51234 No. Solicitud: 25290001",
+        "Buen día, no identificamos el depósito. Favor de enviar el comprobante con la referencia."))
+    assert (r.etapa, r.proceso, r.producto) == (Etapa.REQUERIMIENTO, "corto", "OPPT")
+    assert "comprobante" in r.que_piden
