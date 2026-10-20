@@ -6,6 +6,7 @@ para poder correr el dry-run sin credenciales.
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 try:
@@ -61,7 +62,8 @@ ALLIANZ_DIRECTORIO = os.getenv("ALLIANZ_DIRECTORIO", "")
 
 # --- WATI (WhatsApp) — Fase D. Real solo con credenciales y DRY_RUN=false; si no, laboratorio. ---
 WATI_API_URL = os.getenv("WATI_API_URL", "").rstrip("/")
-WATI_API_TOKEN = os.getenv("WATI_API_TOKEN", "")
+# Se acepta pegado con o sin "Bearer " (así viene en n8n como WATI_TOKEN); el cliente HTTP lo agrega.
+WATI_API_TOKEN = re.sub(r"^\s*bearer\s+", "", os.getenv("WATI_API_TOKEN", ""), flags=re.I).strip()
 WATI_PLANTILLA_ASESOR = os.getenv("WATI_PLANTILLA_ASESOR", "avances")     # plantilla de avances (asesores)
 WATI_PLANTILLA_CLIENTE = os.getenv("WATI_PLANTILLA_CLIENTE", "")          # solo cuando se le pide algo
 WATI_PLANTILLA_CECI = os.getenv("WATI_PLANTILLA_CECI", "")               # intervención/visto bueno de Ceci
