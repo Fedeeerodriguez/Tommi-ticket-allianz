@@ -156,6 +156,11 @@ def transicion(actual: Optional[str], nueva: Etapa, ronda: int) -> tuple[bool, i
     return False, ronda, f"correo de una etapa anterior o repetida ({nueva.value} con el ticket en {cur.value})"
 
 
+def _mx(d: datetime) -> str:
+    """Para la bitácora y el panel: hora de CDMX, que es la que lee Ceci."""
+    return f"{d.astimezone(timezone.utc) + timedelta(hours=config.UTC_OFFSET_MX):%d/%m %H:%M} (CDMX)"
+
+
 def mas_horas_habiles(desde: datetime, horas: int) -> datetime:
     """'72 h hábiles' = 3 días hábiles: corren las 24 h pero no cuentan fines de semana ni
     feriados de México (sla.py). El resto (<24 h) se suma tal cual."""
@@ -190,6 +195,17 @@ def _vencimiento(motivo: str, etapa: dict, desde: datetime) -> tuple[datetime, d
     return vence, mas_horas_habiles(vence, config.ESCALA_HORAS_HABILES)
 
 
+def _cancelar_escalaciones(repo: Repositorio, ticket_id: int, motivo: str) -> int:
+    """El correo de escalación a Allianz que todavía espera el visto bueno de Ceci deja de tener
+    sentido si Allianz ya respondió o el ticket terminó: se descarta (Ceci no lo ve más)."""
+    n = 0
+    for a in repo.listar_acciones(ticket_id=ticket_id):
+        if a.get("tipo_accion") == "escalar_allianz" and a.get("estado") in ("sugerida", "pendiente_ceci"):
+            repo.actualizar_accion(a["id"], "omitida", {"motivo": motivo})
+            n += 1
+    return n
+
+
 def _recordatorios(repo: Repositorio, ticket_id: int, e: Etapa, etapa: dict, ronda_nueva: bool,
                    ahora: datetime, correo_id: Optional[int],
                    proceso: str = "largo") -> tuple[Optional[datetime], list[str]]:
@@ -201,13 +217,15 @@ def _recordatorios(repo: Repositorio, ticket_id: int, e: Etapa, etapa: dict, ron
         # Allianz respondió → deja de esperarse a Allianz; si es otra ronda, el pedido viejo se reemplaza.
         if repo.cerrar_recordatorios(ticket_id, "cumplido", REC_ESPERANDO_ALLIANZ, "Allianz respondió"):
             log_.append("se cortó 'esperando a Allianz'")
+        if _cancelar_escalaciones(repo, ticket_id, "Allianz respondió antes de que se aprobara la escalación"):
+            log_.append("se descartó la escalación pendiente")
         if ronda_nueva and repo.cerrar_recordatorios(ticket_id, "cancelado", REC_REQUERIMIENTO,
                                                      "reemplazado por un requerimiento nuevo"):
             log_.append("se reemplazó el requerimiento anterior")
         vence, escala = _vencimiento(REC_REQUERIMIENTO, etapa, ahora)
         if repo.crear_recordatorio(ticket_id, REC_REQUERIMIENTO, _DEST_REC[REC_REQUERIMIENTO], vence, escala,
                                    correo_id, nota=(etapa.get("que_piden") or "")[:600]):
-            log_.append(f"recordatorio al cliente/asesor para el {vence:%d/%m %H:%M} UTC")
+            log_.append(f"recordatorio al cliente/asesor para el {_mx(vence)}")
     elif e == Etapa.DOCUMENTOS_ENVIADOS:
         for motivo in _ESPERAN_AL_CLIENTE:  # requerimiento (largo/trámite) o pago (corto)
             if repo.cerrar_recordatorios(ticket_id, "cumplido", motivo, "se mandó lo pedido (C4)"):
@@ -215,12 +233,14 @@ def _recordatorios(repo: Repositorio, ticket_id: int, e: Etapa, etapa: dict, ron
         vence, escala = _vencimiento(REC_ESPERANDO_ALLIANZ, etapa, ahora)
         if repo.crear_recordatorio(ticket_id, REC_ESPERANDO_ALLIANZ, _DEST_REC[REC_ESPERANDO_ALLIANZ], vence,
                                    escala, correo_id, nota="esperando respuesta de Allianz"):
-            log_.append(f"esperando a Allianz hasta el {vence:%d/%m %H:%M} UTC")
+            log_.append(f"esperando a Allianz hasta el {_mx(vence)}")
     elif acc.cancela_recordatorio:
         estado = "cumplido" if e in (Etapa.AUTORIZADO, Etapa.ATENDIDA, Etapa.POLIZA_EMITIDA) else "cancelado"
         n = repo.cerrar_recordatorios(ticket_id, estado, nota=f"etapa {e.value}")
         if n:
             log_.append(f"se cortaron {n} recordatorio(s)")
+        if _cancelar_escalaciones(repo, ticket_id, f"Allianz ya respondió ({e.value}): la escalación no hace falta"):
+            log_.append("se descartó la escalación pendiente")
     return vence, log_
 
 
@@ -338,7 +358,7 @@ def decidir_por_etapa(repo: Repositorio, ticket_id: int, etapa: dict, correo_id:
     ctx = {**mensajes_etapa.contexto(ticket, etapa, ident.datos if ident and ident.ok else None, vence),
            "ticket_id": ticket_id}
     tel_cliente = (ident.datos.get("telefono_cliente") if ident and ident.ok else None)
-    params = mensajes_etapa.params_wati(ctx, e.value, tel_cliente)
+    params = mensajes_etapa.params_wati(ctx, e.value, tel_cliente, proceso)
 
     omitidos = res["avisos_omitidos"]
     if guia:

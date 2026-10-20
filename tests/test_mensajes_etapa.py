@@ -14,7 +14,7 @@ from app.db.repo import RepositorioSQLite
 from test_motor_etapas import C1, C3, LUNES, et, fila, notion
 
 ETAPA_EJEMPLO = {"etapa": "requerimiento", "nro_ticket": "2576612", "producto": "GMMI", "nro_solicitud": "1950110",
-                 "cliente": "HORTENCIA GONZALEZ GAMA", "que_piden": "la carta laboral firmada " * 30,
+                 "cliente": "HORTENCIA PRUEBA GAMA", "que_piden": "la carta laboral firmada " * 30,
                  "plazo": (15, "dias_habiles"), "mensaje": "Adjunto la hoja membretada", "poliza": "GMMI-101770"}
 
 
@@ -31,7 +31,7 @@ def aislado(monkeypatch):
 @pytest.mark.parametrize("etapa", sorted(M.TEXTOS))
 @pytest.mark.parametrize("rol", ["ceci", "asesor", "cliente"])
 def test_todos_los_textos_se_completan(etapa, rol):
-    ctx = M.contexto({}, {**ETAPA_EJEMPLO, "etapa": etapa}, {"cliente_nombre": "Hortencia González Gama"},
+    ctx = M.contexto({}, {**ETAPA_EJEMPLO, "etapa": etapa}, {"cliente_nombre": "Hortencia Prueba Gama"},
                      datetime(2026, 10, 22, tzinfo=timezone.utc))
     t = M.texto(rol, etapa, ctx, ["Falta el teléfono del asesor en Notion: no se le avisó."])
     if t is None:
@@ -103,7 +103,7 @@ def test_despacho_con_plantilla_de_etapas(tmp_path, monkeypatch):
         r = a["resultado"] if isinstance(a["resultado"], dict) else __import__("json").loads(a["resultado"])
         assert r["plantilla"] == "actualizacion_tramite"
         assert r["params"]["ticket"] == "2576612" and "Solicitud abierta" in r["params"]["tramite"]
-        assert r["params"]["cliente"] == "Hortencia González Gama" and r["params"]["mensaje"]
+        assert r["params"]["cliente"] == "Hortencia Prueba Gama" and r["params"]["mensaje"]
 
 
 def test_despacho_sin_plantilla_de_etapas_usa_la_de_cada_rol(tmp_path, monkeypatch):

@@ -12,15 +12,15 @@ Las reglas son las mismas de la Etapa 1 (`docs/TEXTOS_ETAPA1.md`):
 
 ## Proceso corto (Elite · Patrimonial · OptiMaxx Plus)
 
-Ejemplo: ticket 2567479 · Guillermo Sanders Castro · Elite (SVIP) · póliza SVIP-21799.
+Ejemplo: ticket 2567479 · Guillermo Prueba Castro · Elite (SVIP) · póliza SVIP-21799.
 
 ### 1. Allianz confirma los datos (C2) → la guía queda para que Ceci la apruebe
 Al cliente y al asesor **no les sale nada** hasta que Ceci aprueba.
 
 | Para | Texto |
 |---|---|
-| Ceci (Telegram) | Guía de aportación · Ticket 2567479 · Guillermo Sanders Castro · Elite<br><br>*(la guía, abajo)*<br><br>[✅ Aprobar] [🗑 Descartar] |
-| Ceci (WhatsApp, solo si no está Telegram) | Ticket 2567479 · Guillermo Sanders Castro · Elite: Allianz confirmó los datos (póliza SVIP-21799). La guía de aportación está lista para que la apruebes. |
+| Ceci (Telegram) | Guía de aportación · Ticket 2567479 · Guillermo Prueba Castro · Elite<br><br>*(la guía, abajo)*<br><br>[✅ Aprobar] [🗑 Descartar] |
+| Ceci (WhatsApp, solo si no está Telegram) | Ticket 2567479 · Guillermo Prueba Castro · Elite: Allianz confirmó los datos (póliza SVIP-21799). La guía de aportación está lista para que la apruebes. |
 
 **Guía de aportación (provisoria):** se usa hasta que llegue el speech de Ceci (`GUIA_APORTACION_TEXTO`).
 > Hola Guillermo, Allianz ya confirmó tu solicitud de Elite (póliza SVIP-21799). Para activarla falta tu aportación inicial:
@@ -40,7 +40,7 @@ Al cliente y al asesor **no les sale nada** hasta que Ceci aprueba.
 | Para | Texto |
 |---|---|
 | Cliente | *(la guía tal cual la aprobó Ceci)* |
-| Asesor | Ticket 2567479 · Guillermo Sanders Castro: le mandamos al cliente la guía de aportación (aprobada por Ceci):<br><br>*(la guía)* |
+| Asesor | Ticket 2567479 · Guillermo Prueba Castro: le mandamos al cliente la guía de aportación (aprobada por Ceci):<br><br>*(la guía)* |
 
 Arranca el **recordatorio de pago**.
 
@@ -50,9 +50,9 @@ Se manda a los 3 días hábiles desde la aprobación. Si al día hábil siguient
 | Cuándo | Para | Texto |
 |---|---|---|
 | Recordatorio | Cliente | Hola Guillermo, te recuerdo que falta tu aportación para activar tu Elite. Cuando deposites, mándame por aquí el comprobante y tu estado de cuenta. |
-| Recordatorio | Asesor | Ticket 2567479 · Guillermo Sanders Castro: el cliente todavía no manda el comprobante de pago de la guía de aportación. Ya le recordamos al cliente. |
-| Escalado | Asesor | Ticket 2567479 · Guillermo Sanders Castro: sigue sin llegar el comprobante de pago de la guía de aportación. Contacta al cliente. |
-| Escalado | Ceci | Ticket 2567479 · Guillermo Sanders Castro: sigue sin llegar el comprobante de pago de la guía de aportación. |
+| Recordatorio | Asesor | Ticket 2567479 · Guillermo Prueba Castro: el cliente todavía no manda el comprobante de pago de la guía de aportación. Ya le recordamos al cliente. |
+| Escalado | Asesor | Ticket 2567479 · Guillermo Prueba Castro: sigue sin llegar el comprobante de pago de la guía de aportación. Contacta al cliente. |
+| Escalado | Ceci | Ticket 2567479 · Guillermo Prueba Castro: sigue sin llegar el comprobante de pago de la guía de aportación. |
 
 ### 4. Pago enviado a Allianz
 Cuándo se da por enviado:
@@ -61,7 +61,7 @@ Cuándo se da por enviado:
 
 | Para | Texto |
 |---|---|
-| Asesor | Ticket 2567479 · Guillermo Sanders Castro: se envió a Allianz el comprobante de pago, esperamos la emisión. |
+| Asesor | Ticket 2567479 · Guillermo Prueba Castro: se envió a Allianz el comprobante de pago, esperamos la emisión. |
 | Cliente | Hola Guillermo, ya enviamos tu comprobante de pago a Allianz. Te aviso cuando tu póliza quede emitida. |
 
 Corta el recordatorio de pago y arranca el de "esperando a Allianz", el mismo de la Etapa 1.
@@ -71,7 +71,7 @@ Es el mismo texto de la Etapa 1.
 
 | Para | Texto |
 |---|---|
-| Asesor | Ticket 2567479 · Guillermo Sanders Castro: póliza SVIP-21799 emitida. |
+| Asesor | Ticket 2567479 · Guillermo Prueba Castro: póliza SVIP-21799 emitida. |
 | Cliente | Hola Guillermo, ¡tu póliza SVIP-21799 ya está emitida! Te va a llegar el acceso al portal de Allianz. |
 
 ---

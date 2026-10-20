@@ -57,7 +57,7 @@ def _avisar(repo: Repositorio, ticket: dict, rec: dict, momento: str, roles: lis
     motivo = rec["motivo"]
     clave = f"{momento}_{motivo}"           # 'recordatorio_requerimiento', 'escalado_esperando_allianz'…
     ctx = _ctx(ticket, rec)
-    params = mensajes_etapa.params_wati(ctx, clave, ticket.get("telefono_cliente"))
+    params = mensajes_etapa.params_wati(ctx, clave, ticket.get("telefono_cliente"), ticket.get("proceso"))
     plan, omitidos = [], []
     identificado = bool(ticket.get("identificado_por"))
     roles = [r for r in roles if rol_activo(r)]  # encendido gradual

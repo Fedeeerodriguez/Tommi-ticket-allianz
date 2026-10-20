@@ -48,7 +48,7 @@ def test_aviso_de_emision_se_engancha_al_ticket(entorno, monkeypatch):
     monkeypatch.setattr(config, "MOTOR_ETAPAS", True)
     repo, g = entorno
     tk = g.invoke({"correo": correo("m1", *C1), "despachar": False})["ticket_id"]
-    em = correo("m9", "Aviso de emisión de póliza GMMI-101770 Hortencia Gonzalez Gama",
+    em = correo("m9", "Aviso de emisión de póliza GMMI-101770 Hortencia Prueba Gama",
                 "<html><body>Aviso de emisión</body></html>", "notificaciones.optimaxx@allianz.com.mx")
     out = g.invoke({"correo": em, "despachar": False})
     assert "emision" in out["ruta"] and out["ticket_id"] == tk

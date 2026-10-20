@@ -239,10 +239,27 @@ ETIQUETAS = {
 }
 
 
-def params_wati(ctx: dict, etapa: str, telefono_cliente: Optional[str]) -> dict:
+# Etapa 2: el nombre cambia según el proceso (un trámite no se "cobra"; en el corto lo enviado es el pago).
+ETIQUETAS_PROCESO = {
+    ("tramite", "apertura"): "Trámite recibido por Allianz",
+    ("tramite", "requerimiento"): "Allianz pide algo del trámite",
+    ("tramite", "documentos_enviados"): "Respuesta enviada a Allianz",
+    ("tramite", "atendida"): "Trámite atendido",
+    ("corto", "confirmacion_datos"): "Datos confirmados · guía de aportación",
+    ("corto", "documentos_enviados"): "Pago enviado a Allianz",
+    ("corto", "atendida"): "Atendido",
+}
+
+
+def etiqueta(etapa: Optional[str], proceso: Optional[str] = None) -> str:
+    return ETIQUETAS_PROCESO.get((proceso or "", etapa or "")) or ETIQUETAS.get(etapa or "", etapa or "")
+
+
+def params_wati(ctx: dict, etapa: str, telefono_cliente: Optional[str], proceso: Optional[str] = None) -> dict:
     """Datos sueltos para la plantilla 'actualización de trámite' (el despacho elige cuáles usa)."""
-    return {"ticket": ctx.get("tk"), "tramite": f"{ctx.get('producto')} · {ETIQUETAS.get(etapa, etapa)}",
-            "etapa": ETIQUETAS.get(etapa, etapa), "cliente": ctx.get("cliente"),
+    nombre = etiqueta(etapa, proceso)
+    return {"ticket": ctx.get("tk"), "tramite": f"{ctx.get('producto')} · {nombre}",
+            "etapa": nombre, "cliente": ctx.get("cliente"),
             "telefono": telefono_cliente or "—", "poliza": ctx.get("poliza"), "solicitud": ctx.get("sol")}
 
 

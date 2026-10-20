@@ -270,7 +270,7 @@ def _campo(texto: str, *nombres: str) -> Optional[str]:
 
 
 def _cliente_de_titulo(titulo: str) -> Optional[str]:
-    """'1950110 HORTENCIA GONZALEZ GAMA NUEVO NEGOCIO' / 'GMMI 98577 MARTHA ZARATE URIBE N'."""
+    """'1950110 HORTENCIA PRUEBA GAMA NUEVO NEGOCIO' / 'GMMI 98577 MARTHA ZARATE URIBE N'."""
     t = _plano(titulo)
     m = re.match(r"^(?:[A-Z0-9]{3,4}\s+)?\d{4,}\s+(.+?)(?:\s+nuevo\s+negocio|\s+N)?$", t, re.I)
     return m.group(1).strip() if m else None

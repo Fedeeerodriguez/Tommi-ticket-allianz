@@ -29,7 +29,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from app import config
-from app.acciones.mensajes_etapa import ETIQUETAS, FALTA_COMPLETAR
+from app.acciones.mensajes_etapa import ETIQUETAS, FALTA_COMPLETAR, etiqueta
 from app.acciones.motor_etapas import RANGO, _parse_ts
 from app.db import get_repo
 
@@ -122,7 +122,7 @@ def listar(filtro: Optional[str] = None, _=Depends(_auth)):
             "acciones": acc,
             "pendientes": sum(1 for x in acc if x["calificacion"] == "pendiente"),
             # Etapa 1 (proceso largo)
-            "etapa": t.get("etapa"), "etapa_nombre": ETIQUETAS.get(t.get("etapa") or "", t.get("etapa")),
+            "etapa": t.get("etapa"), "etapa_nombre": etiqueta(t.get("etapa"), t.get("proceso")),
             "etapa_desde": t.get("etapa_desde"), "proceso": t.get("proceso"), "producto": t.get("producto"),
             "nro_solicitud": t.get("nro_solicitud"), "identificado_por": t.get("identificado_por"),
             "proximo_recordatorio": proximo_recordatorio(repo, t["id"]),
@@ -206,7 +206,7 @@ def linea_tiempo(ticket_id: int, _=Depends(_auth)):
         # La "ronda" solo significa algo en las etapas que avanzan (requerimiento 2, 3…); en notas,
         # rebotes y recordatorios es un id interno.
         ronda = a.get("ronda") if a.get("etapa") in _ETAPAS_CON_RONDA else None
-        p = pasos.setdefault(k, {"etapa": a.get("etapa"), "etapa_nombre": ETIQUETAS.get(a.get("etapa"), a.get("etapa")),
+        p = pasos.setdefault(k, {"etapa": a.get("etapa"), "etapa_nombre": etiqueta(a.get("etapa"), t.get("proceso")),
                                  "ronda": ronda, "fecha": a.get("created_at"), "avisos": []})
         p["avisos"].append({"para": a.get("destinatario"), "canal": a.get("canal"), "texto": a.get("texto"),
                             "fecha": a.get("created_at")})
@@ -217,7 +217,7 @@ def linea_tiempo(ticket_id: int, _=Depends(_auth)):
                                            "guia_aprobada", "guia_corregida", "guia_descartada", "etapa_manual")]
     return {
         "ticket": {"id": t["id"], "nro_ticket": t.get("nro_ticket"), "cliente_nombre": t.get("cliente_nombre"),
-                   "etapa": t.get("etapa"), "etapa_nombre": ETIQUETAS.get(t.get("etapa") or "", t.get("etapa")),
+                   "etapa": t.get("etapa"), "etapa_nombre": etiqueta(t.get("etapa"), t.get("proceso")),
                    "estado": t.get("estado"), "producto": t.get("producto"), "nro_solicitud": t.get("nro_solicitud"),
                    "poliza": t.get("poliza"), "identificado_por": t.get("identificado_por"),
                    "proceso": t.get("proceso"), "titulo_hilo": t.get("titulo_hilo"),

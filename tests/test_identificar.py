@@ -14,8 +14,8 @@ def fila(nombre, sol=None, poliza=None, tel="5512345678", asesor="asesor1@babilo
 EMISIONES = [
     fila("José Daniel Rosas Rayas", sol=25232752),
     fila("José Daniel Rosas Rayas", poliza="PLU3-431963"),
-    fila("Hortencia Gonzalez Gama", sol=1950110, poliza="PLU3-111111"),
-    fila("Hortencia  Gonzalez Gama", poliza="PLU3-222222"),            # misma persona, otra póliza
+    fila("Hortencia Prueba Gama", sol=1950110, poliza="PLU3-111111"),
+    fila("Hortencia  Prueba Gama", poliza="PLU3-222222"),            # misma persona, otra póliza
     fila("Liliana Berenice Mena Gonzalez", tel="5511111111", asesor="a@b.ai"),
     fila("Liliana Berenice Mena Gonzalez", tel="5522222222", asesor="otro@b.ai"),  # homónima
     fila("Angeles Montserrat Oropeza Camacho", poliza="PLU3-421131"),
@@ -69,7 +69,7 @@ def test_por_nombre_con_acentos_en_notion():
 
 
 def test_misma_persona_varias_polizas_es_una_sola():
-    r = identificar(cliente="HORTENCIA GONZALEZ GAMA", buscar=B)
+    r = identificar(cliente="HORTENCIA PRUEBA GAMA", buscar=B)
     assert r.ok and r.candidatos == 2
 
 
@@ -85,7 +85,7 @@ def test_no_esta_en_notion():
 
 def test_busqueda_incompleta_no_decide():
     # Cada palabra trae "hay más" → no hay lista completa para comparar → no se adivina.
-    r = identificar(cliente="HORTENCIA GONZALEZ GAMA", buscar=notion_falso(max_por_pagina=1))
+    r = identificar(cliente="HORTENCIA PRUEBA GAMA", buscar=notion_falso(max_por_pagina=1))
     assert not r.ok
 
 

@@ -11,7 +11,7 @@ from app.db.repo import RepositorioSQLite
 LUNES = datetime(2026, 10, 19, 15, 0, tzinfo=timezone.utc)  # lunes 09:00 en CDMX
 SISTEMA = "Allianz.Mexico@allianz.com.mx"
 TK = "[Allianz México Ticket-2576612]"
-TITULO = "1950110 HORTENCIA GONZALEZ GAMA NUEVO NEGOCIO"
+TITULO = "1950110 HORTENCIA PRUEBA GAMA NUEVO NEGOCIO"
 PIE = "\n Gracias,\n Allianz Mexico SA Compania de Seguros\n--- Este mensaje fue enviado desde el Service Management"
 
 
@@ -20,8 +20,8 @@ def mail(actor, msg, titulo=TITULO, verbo="escribió un mensaje en"):
 
 
 C1 = (f"{TK} Sistema creó una nueva solicitud en su nombre",
-      "Sistema creó HORTENCIA GONZALEZ GAMA en tu nombre\n NÚMERO DE SOLICITUD: 1950110\n "
-      "NOMBRE DEL CONTRATANTE: HORTENCIA GONZALEZ GAMA\n TIPO DE SOLICITUD: GMMI")
+      "Sistema creó HORTENCIA PRUEBA GAMA en tu nombre\n NÚMERO DE SOLICITUD: 1950110\n "
+      "NOMBRE DEL CONTRATANTE: HORTENCIA PRUEBA GAMA\n TIPO DE SOLICITUD: GMMI")
 C2 = (f"{TK} Sistema escribió un mensaje", mail("SISTEMA", "Le confirmamos que recibimos su solicitud."))
 C3 = (f"{TK} RAUL MARIN escribió un mensaje",
       mail("RAUL MARIN", "Buen día\nFavor de enviar la carta laboral firmada. Tiene 15 días hábiles.\nSaludos"))
@@ -35,7 +35,7 @@ def et(asunto_cuerpo, remitente=SISTEMA):
     return detectar_etapa(*asunto_cuerpo, remitente).como_dict()
 
 
-def fila(nombre="Hortencia González Gama", sol=1950110, tel_asesor="5598765432", tel_cliente="5512345678"):
+def fila(nombre="Hortencia Prueba Gama", sol=1950110, tel_asesor="5598765432", tel_cliente="5512345678"):
     return {"cliente_nombre": nombre, "nro_solicitud": sol, "poliza": None, "telefono_cliente": tel_cliente,
             "asesor_correo": "asesor1@babilonia.ai", "asesor_nombre": "Asesor Uno", "telefono_asesor": tel_asesor}
 
@@ -226,7 +226,7 @@ def test_rebote_alerta_a_ceci_aun_con_el_ticket_cerrado(repo, tk):
 def test_poliza_emitida_avisa_a_los_3_y_termina(repo, tk):
     for i, c in enumerate((C1, C5), 1):
         correr(repo, tk, c, i)
-    aviso = ("Aviso de emisión de póliza GMMI-101770 Hortencia Gonzalez Gama", "<html><body>Aviso</body></html>")
+    aviso = ("Aviso de emisión de póliza GMMI-101770 Hortencia Prueba Gama", "<html><body>Aviso</body></html>")
     r = decidir_por_etapa(repo, tk, detectar_etapa(*aviso, "notificaciones.optimaxx@allianz.com.mx").como_dict(),
                           correo_id=3, ahora=LUNES, buscar=notion(fila()))
     assert r["aplicada"] and roles(r) == ["asesor", "ceci", "cliente"]
@@ -255,7 +255,7 @@ def test_solo_proceso_largo_y_con_el_interruptor(monkeypatch):
 # ---------------- correcciones del replay con correos reales (paso 8) ----------------
 def test_sin_identificar_igual_guarda_el_nombre_que_escribe_allianz(repo, tk):
     correr(repo, tk, C1, 1, buscar=notion())
-    assert repo.obtener_ticket(tk)["cliente_nombre"] == "HORTENCIA GONZALEZ GAMA"
+    assert repo.obtener_ticket(tk)["cliente_nombre"] == "HORTENCIA PRUEBA GAMA"
     assert repo.obtener_ticket(tk)["identificado_por"] is None
 
 
@@ -282,5 +282,5 @@ def test_apertura_sin_producto_ni_solicitud_no_dice_tu_seguro(repo, tk):
     c1 = (C1[0], C1[1].replace(" TIPO DE SOLICITUD: GMMI", "").replace("NÚMERO DE SOLICITUD: 1950110\n", ""))
     r = correr(repo, tk, c1, 1, buscar=notion(fila(sol=None)))
     textos = {a["rol"]: a["mensaje"] for a in r["plan"]}
-    assert textos["asesor"] == "Ticket 2576612 · Hortencia González Gama: Allianz abrió la solicitud."
+    assert textos["asesor"] == "Ticket 2576612 · Hortencia Prueba Gama: Allianz abrió la solicitud."
     assert textos["cliente"].startswith("Hola Hortencia, tu solicitud ya está en Allianz")

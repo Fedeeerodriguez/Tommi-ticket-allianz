@@ -62,7 +62,7 @@ def aprobar(repo: Repositorio, aprobacion_id: int, por: str, texto: Optional[str
     ticket = repo.obtener_ticket(ap["ticket_id"]) or {"id": ap["ticket_id"]}
     tid, ronda = ticket["id"], int(ap.get("ronda") or 1)
     ctx = _ctx(repo, ticket, ap["texto"])
-    params = mensajes_etapa.params_wati(ctx, GUIA, ticket.get("telefono_cliente"))
+    params = mensajes_etapa.params_wati(ctx, GUIA, ticket.get("telefono_cliente"), "corto")
     res = _resultado(True, "Guía aprobada.")
     omitidos: list[str] = []
     for rol in ("cliente", "asesor"):
