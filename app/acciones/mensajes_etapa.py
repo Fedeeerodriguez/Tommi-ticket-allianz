@@ -110,38 +110,49 @@ TEXTOS_PROCESO: dict[tuple[str, str], dict[str, str]] = {
         "asesor": "Ticket {tk} · {cliente}: Allianz lo atendió. Ticket cerrado.",
         "cliente": "Hola {nombre}, ¡listo! Allianz atendió tu solicitud.",
     },
-    # Aviso de la guía aprobada por Ceci (el texto de la guía va aparte: es el que ella aprobó).
+    # Aviso de la guía aprobada por Ceci. Al cliente le sale la plantilla de la guía (GUIA_PLANTILLA);
+    # el texto queda registrado tal cual le llega.
     ("corto", "guia_aportacion"): {
-        "asesor": "Ticket {tk} · {cliente}: le mandamos al cliente la guía de aportación (aprobada por Ceci):\n\n{guia}",
+        "asesor": "Ticket {tk} · {cliente}: le mandamos al cliente la guía de aportación (aprobada por Ceci). "
+                  "Monto: {monto} · Datos para depositar: {datos_deposito}.",
         "cliente": "{guia}",
     },
 }
 
-# Guía de aportación PROVISORIA hasta tener el speech de Ceci (GUIA_APORTACION_TEXTO). Lo que está
-# entre [corchetes] lo completa Ceci antes de aprobar: con corchetes no se puede aprobar.
-GUIA_PROVISORIA = (
-    "Hola {nombre}, Allianz ya confirmó tu solicitud de {producto_cliente}{con_poliza}. Para activarla "
-    "falta tu aportación inicial:\n"
-    "• Monto: [completar]\n"
-    "• Datos para depositar: [completar]\n"
-    "• Referencia: póliza {poliza}\n"
+# Guía de aportación = la plantilla de WATI `tommy_guia_aportacion` (misma redacción). El sistema
+# pone nombre, producto y póliza; Ceci completa MONTO y DATOS PARA DEPOSITAR antes de aprobar
+# (sin esos dos no se puede aprobar).
+GUIA_PLANTILLA = (
+    "Hola {nombre} 👋 Allianz ya confirmó tu solicitud de {producto} (póliza {poliza}). Para activarla "
+    "falta tu aportación inicial:\n\n"
+    "• Monto: {monto}\n"
+    "• Datos para depositar: {datos_deposito}\n"
+    "• Referencia: póliza {poliza}\n\n"
     "Cuando deposites, mándame por aquí el comprobante y tu estado de cuenta, y yo lo envío a Allianz."
 )
+CAMPOS_CECI = ("monto", "datos_deposito")
+NOMBRES_CAMPOS = {"monto": "monto", "datos_deposito": "datos para depositar"}
 FALTA_COMPLETAR = "[completar"
 
 
-def guia_aportacion(ctx: dict) -> str:
-    plantilla = config.GUIA_APORTACION_TEXTO or GUIA_PROVISORIA
-    if not ctx.get("nombre"):
-        plantilla = plantilla.replace("Hola {nombre}, ", "Hola, ")
-    return _puntuacion(plantilla.format_map(_Faltante(ctx)))
+def datos_guia(ctx: dict) -> dict:
+    """Variables de la guía que pone el sistema; las de Ceci arrancan vacías."""
+    return {"nombre": ctx.get("nombre") or "", "producto": ctx.get("producto_cliente") or "",
+            "poliza": ctx.get("poliza") or "", "monto": "", "datos_deposito": ""}
 
 
-class _Faltante(dict):
-    """Una variable desconocida en el speech de Ceci queda marcada para completar (no rompe)."""
+def faltan_en_guia(datos: dict) -> list[str]:
+    return [NOMBRES_CAMPOS[k] for k in CAMPOS_CECI if not str((datos or {}).get(k) or "").strip()]
 
-    def __missing__(self, k):
-        return f"[completar {k}]"
+
+def texto_guia(datos: dict) -> str:
+    """Lo que le llega al cliente (lo que no está completo queda como [completar])."""
+    d = {k: str(v).strip() for k, v in (datos or {}).items() if v is not None}
+    valores = {"nombre": d.get("nombre") or "de nuevo", "producto": d.get("producto") or "tu plan",
+               "poliza": d.get("poliza") or "[completar]"}
+    for k in CAMPOS_CECI:
+        valores[k] = d.get(k) or "[completar]"
+    return GUIA_PLANTILLA.format(**valores)
 
 
 # Recordatorios (paso 6). Clave: (motivo, momento) → rol → texto. momento = recordatorio | escalado.
@@ -259,7 +270,7 @@ def params_wati(ctx: dict, etapa: str, telefono_cliente: Optional[str], proceso:
     """Datos sueltos para la plantilla 'actualización de trámite' (el despacho elige cuáles usa)."""
     nombre = etiqueta(etapa, proceso)
     return {"ticket": ctx.get("tk"), "tramite": f"{ctx.get('producto')} · {nombre}",
-            "etapa": nombre, "cliente": ctx.get("cliente"),
+            "etapa": nombre, "cliente": ctx.get("cliente"), "nombre": ctx.get("nombre"),
             "telefono": telefono_cliente or "—", "poliza": ctx.get("poliza"), "solicitud": ctx.get("sol")}
 
 

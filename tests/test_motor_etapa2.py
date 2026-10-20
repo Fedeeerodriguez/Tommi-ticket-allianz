@@ -77,7 +77,6 @@ def aislado(monkeypatch):
     monkeypatch.setattr(config, "MOTOR_ETAPAS_PROCESOS", ["largo", "corto", "tramite"])
     monkeypatch.setattr(config, "MOTOR_ETAPAS_ROLES", ["ceci", "asesor", "cliente"])
     monkeypatch.setattr(config, "TELEGRAM_APROBACIONES", False)
-    monkeypatch.setattr(config, "GUIA_APORTACION_TEXTO", "")
     monkeypatch.setattr(config, "NOTION_TOKEN", "")
     monkeypatch.setattr(config, "OPENAI_API_KEY", "")
     monkeypatch.setattr(config, "DRY_RUN", True)
@@ -102,13 +101,15 @@ def vivos(repo, tk):
     return {r["motivo"]: r for r in repo.listar_recordatorios(tk, estados=["activo", "escalado"])}
 
 
+CAMPOS = {"monto": "$50,000 MXN", "datos_deposito": "CLABE 012345678901234567 a nombre de Allianz"}
+
+
 def guia_lista(repo, tk):
-    """C2 corto → guía pendiente → Ceci la completa y la aprueba."""
+    """C2 corto → guía pendiente → Ceci completa monto y datos para depositar."""
     correr(repo, tk, C2_CORTO, 1)
     ap = repo.listar_aprobaciones(tk)[0]
-    texto = ap["texto"].replace("[completar]", "$50,000 MXN", 1).replace("[completar]", "CLABE 0123", 1)
-    aprobaciones.corregir(repo, ap["id"], texto, "panel:ceci")
-    return ap["id"], texto
+    aprobaciones.corregir(repo, ap["id"], "panel:ceci", **CAMPOS)
+    return ap["id"], repo.obtener_aprobacion(ap["id"])["texto"]
 
 
 # ================================================================ interruptor por proceso
@@ -132,8 +133,10 @@ def test_c2_corto_deja_la_guia_pendiente_y_no_le_escribe_al_cliente(repo):
     assert t["identificado_por"] == "solicitud"
     ap = repo.listar_aprobaciones(tk)
     assert len(ap) == 1 and ap[0]["estado"] == "pendiente" and ap[0]["tipo"] == "guia_aportacion"
-    assert ap[0]["texto"].startswith("Hola Guillermo,") and "SVIP-21799" in ap[0]["texto"]
-    assert "[completar]" in ap[0]["texto"]  # provisoria: Ceci completa monto y datos de depósito
+    assert ap[0]["texto"].startswith("Hola Guillermo 👋 Allianz ya confirmó tu solicitud de Elite (póliza SVIP-21799).")
+    assert "• Monto: [completar]" in ap[0]["texto"]  # Ceci completa monto y datos de depósito
+    assert ap[0]["datos"] == {"nombre": "Guillermo", "producto": "Elite", "poliza": "SVIP-21799",
+                              "monto": "", "datos_deposito": ""}
     assert vivos(repo, tk) == {}  # el recordatorio de pago arranca recién con la aprobación
 
 
@@ -154,13 +157,23 @@ def test_con_telegram_ceci_no_recibe_ademas_el_whatsapp(repo, monkeypatch):
     assert r["plan"] == [] and len(repo.listar_aprobaciones(tk, estados=["pendiente"])) == 1
 
 
-def test_guia_con_speech_de_ceci(repo, monkeypatch):
-    monkeypatch.setattr(config, "GUIA_APORTACION_TEXTO", "Hola {nombre}: tu {producto} {poliza}. Banco: {banco}")
+def test_la_guia_es_la_plantilla_de_wati(repo):
     tk = repo.crear_ticket({"nro_ticket": "2567479", "estado": "abierto"})
-    correr(repo, tk, C2_CORTO, 1)
-    texto = repo.listar_aprobaciones(tk)[0]["texto"]
-    # Una variable que el código no conoce no rompe: queda para completar.
-    assert texto == "Hola Guillermo: tu Elite SVIP-21799. Banco: [completar banco]"
+    aid, texto = guia_lista(repo, tk)
+    assert texto == ("Hola Guillermo 👋 Allianz ya confirmó tu solicitud de Elite (póliza SVIP-21799). Para "
+                     "activarla falta tu aportación inicial:\n\n• Monto: $50,000 MXN\n• Datos para depositar: CLABE "
+                     "012345678901234567 a nombre de Allianz\n• Referencia: póliza SVIP-21799\n\nCuando deposites, "
+                     "mándame por aquí el comprobante y tu estado de cuenta, y yo lo envío a Allianz.")
+    ap = repo.obtener_aprobacion(aid)
+    assert ap["version"] == 2 and ap["datos"]["monto"] == "$50,000 MXN"
+    # Corregir solo uno de los dos campos deja el otro como estaba.
+    aprobaciones.corregir(repo, aid, "panel:ceci", monto="$60,000 MXN")
+    ap = repo.obtener_aprobacion(aid)
+    assert (ap["version"], ap["datos"]["monto"], ap["datos"]["datos_deposito"]) == \
+        (3, "$60,000 MXN", CAMPOS["datos_deposito"])
+    # Lo mismo otra vez no crea versión nueva; vacío no vale.
+    assert aprobaciones.corregir(repo, aid, "panel:ceci", monto="$60,000 MXN")["motivo"] == "Sin cambios."
+    assert not aprobaciones.corregir(repo, aid, "panel:ceci", monto="  ")["ok"]
 
 
 def test_no_se_aprueba_con_datos_sin_completar(repo):
@@ -168,7 +181,9 @@ def test_no_se_aprueba_con_datos_sin_completar(repo):
     correr(repo, tk, C2_CORTO, 1)
     ap = repo.listar_aprobaciones(tk)[0]
     r = aprobaciones.aprobar(repo, ap["id"], "panel:ceci", ahora=LUNES)
-    assert not r["ok"] and "sin completar" in r["motivo"]
+    assert not r["ok"] and r["motivo"] == "Falta completar: monto y datos para depositar."
+    r = aprobaciones.aprobar(repo, ap["id"], "panel:ceci", monto="$10", ahora=LUNES)
+    assert not r["ok"] and r["motivo"] == "Falta completar: datos para depositar."
     assert repo.obtener_aprobacion(ap["id"])["estado"] == "pendiente"
 
 
@@ -179,8 +194,11 @@ def test_aprobar_manda_la_guia_y_arranca_el_recordatorio_de_pago(repo):
     assert r["ok"] and roles(r) == ["asesor", "cliente"]
     cli = next(a for a in r["plan"] if a["rol"] == "cliente")
     assert cli["mensaje"] == texto and cli["numero"] == "5512345678"  # exactamente lo aprobado
+    assert cli["params"]["guia"]["monto"] == "$50,000 MXN"  # → plantilla tommy_guia_aportacion
     ase = next(a for a in r["plan"] if a["rol"] == "asesor")
-    assert "Ticket 2567479 · Guillermo Prueba Castro" in ase["mensaje"] and "$50,000 MXN" in ase["mensaje"]
+    assert ase["mensaje"] == ("Ticket 2567479 · Guillermo Prueba Castro: le mandamos al cliente la guía de "
+                              "aportación (aprobada por Ceci). Monto: $50,000 MXN · Datos para depositar: CLABE "
+                              "012345678901234567 a nombre de Allianz.")
     ap = repo.obtener_aprobacion(aid)
     assert (ap["estado"], ap["resuelto_por"], ap["version"]) == ("aprobada", "telegram:ceci", 2)
     pago = vivos(repo, tk)["pago"]
@@ -191,14 +209,13 @@ def test_aprobar_manda_la_guia_y_arranca_el_recordatorio_de_pago(repo):
     assert not r2["ok"] and r2["plan"] == []
 
 
-def test_aprobar_con_texto_corregido_en_el_momento(repo):
+def test_aprobar_completando_en_el_momento(repo):
     tk = repo.crear_ticket({"nro_ticket": "2567479", "estado": "abierto"})
     correr(repo, tk, C2_CORTO, 1)
     ap = repo.listar_aprobaciones(tk)[0]
-    r = aprobaciones.aprobar(repo, ap["id"], "panel:ceci", texto="Hola Guillermo, deposita $10 a la CLABE 1.",
-                             ahora=LUNES)
-    assert r["ok"] and next(a for a in r["plan"] if a["rol"] == "cliente")["mensaje"] == \
-        "Hola Guillermo, deposita $10 a la CLABE 1."
+    r = aprobaciones.aprobar(repo, ap["id"], "panel:ceci", monto="$10", datos_deposito="CLABE 1", ahora=LUNES)
+    assert r["ok"] and "• Monto: $10\n• Datos para depositar: CLABE 1" in \
+        next(a for a in r["plan"] if a["rol"] == "cliente")["mensaje"]
     assert repo.obtener_aprobacion(ap["id"])["version"] == 2
 
 
@@ -207,7 +224,7 @@ def test_sin_identificar_no_se_aprueba(repo):
     r = correr(repo, tk, C2_CORTO, 1, buscar=notion())  # Notion no lo encuentra
     assert roles(r) == ["ceci"] and "asígnalo en el panel antes de aprobar" in r["plan"][0]["mensaje"]
     ap = repo.listar_aprobaciones(tk)[0]
-    aprobaciones.corregir(repo, ap["id"], "Hola, deposita $10.", "panel:ceci")
+    aprobaciones.corregir(repo, ap["id"], "panel:ceci", **CAMPOS)
     res = aprobaciones.aprobar(repo, ap["id"], "panel:ceci", ahora=LUNES)
     assert not res["ok"] and "identificado" in res["motivo"]
 
@@ -344,7 +361,7 @@ from app.acciones import mensajes_etapa as m  # noqa: E402
                                            ("PLU3", "tu solicitud de OptiMaxx Plus")])
 def test_guia_respeta_la_marca_del_producto(prod, esperado):
     ctx = m.contexto({"producto": prod, "poliza": f"{prod}-1"}, {}, {"cliente_nombre": "Ana Ruiz"})
-    assert esperado in m.guia_aportacion(ctx)
+    assert esperado in m.texto_guia(m.datos_guia(ctx))
 
 
 def test_el_largo_no_cambia_de_texto():

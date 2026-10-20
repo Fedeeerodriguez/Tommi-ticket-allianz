@@ -32,9 +32,9 @@ FILAS_NOTION = [
                         ("Ana Ruiz Pérez", 25111111, "OPPT-48211", "5544445555"))
 ]
 
-# Lo que Ceci escribe al aprobar cada guía (la provisoria trae [completar]).
-GUIA_ELITE = "Hola Guillermo, deposita $50,000 a la CLABE 0123 ref. SVIP-21799."
-GUIA_PATRI = "Hola Lucía, deposita $80,000 a la CLABE 0456 ref. OPPT-51234."
+# Lo que Ceci completa en cada guía antes de aprobarla (monto y datos para depositar).
+GUIA_ELITE = {"monto": "$50,000 MXN", "datos_deposito": "CLABE 012345678901234567 a nombre de Allianz México"}
+GUIA_PATRI = {"monto": "$80,000 MXN", "datos_deposito": "CLABE 045678901234567890 a nombre de Allianz México"}
 
 
 def buscar_notion(campo, op, valor, n):
@@ -93,7 +93,7 @@ CORREOS = [
      "<html><body>Estimado(a) JOSE RAMON MIER, carátula de la póliza OPPT-51234-0</body></html>"),
 ]
 
-# Lo que hace Ceci a mano (cuándo, qué, ticket, texto). El test lo hace por Telegram y el panel.
+# Lo que hace Ceci a mano (cuándo, qué, ticket, campos de la guía). El test lo hace por Telegram y el panel.
 ACCIONES_CECI = [
     (dia(19, 11), "aprobar_guia", ELITE, GUIA_ELITE),
     (dia(20, 10), "aprobar_guia", PATRI, GUIA_PATRI),

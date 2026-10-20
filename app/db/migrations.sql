@@ -163,6 +163,7 @@ create table if not exists tickets_allianz.aprobaciones (
   resuelto_por      text,                            -- telegram:<usuario> / panel:<usuario>
   resuelto_en       timestamptz,
   correo_id         bigint,                          -- el correo de Allianz que la disparó
+  datos             jsonb   not null default '{}',   -- guía: nombre, producto, póliza + monto y datos de depósito (Ceci)
   created_at        timestamptz not null default now(),
   actualizado_en    timestamptz not null default now(),
   constraint uq_aprobaciones_unica unique (ticket_id, tipo, ronda)

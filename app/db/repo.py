@@ -71,7 +71,7 @@ class Repositorio(Protocol):
                              nota: Optional[str] = None) -> int: ...
     # --- Etapa 2: aprobaciones de Ceci (guía de aportación) + valores del worker ---
     def crear_aprobacion(self, ticket_id: int, tipo: str, texto: str, ronda: int = 1,
-                         correo_id: Optional[int] = None) -> Optional[int]: ...
+                         correo_id: Optional[int] = None, datos: Optional[dict] = None) -> Optional[int]: ...
     def obtener_aprobacion(self, aprobacion_id: int) -> Optional[dict]: ...
     def listar_aprobaciones(self, ticket_id: Optional[int] = None,
                             estados: Optional[Iterable[str]] = None) -> list[dict]: ...
@@ -321,13 +321,13 @@ class RepositorioPostgres:
             return cur.rowcount
 
     # --- Etapa 2 ---
-    def crear_aprobacion(self, ticket_id, tipo, texto, ronda=1, correo_id=None):
+    def crear_aprobacion(self, ticket_id, tipo, texto, ronda=1, correo_id=None, datos=None):
         """Devuelve el id, o None si ya existe la de ese (ticket, tipo, ronda): no se pide dos veces."""
         with self.conn.cursor() as cur:
             cur.execute(
-                f"insert into {self._t('aprobaciones')} (ticket_id, tipo, ronda, texto, correo_id) "
-                f"values (%s,%s,%s,%s,%s) on conflict (ticket_id, tipo, ronda) do nothing returning id",
-                (ticket_id, tipo, ronda, texto, correo_id))
+                f"insert into {self._t('aprobaciones')} (ticket_id, tipo, ronda, texto, correo_id, datos) "
+                f"values (%s,%s,%s,%s,%s,%s::jsonb) on conflict (ticket_id, tipo, ronda) do nothing returning id",
+                (ticket_id, tipo, ronda, texto, correo_id, json.dumps(datos or {}, ensure_ascii=False)))
             fila = cur.fetchone()
             return int(fila[0]) if fila else None
 
@@ -350,7 +350,9 @@ class RepositorioPostgres:
     def actualizar_aprobacion(self, aprobacion_id, **campos):
         if not campos:
             return
-        sets = ", ".join(f"{k}=%s" for k in campos)
+        if "datos" in campos:
+            campos["datos"] = json.dumps(campos["datos"] or {}, ensure_ascii=False)
+        sets = ", ".join(f"{k}=%s::jsonb" if k == "datos" else f"{k}=%s" for k in campos)
         with self.conn.cursor() as cur:
             cur.execute(f"update {self._t('aprobaciones')} set {sets}, actualizado_en=now() where id=%s",
                         [*campos.values(), aprobacion_id])
@@ -439,7 +441,7 @@ class RepositorioSQLite:
               id integer primary key autoincrement, ticket_id int not null, tipo text not null,
               ronda int not null default 1, texto text not null, version int not null default 1,
               estado text not null default 'pendiente', telegram_chat_id text, telegram_msg_id text,
-              resuelto_por text, resuelto_en text, correo_id int,
+              resuelto_por text, resuelto_en text, correo_id int, datos text default '{}',
               created_at text default (datetime('now')), actualizado_en text default (datetime('now')),
               unique (ticket_id, tipo, ronda));
             create table if not exists valores(
@@ -453,6 +455,8 @@ class RepositorioSQLite:
                           ("identificado_por", "text"), ("titulo_hilo", "text")):
             if col not in tiene:
                 self.conn.execute(f"alter table tickets add column {col} {tipo}")
+        if "datos" not in {r["name"] for r in self.conn.execute("pragma table_info(aprobaciones)")}:
+            self.conn.execute("alter table aprobaciones add column datos text default '{}'")
         self.conn.commit()
 
     @staticmethod
@@ -659,16 +663,22 @@ class RepositorioSQLite:
         return cur.rowcount
 
     # --- Etapa 2 ---
-    def crear_aprobacion(self, ticket_id, tipo, texto, ronda=1, correo_id=None):
+    def crear_aprobacion(self, ticket_id, tipo, texto, ronda=1, correo_id=None, datos=None):
         cur = self.conn.execute(
-            "insert or ignore into aprobaciones(ticket_id,tipo,ronda,texto,correo_id) values(?,?,?,?,?)",
-            (ticket_id, tipo, ronda, texto, correo_id))
+            "insert or ignore into aprobaciones(ticket_id,tipo,ronda,texto,correo_id,datos) values(?,?,?,?,?,?)",
+            (ticket_id, tipo, ronda, texto, correo_id, json.dumps(datos or {}, ensure_ascii=False)))
         self.conn.commit()
         return int(cur.lastrowid) if cur.rowcount else None
 
+    @staticmethod
+    def _aprobacion(r) -> dict:
+        d = dict(r)
+        d["datos"] = json.loads(d.get("datos") or "{}")
+        return d
+
     def obtener_aprobacion(self, aprobacion_id):
         r = self.conn.execute("select * from aprobaciones where id=?", (aprobacion_id,)).fetchone()
-        return dict(r) if r else None
+        return self._aprobacion(r) if r else None
 
     def listar_aprobaciones(self, ticket_id=None, estados=None):
         cond, args = [], []
@@ -679,11 +689,13 @@ class RepositorioSQLite:
             cond.append(f"estado in ({','.join('?' * len(estados))})"); args.extend(estados)
         where = (" where " + " and ".join(cond)) if cond else ""
         cur = self.conn.execute(f"select * from aprobaciones{where} order by created_at, id", args)
-        return [dict(r) for r in cur.fetchall()]
+        return [self._aprobacion(r) for r in cur.fetchall()]
 
     def actualizar_aprobacion(self, aprobacion_id, **campos):
         if not campos:
             return
+        if "datos" in campos:
+            campos["datos"] = json.dumps(campos["datos"] or {}, ensure_ascii=False)
         sets = ", ".join(f"{k}=?" for k in campos)
         self.conn.execute(f"update aprobaciones set {sets}, actualizado_en=? where id=?",
                           [*(self._ts(v) for v in campos.values()), self._ts(datetime.now(timezone.utc)),

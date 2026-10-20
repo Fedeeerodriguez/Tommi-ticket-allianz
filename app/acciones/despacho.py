@@ -115,16 +115,43 @@ def _guardar_si_critico(repo: Repositorio, accion: dict, ticket: dict, pay: dict
     return "pendiente_ceci"
 
 
-def params_plantilla_etapas(pay: dict) -> dict:
-    """Parámetros de la plantilla WATI de etapas según WATI_PARAMS_ETAPAS ('nombre_wati=dato')."""
-    datos = {**(pay.get("params") or {}), "mensaje": pay.get("mensaje", "")}
-    out = {}
-    for par in config.WATI_PARAMS_ETAPAS:
-        nombre, _, dato = par.partition("=")
-        nombre, dato = nombre.strip(), (dato or nombre).strip()
-        if nombre:
-            out[nombre] = datos.get(dato) or "—"
-    return out
+_MAX_VARIABLE = 900  # WhatsApp: el cuerpo entero no puede pasar de 1024 caracteres
+
+
+def una_linea(v) -> str:
+    """WhatsApp rechaza variables con saltos de línea, tabs o más de 4 espacios seguidos.
+    Vacío también lo rechaza → '—'."""
+    import re
+    t = re.sub(r"\s*\n\s*", " · ", str(v or "")).replace("\t", " ")
+    t = re.sub(r" {2,}", " ", t).strip(" ·")
+    if len(t) > _MAX_VARIABLE:
+        t = t[:_MAX_VARIABLE - 1].rsplit(" ", 1)[0] + "…"
+    return t or "—"
+
+
+def sin_saludo(texto: str) -> str:
+    """La plantilla del cliente ya dice 'Hola {{nombre}} 👋': 'Hola Ana, tu solicitud…' → 'Tu solicitud…'."""
+    import re
+    t = re.sub(r"^\s*hola(?:\s+[^,.!¡]{1,40})?\s*[,!.]\s*", "", texto or "", count=1, flags=re.I)
+    return t[:1].upper() + t[1:] if t else t
+
+
+def plantilla_etapas(pay: dict) -> tuple[str, dict]:
+    """Avisos del motor por etapa → (plantilla WATI, variables por nombre). Una plantilla por
+    destinatario: equipo (asesor/Ceci), cliente, y la guía de aportación."""
+    p = pay.get("params") or {}
+    rol = (pay.get("rol") or "").lower()
+    if rol == "cliente" and p.get("guia"):
+        g = p["guia"]
+        return config.WATI_PLANTILLA_GUIA, {k: una_linea(g.get(k)) for k in
+                                            ("nombre", "producto", "poliza", "monto", "datos_deposito")}
+    if rol == "cliente":
+        return config.WATI_PLANTILLA_AVISO_CLIENTE, {
+            "nombre": una_linea(p.get("nombre") or "de nuevo"),
+            "mensaje": una_linea(sin_saludo(pay.get("mensaje", "")))}
+    return config.WATI_PLANTILLA_AVISO_EQUIPO, {
+        "ticket": una_linea(p.get("ticket")), "cliente": una_linea(p.get("cliente")),
+        "tramite": una_linea(p.get("tramite")), "mensaje": una_linea(pay.get("mensaje", ""))}
 
 
 def _despachar_una(repo: Repositorio, accion: dict, emisor: Emisor, ahora: datetime) -> str:
@@ -163,10 +190,9 @@ def _despachar_una(repo: Repositorio, accion: dict, emisor: Emisor, ahora: datet
         from app.wati import wati_desde_config
         wati = wati_desde_config()
         params = {"mensaje": pay.get("mensaje", "")}
-        # Avisos del motor por etapa → plantilla "actualización de trámite" (si está configurada).
-        if pay.get("etapa") and config.WATI_PLANTILLA_ETAPAS:
-            plantilla = config.WATI_PLANTILLA_ETAPAS
-            params = params_plantilla_etapas(pay)
+        # Avisos del motor por etapa → la plantilla de su destinatario (equipo / cliente / guía).
+        if pay.get("etapa"):
+            plantilla, params = plantilla_etapas(pay)
         res = wati.enviar_plantilla(numero, plantilla, params)
         if res.get("simulado"):
             repo.actualizar_accion(aid, "simulada", res)

@@ -20,7 +20,7 @@ Todo lo nuevo está detrás de `MOTOR_ETAPAS`. Apagarlo (`MOTOR_ETAPAS=false` + 
 | `ESCALAR_A_ALLIANZ` | `false` → después `true` | Correo de escalación a Allianz con copia a la ejecutiva (Ceci lo aprueba uno por uno) |
 | `ESCALA_CC` | `penny.ortiz@allianz.com.mx` | ⚠️ Confirmar con Fede |
 | `ALLIANZ_DEST` | dirección del ticket en Allianz | Sin esto, la escalación queda bloqueada (se ve en "Para Ceci") |
-| `WATI_PLANTILLA_ETAPAS` / `WATI_PARAMS_ETAPAS` | plantilla "actualización de trámite" | Ver `docs/TEXTOS_ETAPA1.md` |
+| `WATI_PLANTILLA_AVISO_EQUIPO` / `_AVISO_CLIENTE` / `WATI_PLANTILLA_GUIA` | ya traen `tommy_aviso_equipo`, `tommy_actualizacion_cliente` y `tommy_guia_aportacion` | Solo si en WATI quedaron con otro nombre. Ver `docs/TEXTOS_ETAPA1.md` |
 | `CECI_WHATSAPP` | número de Ceci | Sin esto, los avisos a Ceci quedan en el panel |
 | `PANEL_URL` | URL del panel (opcional) | Link en los avisos a Ceci |
 | `DRY_RUN` | `true` hasta el OK final | Con `true` nada sale: se compone y se ve en el panel |

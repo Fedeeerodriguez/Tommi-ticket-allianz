@@ -7,7 +7,7 @@ import pytest
 from app import config
 from app.acciones import despachar_pendientes
 from app.acciones import mensajes_etapa as M
-from app.acciones.despacho import params_plantilla_etapas
+from app.acciones.despacho import plantilla_etapas, sin_saludo, una_linea
 from app.acciones.motor_etapas import decidir_por_etapa
 from app.db.repo import RepositorioSQLite
 
@@ -25,7 +25,6 @@ def aislado(monkeypatch):
     monkeypatch.setattr(config, "DRY_RUN", True)
     monkeypatch.setattr(config, "PANEL_URL", "")
     monkeypatch.setattr(config, "CECI_WHATSAPP", "")
-    monkeypatch.setattr(config, "WATI_PLANTILLA_ETAPAS", "")
 
 
 @pytest.mark.parametrize("etapa", sorted(M.TEXTOS))
@@ -78,12 +77,52 @@ def test_link_al_panel_en_el_aviso_a_ceci(monkeypatch):
     assert M.texto("ceci", "apertura", ctx).endswith("Panel: https://panel.babilonia.ai/tickets/7")
 
 
-def test_params_de_la_plantilla_segun_la_config(monkeypatch):
-    monkeypatch.setattr(config, "WATI_PARAMS_ETAPAS", ["1=ticket", "2=tramite", "nombre=cliente", "mensaje"])
-    pay = {"mensaje": "hola", "params": {"ticket": "2576612", "tramite": "Gastos médicos · Allianz pide documentos",
-                                         "cliente": "Hortencia"}}
-    assert params_plantilla_etapas(pay) == {"1": "2576612", "2": "Gastos médicos · Allianz pide documentos",
-                                            "nombre": "Hortencia", "mensaje": "hola"}
+_P = {"ticket": "2576612", "tramite": "Gastos médicos · Allianz pide documentos",
+      "cliente": "Hortencia Prueba Gama", "nombre": "Hortencia"}
+
+
+def test_plantilla_del_equipo():
+    pay = {"rol": "asesor", "mensaje": "Ticket 2576612 · Hortencia: Allianz pide → la carta.\n⚠️ Falta el teléfono",
+           "params": _P}
+    assert plantilla_etapas(pay) == ("tommy_aviso_equipo", {
+        "ticket": "2576612", "cliente": "Hortencia Prueba Gama", "tramite": "Gastos médicos · Allianz pide documentos",
+        "mensaje": "Ticket 2576612 · Hortencia: Allianz pide → la carta. · ⚠️ Falta el teléfono"})
+    assert plantilla_etapas({**pay, "rol": "ceci"})[0] == "tommy_aviso_equipo"
+
+
+def test_plantilla_del_cliente_sin_saludo_repetido():
+    pay = {"rol": "cliente", "params": _P,
+           "mensaje": "Hola Hortencia, para avanzar Allianz necesita: la carta laboral. Tienes hasta el 22/10/2026."}
+    assert plantilla_etapas(pay) == ("tommy_actualizacion_cliente", {
+        "nombre": "Hortencia",
+        "mensaje": "Para avanzar Allianz necesita: la carta laboral. Tienes hasta el 22/10/2026."})
+    # Sin nombre: WhatsApp no acepta variables vacías.
+    assert plantilla_etapas({**pay, "params": {}})[1]["nombre"] == "de nuevo"
+
+
+def test_plantilla_de_la_guia():
+    guia = {"nombre": "Guillermo", "producto": "Elite", "poliza": "SVIP-21799", "monto": "$50,000 MXN",
+            "datos_deposito": "CLABE 0123\na nombre de Allianz"}
+    plantilla, params = plantilla_etapas({"rol": "cliente", "mensaje": "…", "params": {**_P, "guia": guia}})
+    assert plantilla == "tommy_guia_aportacion"
+    assert params == {"nombre": "Guillermo", "producto": "Elite", "poliza": "SVIP-21799", "monto": "$50,000 MXN",
+                      "datos_deposito": "CLABE 0123 · a nombre de Allianz"}
+
+
+@pytest.mark.parametrize("entra,sale", [
+    ("Hola Ana, ¡listo! Tu solicitud quedó atendida.", "¡listo! Tu solicitud quedó atendida."),
+    ("Hola, te recuerdo que falta tu aportación.", "Te recuerdo que falta tu aportación."),
+    ("Tu póliza ya está emitida.", "Tu póliza ya está emitida."),
+])
+def test_sin_saludo(entra, sale):
+    assert sin_saludo(entra) == sale
+
+
+def test_una_linea_cumple_las_reglas_de_whatsapp():
+    assert una_linea("a\n\nb\tc     d") == "a · b c d"
+    assert una_linea("") == "—" and una_linea(None) == "—"
+    largo = una_linea("palabra " * 300)
+    assert len(largo) <= 900 and largo.endswith("…")
 
 
 def _flujo(tmp_path):
@@ -93,27 +132,24 @@ def _flujo(tmp_path):
     return repo, tk
 
 
-def test_despacho_con_plantilla_de_etapas(tmp_path, monkeypatch):
-    monkeypatch.setattr(config, "WATI_PLANTILLA_ETAPAS", "actualizacion_tramite")
+def test_despacho_usa_la_plantilla_de_cada_destinatario(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "CECI_WHATSAPP", "5215500000000")
     repo, tk = _flujo(tmp_path)
     res = despachar_pendientes(repo)
     assert res["conteo"] == {"simulada": 3}  # DRY_RUN: se compone pero no sale
-    for a in repo.listar_acciones(tk):
-        r = a["resultado"] if isinstance(a["resultado"], dict) else __import__("json").loads(a["resultado"])
-        assert r["plantilla"] == "actualizacion_tramite"
-        assert r["params"]["ticket"] == "2576612" and "Solicitud abierta" in r["params"]["tramite"]
-        assert r["params"]["cliente"] == "Hortencia Prueba Gama" and r["params"]["mensaje"]
+    r = {a["tipo_accion"]: __import__("json").loads(a["resultado"]) for a in repo.listar_acciones(tk)}
+    for tipo in ("avisar_asesor", "avisar_ceci"):
+        assert r[tipo]["plantilla"] == "tommy_aviso_equipo"
+        assert r[tipo]["params"]["ticket"] == "2576612" and "Solicitud abierta" in r[tipo]["params"]["tramite"]
+        assert r[tipo]["params"]["cliente"] == "Hortencia Prueba Gama"
+    cli = r["avisar_cliente"]
+    assert cli["plantilla"] == "tommy_actualizacion_cliente" and cli["params"]["nombre"] == "Hortencia"
+    assert cli["params"]["mensaje"].startswith("Tu solicitud de gastos médicos ya está en Allianz")
 
 
-def test_despacho_sin_plantilla_de_etapas_usa_la_de_cada_rol(tmp_path, monkeypatch):
-    monkeypatch.setattr(config, "WATI_PLANTILLA_ASESOR", "avances")
+def test_ceci_sin_numero_queda_pendiente(tmp_path):
     repo, tk = _flujo(tmp_path)
-    res = despachar_pendientes(repo)
-    assert res["conteo"] == {"simulada": 2, "pendiente_wati": 1}  # Ceci sin número configurado
-    ases = next(a for a in repo.listar_acciones(tk) if a["tipo_accion"] == "avisar_asesor")
-    r = __import__("json").loads(ases["resultado"])
-    assert r["plantilla"] == "avances" and list(r["params"]) == ["mensaje"]
+    assert despachar_pendientes(repo)["conteo"] == {"simulada": 2, "pendiente_wati": 1}
 
 
 def test_recorte_en_palabra_entera_y_nombre_sin_ruido():

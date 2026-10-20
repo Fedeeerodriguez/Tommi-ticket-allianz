@@ -22,17 +22,19 @@ Al cliente y al asesor **no les sale nada** hasta que Ceci aprueba.
 | Ceci (Telegram) | Guía de aportación · Ticket 2567479 · Guillermo Prueba Castro · Elite<br><br>*(la guía, abajo)*<br><br>[✅ Aprobar] [🗑 Descartar] |
 | Ceci (WhatsApp, solo si no está Telegram) | Ticket 2567479 · Guillermo Prueba Castro · Elite: Allianz confirmó los datos (póliza SVIP-21799). La guía de aportación está lista para que la apruebes. |
 
-**Guía de aportación (provisoria):** se usa hasta que llegue el speech de Ceci (`GUIA_APORTACION_TEXTO`).
-> Hola Guillermo, Allianz ya confirmó tu solicitud de Elite (póliza SVIP-21799). Para activarla falta tu aportación inicial:
-> • Monto: [completar]
-> • Datos para depositar: [completar]
+**Guía de aportación:** sale por la plantilla de WhatsApp `tommy_guia_aportacion`. Nombre, producto y póliza los pone el sistema; **Ceci completa el monto y los datos para depositar**. No es texto libre: WhatsApp no deja cambiar el texto de una plantilla.
+> Hola Guillermo 👋 Allianz ya confirmó tu solicitud de Elite (póliza SVIP-21799). Para activarla falta tu aportación inicial:
+>
+> • Monto: *(lo completa Ceci)*
+> • Datos para depositar: *(lo completa Ceci)*
 > • Referencia: póliza SVIP-21799
+>
 > Cuando deposites, mándame por aquí el comprobante y tu estado de cuenta, y yo lo envío a Allianz.
 
-- Mientras quede un `[completar]`, **no se puede aprobar**.
-- Para corregir la guía hay dos caminos:
-  - en Telegram, Ceci **responde al mensaje** con el texto completo y le llega la versión nueva con botones nuevos;
-  - en el panel, la edita ahí.
+- Sin monto y datos para depositar, **no se puede aprobar**.
+- Dónde los completa Ceci:
+  - **en Telegram**, respondiendo al mensaje con `Monto: $50,000 MXN` y `Datos: CLABE … a nombre de …` (en dos líneas o en una). Le llega la versión nueva con botones nuevos.
+  - **en el panel**, en los dos campos. Ahí ve cómo le llega al cliente antes de aprobar.
 - Tampoco se puede aprobar si el cliente y el asesor no están identificados. En ese caso, primero se asignan en el panel.
 
 ### 2. Ceci aprueba → sale la guía
@@ -40,7 +42,7 @@ Al cliente y al asesor **no les sale nada** hasta que Ceci aprueba.
 | Para | Texto |
 |---|---|
 | Cliente | *(la guía tal cual la aprobó Ceci)* |
-| Asesor | Ticket 2567479 · Guillermo Prueba Castro: le mandamos al cliente la guía de aportación (aprobada por Ceci):<br><br>*(la guía)* |
+| Asesor | Ticket 2567479 · Guillermo Prueba Castro: le mandamos al cliente la guía de aportación (aprobada por Ceci). Monto: $50,000 MXN · Datos para depositar: CLABE … |
 
 Arranca el **recordatorio de pago**.
 

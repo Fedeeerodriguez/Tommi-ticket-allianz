@@ -39,7 +39,7 @@ def mundo(tmp_path, monkeypatch):
                  ("MOTOR_ETAPAS_ROLES", ["ceci", "asesor", "cliente"]), ("ESCALAR_A_ALLIANZ", True),
                  ("ALLIANZ_DEST", "allianz.mexico@allianz.com.mx"), ("CECI_WHATSAPP", "5500000000"),
                  ("TELEGRAM_APROBACIONES", True), ("TELEGRAM_BOT_TOKEN", "x"), ("TELEGRAM_CECI_CHAT_ID", "777"),
-                 ("GUIA_APORTACION_TEXTO", ""), ("NOTION_TOKEN", ""), ("OPENAI_API_KEY", ""), ("DRY_RUN", True),
+                 ("NOTION_TOKEN", ""), ("OPENAI_API_KEY", ""), ("DRY_RUN", True),
                  ("PANEL_URL", ""), ("API_TOKEN", ""), ("NOTION_DB_TICKETS_ALLIANZ", ""),
                  ("NOTION_DB_SEGUIMIENTO", "")):
         monkeypatch.setattr(config, k, v)
@@ -85,7 +85,7 @@ def test_una_semana_con_los_cuatro_recorridos(mundo):
             ap = guia(ELITE)
             assert "[completar]" in ap["texto"] and ap["telegram_msg_id"]
             bot.updates = [{"update_id": 1, "message": {
-                "message_id": 900, "text": GUIA_ELITE,
+                "message_id": 900, "text": f"Monto: {GUIA_ELITE['monto']}\nDatos: {GUIA_ELITE['datos_deposito']}",
                 "from": {"username": "ceci"}, "chat": {"id": 777},
                 "reply_to_message": {"message_id": int(ap["telegram_msg_id"])}}}]
             telegram.procesar_updates(repo)
@@ -98,8 +98,7 @@ def test_una_semana_con_los_cuatro_recorridos(mundo):
 
         if cuando == dia(20, 10):  # Ceci aprueba la guía de Patrimonial desde el panel
             r = panel.post(f"/api/tickets-allianz/aprobacion/{guia(PATRI)['id']}",
-                           json={"accion": "aprobar", "usuario": "Ceci",
-                                 "texto": GUIA_PATRI})
+                           json={"accion": "aprobar", "usuario": "Ceci", **GUIA_PATRI})
             assert r.status_code == 200, r.text
 
         if cuando == dia(20, 11):  # Patrimonial: el pago va por correo nuevo → se marca en el panel
@@ -140,8 +139,8 @@ def test_una_semana_con_los_cuatro_recorridos(mundo):
         return next(a["texto"] for a in repo.listar_avisos(tickets[nro]["id"])
                     if a["etapa"] == etapa and a["destinatario"] == "cliente")
 
-    assert a_cliente(ELITE, "guia_aportacion") == GUIA_ELITE
-    assert a_cliente(PATRI, "guia_aportacion") == GUIA_PATRI
+    for nro, g in ((ELITE, GUIA_ELITE), (PATRI, GUIA_PATRI)):
+        assert f"• Monto: {g['monto']}\n• Datos para depositar: {g['datos_deposito']}" in a_cliente(nro, "guia_aportacion")
     assert {(guia(n)["estado"], guia(n)["resuelto_por"]) for n in (ELITE, PATRI)} == \
         {("aprobada", "telegram:ceci"), ("aprobada", "panel:Ceci")}
     assert "«Aplicación de pago póliza OPPT-48211»" in a_cliente(TRAM, "atendida")

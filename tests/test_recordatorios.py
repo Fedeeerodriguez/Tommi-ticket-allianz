@@ -32,7 +32,6 @@ def aislado(monkeypatch):
     monkeypatch.setattr(config, "ESCALA_CC", ["penny.ortiz@allianz.com.mx"])
     monkeypatch.setattr(config, "ESCALAR_A_ALLIANZ", True)
     monkeypatch.setattr(config, "ALLIANZ_DEST", "allianz.mexico@allianz.com.mx", raising=False)
-    monkeypatch.setattr(config, "WATI_PLANTILLA_ETAPAS", "")
 
 
 @pytest.fixture

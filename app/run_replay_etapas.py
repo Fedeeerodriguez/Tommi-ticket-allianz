@@ -82,7 +82,7 @@ def semana_de_prueba() -> dict:
         ident_mod._buscador_notion = original
 
 
-def _accion_ceci(repo, que: str, nro: str, texto: Optional[str]) -> tuple[Optional[int], dict]:
+def _accion_ceci(repo, que: str, nro: str, campos: Optional[dict]) -> tuple[Optional[int], dict]:
     """Lo que Ceci haría a mano en el panel o en Telegram."""
     from app.acciones import aprobaciones
     from app.acciones.motor_etapas import decidir_por_etapa
@@ -91,7 +91,7 @@ def _accion_ceci(repo, que: str, nro: str, texto: Optional[str]) -> tuple[Option
         return None, {}
     if que == "aprobar_guia":
         ap = next(iter(repo.listar_aprobaciones(t["id"], estados=["pendiente"])), None)
-        res = aprobaciones.aprobar(repo, ap["id"], "panel:Ceci (simulada)", texto=texto) if ap else \
+        res = aprobaciones.aprobar(repo, ap["id"], "panel:Ceci (simulada)", **(campos or {})) if ap else \
             {"ok": False, "motivo": "no había guía pendiente", "plan": []}
         return t["id"], {"titulo": "Ceci aprueba la guía de aportación", "res": res}
     res = decidir_por_etapa(repo, t["id"], {"etapa": "documentos_enviados", "proceso": t.get("proceso"),
@@ -120,9 +120,9 @@ def replay_correos(filas: list, desde: datetime, hasta: datetime, viejo: dict,
 
     def ceci_hasta(hasta_t: datetime) -> None:
         while pendientes_ceci and pendientes_ceci[0][0] <= hasta_t:
-            cuando, que, nro, texto = pendientes_ceci.pop(0)
+            cuando, que, nro, campos = pendientes_ceci.pop(0)
             reloj[0] = max(reloj[0], cuando)
-            tid, d = _accion_ceci(repo, que, nro, texto)
+            tid, d = _accion_ceci(repo, que, nro, campos)
             if tid:
                 linea[tid].append((cuando, "ceci", d))
 

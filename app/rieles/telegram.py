@@ -4,8 +4,9 @@ Bot API por HTTPS (urllib, sin librerías nuevas) y por POLLING desde el worker 
 pocos segundos): no hace falta exponer un webhook público.
 
   - Cada guía pendiente → un mensaje a Ceci con [✅ Aprobar] [🗑 Descartar].
-  - Ceci RESPONDE al mensaje con el texto corregido → versión nueva con botones nuevos (los
-    viejos dejan de servir: se aprueba exactamente lo que se ve).
+  - Ceci RESPONDE al mensaje con "Monto: …" y/o "Datos: …" → versión nueva con botones nuevos
+    (los viejos dejan de servir: se aprueba exactamente lo que se ve). La guía sale por una
+    plantilla de WhatsApp: solo se completan esos dos campos, no se reescribe el texto.
   - Solo se acepta el chat de Ceci (TELEGRAM_CECI_CHAT_ID). Cualquier otro se ignora; a "/start"
     se le contesta su chat id (para configurarlo la primera vez).
   - Lo que hace cada botón lo decide app/acciones/aprobaciones.py (lo mismo que el panel).
@@ -16,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import urllib.request
 from typing import Callable, Optional
 
@@ -55,10 +57,28 @@ def texto_mensaje(ap: dict, ticket: dict) -> str:
     cab = f"Guía de aportación · Ticket {ctx['tk']} · {ctx['cliente']}{ctx['con_producto']}"
     if int(ap.get("version") or 1) > 1:
         cab += f" (versión {ap['version']})"
-    pie = ("Para corregirla, responde a este mensaje con el texto completo nuevo."
-           if mensajes_etapa.FALTA_COMPLETAR not in ap["texto"]
-           else "⚠️ Tiene datos para completar: responde a este mensaje con el texto completo corregido.")
+    faltan = mensajes_etapa.faltan_en_guia(ap.get("datos") or {})
+    como = "Monto: $50,000 MXN\nDatos: CLABE 012345678901234567 a nombre de …"
+    pie = (f"⚠️ Falta completar {' y '.join(faltan)}. Responde a este mensaje así:\n{como}" if faltan
+           else f"Para corregirla, responde a este mensaje así (puede ser una sola línea):\n{como}")
     return f"{cab}\n\n{ap['texto']}\n\n{pie}"
+
+
+_RE_CAMPO = re.compile(r"\b(monto|importe|datos(?:\s+para\s+depositar)?|dep[oó]sito)\s*[:=]", re.I)
+
+
+def leer_campos(texto: str) -> dict:
+    """'Monto: $50,000\nDatos: CLABE 0123' (o todo en una línea) →
+    {'monto': '$50,000', 'datos_deposito': 'CLABE 0123'}."""
+    out = {}
+    marcas = list(_RE_CAMPO.finditer(texto or ""))
+    for i, m in enumerate(marcas):
+        fin = marcas[i + 1].start() if i + 1 < len(marcas) else len(texto)
+        valor = " ".join(texto[m.end():fin].split()).strip(" ,;·-")
+        clave = "monto" if m.group(1).lower() in ("monto", "importe") else "datos_deposito"
+        if valor:
+            out[clave] = valor
+    return out
 
 
 def enviar_aprobacion(repo: Repositorio, ap: dict, transporte: Optional[Transporte] = None) -> Optional[str]:
@@ -129,15 +149,21 @@ def _boton(repo: Repositorio, cq: dict, enviar: Transporte) -> dict:
 
 
 def _respuesta(repo: Repositorio, msg: dict, enviar: Transporte) -> Optional[dict]:
-    """Ceci responde al mensaje de una guía con el texto corregido → versión nueva."""
+    """Ceci responde al mensaje de una guía con 'Monto: …' y/o 'Datos: …' → versión nueva."""
     original = str((msg.get("reply_to_message") or {}).get("message_id") or "")
     ap = next((a for a in aprobaciones.pendientes(repo) if str(a.get("telegram_msg_id")) == original), None)
     if not ap:
         enviar("sendMessage", {"chat_id": _chat_ceci(), "reply_to_message_id": msg["message_id"],
                                "text": "No encontré una guía pendiente en ese mensaje (¿ya estaba aprobada?)."})
         return None
-    res = aprobaciones.corregir(repo, ap["id"], msg.get("text") or "", _quien(msg.get("from") or {}))
-    if res["ok"]:
+    campos = leer_campos(msg.get("text") or "")
+    if not campos:
+        enviar("sendMessage", {"chat_id": _chat_ceci(), "reply_to_message_id": msg["message_id"],
+                               "text": "No entendí qué cambiar. Responde así:\nMonto: $50,000 MXN\n"
+                                       "Datos: CLABE 012345678901234567 a nombre de …"})
+        return None
+    res = aprobaciones.corregir(repo, ap["id"], _quien(msg.get("from") or {}), **campos)
+    if res["ok"] and res.get("version", 0) > int(ap.get("version") or 1):
         cerrar_mensaje(ap, f"✏️ Reemplazada por la versión {res['version']} (abajo).", enviar)
         enviar_aprobacion(repo, repo.obtener_aprobacion(ap["id"]), enviar)
     return res

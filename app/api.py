@@ -29,7 +29,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from app import config
-from app.acciones.mensajes_etapa import ETIQUETAS, FALTA_COMPLETAR, etiqueta
+from app.acciones.mensajes_etapa import ETIQUETAS, FALTA_COMPLETAR, etiqueta, faltan_en_guia
 from app.acciones.motor_etapas import RANGO, _parse_ts
 from app.db import get_repo
 
@@ -161,8 +161,11 @@ def proximo_recordatorio(repo, ticket_id: int) -> Optional[dict]:
 def guia_pendiente(repo, ticket_id: int) -> Optional[dict]:
     """Etapa 2: la guía de aportación que espera a Ceci (si hay)."""
     for ap in _seguro(lambda: repo.listar_aprobaciones(ticket_id, estados=["pendiente"]), []):
+        datos = ap.get("datos") or {}
         return {"id": ap["id"], "version": ap.get("version"), "texto": ap.get("texto"),
                 "por_telegram": bool(ap.get("telegram_msg_id")),
+                "monto": datos.get("monto") or "", "datos_deposito": datos.get("datos_deposito") or "",
+                "faltan": faltan_en_guia(datos),
                 "falta_completar": FALTA_COMPLETAR in (ap.get("texto") or "")}
     return None
 
@@ -223,7 +226,7 @@ def linea_tiempo(ticket_id: int, _=Depends(_auth)):
                    "proceso": t.get("proceso"), "titulo_hilo": t.get("titulo_hilo"),
                    "para_ceci": motivos_para_ceci(repo, t)},
         "aprobaciones": [{"id": a["id"], "tipo": a.get("tipo"), "estado": a.get("estado"), "version": a.get("version"),
-                          "texto": a.get("texto"), "resuelto_por": a.get("resuelto_por"),
+                          "texto": a.get("texto"), "datos": a.get("datos") or {}, "resuelto_por": a.get("resuelto_por"),
                           "resuelto_en": a.get("resuelto_en"), "fecha": a.get("created_at")}
                          for a in _seguro(lambda: repo.listar_aprobaciones(ticket_id), [])],
         "pasos": sorted(pasos.values(), key=lambda p: str(p["fecha"])),
@@ -260,9 +263,10 @@ def asignar_identificacion(ticket_id: int, body: IdentificacionIn, _=Depends(_au
 
 # ─────────────────────────── Etapa 2: guía de aportación y etapa a mano ───────────────────────────
 class AprobacionIn(BaseModel):
-    accion: str                      # aprobar | corregir | descartar
-    texto: Optional[str] = None      # corregir (obligatorio) / aprobar (opcional: aprueba con este texto)
-    usuario: Optional[str] = None    # quién (para la bitácora)
+    accion: str                           # aprobar | corregir | descartar
+    monto: Optional[str] = None           # lo que completa Ceci (aprobar: opcional, aprueba con esto)
+    datos_deposito: Optional[str] = None
+    usuario: Optional[str] = None         # quién (para la bitácora)
 
 
 @app.post("/api/tickets-allianz/aprobacion/{aprobacion_id}")
@@ -277,13 +281,13 @@ def resolver_aprobacion(aprobacion_id: int, body: AprobacionIn, _=Depends(_auth)
         raise HTTPException(status_code=404, detail="aprobación no encontrada")
     por = f"panel:{(body.usuario or 'ceci').strip()[:40]}"
     if body.accion == "aprobar":
-        res = aprobaciones.aprobar(repo, aprobacion_id, por, texto=body.texto)
+        res = aprobaciones.aprobar(repo, aprobacion_id, por, monto=body.monto, datos_deposito=body.datos_deposito)
         leyenda = "✅ Aprobada desde el panel: ya salió al cliente y al asesor."
     elif body.accion == "descartar":
         res = aprobaciones.descartar(repo, aprobacion_id, por)
         leyenda = "🗑 Descartada desde el panel: no se mandó nada."
     elif body.accion == "corregir":
-        res = aprobaciones.corregir(repo, aprobacion_id, body.texto or "", por)
+        res = aprobaciones.corregir(repo, aprobacion_id, por, monto=body.monto, datos_deposito=body.datos_deposito)
         leyenda = f"✏️ Corregida desde el panel (versión {res.get('version')}): te llega la nueva abajo."
     else:
         raise HTTPException(status_code=400, detail="accion: aprobar | corregir | descartar")

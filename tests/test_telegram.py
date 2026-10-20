@@ -59,7 +59,8 @@ def test_la_guia_le_llega_a_ceci_con_botones(repo, bot):
     msg = bot.de("sendMessage")[0]
     assert msg["chat_id"] == CECI
     assert msg["text"].startswith("Guía de aportación · Ticket 2567479 · Guillermo Prueba Castro · Elite")
-    assert "⚠️ Tiene datos para completar" in msg["text"]
+    assert "⚠️ Falta completar monto y datos para depositar. Responde a este mensaje así:" in msg["text"]
+    assert "• Monto: [completar]" in msg["text"]
     botones = msg["reply_markup"]["inline_keyboard"][0]
     assert [b["callback_data"] for b in botones] == [f"ap:{ap['id']}:1", f"de:{ap['id']}:1"]
     assert ap["telegram_msg_id"] == "101"
@@ -68,27 +69,33 @@ def test_la_guia_le_llega_a_ceci_con_botones(repo, bot):
 
 def test_corregir_respondiendo_y_aprobar(repo, bot):
     tk, ap = preparar(repo, bot)
-    # Aprobar con [completar] → no se puede (alerta) y no sale nada.
+    # Aprobar sin monto ni datos → no se puede (alerta) y no sale nada.
     bot.updates = [boton(1, f"ap:{ap['id']}:1")]
     r = telegram.procesar_updates(repo, bot)
     assert r["plan"] == [] and bot.de("answerCallbackQuery")[-1]["show_alert"]
-    # Ceci responde con el texto completo → versión 2 con botones nuevos.
-    bot.updates = [respuesta(2, "Hola Guillermo, deposita $50,000 a la CLABE 0123 con referencia SVIP-21799.")]
+    assert "Falta completar" in bot.de("answerCallbackQuery")[-1]["text"]
+    # Una respuesta que no dice qué cambiar → le explica cómo, sin cambiar nada.
+    bot.updates = [respuesta(5, "dale, mandala")]
+    telegram.procesar_updates(repo, bot)
+    assert bot.de("sendMessage")[-1]["text"].startswith("No entendí qué cambiar")
+    assert repo.obtener_aprobacion(ap["id"])["version"] == 1
+    # Ceci responde con monto y datos → versión 2 con botones nuevos.
+    bot.updates = [respuesta(6, "Monto: $50,000 MXN\nDatos: CLABE 0123 a nombre de Allianz")]
     r = telegram.procesar_updates(repo, bot)
     assert r["correcciones"][0]["version"] == 2
     nuevo = bot.de("sendMessage")[-1]
     assert "(versión 2)" in nuevo["text"] and nuevo["reply_markup"]["inline_keyboard"][0][0]["callback_data"] == \
         f"ap:{ap['id']}:2"
     # Los botones de la versión 1 ya no sirven.
-    bot.updates = [boton(3, f"ap:{ap['id']}:1")]
+    bot.updates = [boton(7, f"ap:{ap['id']}:1")]
     assert telegram.procesar_updates(repo, bot)["plan"] == []
     assert "versión más nueva" in bot.de("answerCallbackQuery")[-1]["text"]
     # Aprobar la versión 2 → sale al cliente y al asesor.
-    bot.updates = [boton(4, f"ap:{ap['id']}:2", mid=int(repo.obtener_aprobacion(ap["id"])["telegram_msg_id"]))]
+    bot.updates = [boton(8, f"ap:{ap['id']}:2", mid=int(repo.obtener_aprobacion(ap["id"])["telegram_msg_id"]))]
     r = telegram.procesar_updates(repo, bot)
     assert sorted(a["rol"] for a in r["plan"]) == ["asesor", "cliente"]
     cli = next(a for a in r["plan"] if a["rol"] == "cliente")
-    assert cli["mensaje"] == "Hola Guillermo, deposita $50,000 a la CLABE 0123 con referencia SVIP-21799."
+    assert "• Monto: $50,000 MXN\n• Datos para depositar: CLABE 0123 a nombre de Allianz" in cli["mensaje"]
     final = repo.obtener_aprobacion(ap["id"])
     assert (final["estado"], final["resuelto_por"]) == ("aprobada", "telegram:ceci")
     assert bot.de("sendMessage")[-1]["text"].startswith("✅ Aprobada")

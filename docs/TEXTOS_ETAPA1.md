@@ -113,22 +113,17 @@ El aviso a Ceci agrega una línea por cada problema, por ejemplo:
 
 ## WhatsApp (WATI)
 
-Con `WATI_PLANTILLA_ETAPAS=<nombre de la plantilla "actualización de trámite">` los avisos salen por esa plantilla.
-Los parámetros se mapean con `WATI_PARAMS_ETAPAS` (`nombre_en_WATI=dato`). Datos disponibles:
+Los avisos salen por **tres plantillas**, una por destinatario. Se crearon en WATI el 20/10 (Utility, Spanish MEX) y las variables van por nombre:
 
-| Dato | Ejemplo |
-|---|---|
-| `ticket` | 2576612 |
-| `tramite` | Gastos médicos · Allianz pide documentos |
-| `etapa` | Allianz pide documentos |
-| `cliente` | Hortencia Prueba Gama |
-| `telefono` | 5512345678 |
-| `poliza` | GMMI-101770 |
-| `solicitud` | 1950110 |
-| `mensaje` | el texto de la tabla de arriba |
+| Plantilla | Para | Variables |
+|---|---|---|
+| `tommy_aviso_equipo` | asesor y Ceci | `{{ticket}}` `{{cliente}}` `{{tramite}}` `{{mensaje}}` |
+| `tommy_actualizacion_cliente` | cliente | `{{nombre}}` `{{mensaje}}`. El texto de la tabla va sin el "Hola X," porque la plantilla ya saluda. |
+| `tommy_guia_aportacion` | cliente (guía del proceso corto) | `{{nombre}}` `{{producto}}` `{{poliza}}` `{{monto}}` `{{datos_deposito}}` |
 
-Default: `ticket=ticket,tramite=tramite,cliente=cliente,telefono=telefono,mensaje=mensaje`. Si la plantilla usa `{{1}}`, `{{2}}`… sería `1=ticket,2=tramite,…`.
-Sin `WATI_PLANTILLA_ETAPAS`, salen por las plantillas de siempre (`WATI_PLANTILLA_ASESOR` / `_CLIENTE` / `_CECI`) con un solo parámetro `mensaje`.
+- `tramite` = producto · etapa (ej. "Gastos médicos · Allianz pide documentos").
+- `mensaje` = el texto de la tabla de arriba, en una sola línea: los saltos de línea se reemplazan por " · ", porque WhatsApp no los acepta dentro de una variable.
+- Los nombres se pueden cambiar con `WATI_PLANTILLA_AVISO_EQUIPO`, `WATI_PLANTILLA_AVISO_CLIENTE` y `WATI_PLANTILLA_GUIA`.
 
 ## Recordatorios y escalamiento
 

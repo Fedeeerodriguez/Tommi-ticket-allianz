@@ -15,7 +15,7 @@ Va **después** de la Etapa 1 (`docs/ENCENDIDO_ETAPA1.md`), sobre el mismo inter
    - `feat/etapas-allianz` (worker + api);
    - `tomi-babilonia` → `feat/panel-etapas-allianz` (pantalla).
 4. **Aprobar los textos:** `docs/TEXTOS_ETAPA2.md`.
-5. **Speech de la guía de aportación** → `GUIA_APORTACION_TEXTO`. Mientras no esté, sale la guía provisoria con `[completar]`; Ceci la completa antes de aprobar y con corchetes no se puede aprobar.
+5. **Plantilla de la guía aprobada en WATI** (`tommy_guia_aportacion`). Ceci completa el monto y los datos para depositar de cada guía antes de aprobarla.
 6. **Telegram** (opcional; sin Telegram, la guía se aprueba desde el panel):
    1. crear el bot con BotFather → `TELEGRAM_BOT_TOKEN`;
    2. prender `TELEGRAM_APROBACIONES=true` con el token puesto;
@@ -30,7 +30,7 @@ Va **después** de la Etapa 1 (`docs/ENCENDIDO_ETAPA1.md`), sobre el mismo inter
 | Variable | Valor | Para qué |
 |---|---|---|
 | `MOTOR_ETAPAS_PROCESOS` | `largo` → `largo,tramite` → `largo,tramite,corto` | Qué procesos maneja el motor por etapa |
-| `GUIA_APORTACION_TEXTO` | el speech de Ceci | Variables: `{nombre}` `{cliente}` `{producto}` `{poliza}` `{sol}` `{tk}`; `\n` = salto de línea |
+| `WATI_PLANTILLA_GUIA` | `tommy_guia_aportacion` (default) | Plantilla de la guía de aportación |
 | `RECORDATORIO_PAGO_HORAS_HABILES` | `72` | Cuándo se le recuerda el pago al cliente (desde que Ceci aprueba la guía) |
 | `TELEGRAM_APROBACIONES` | `false` → `true` | La guía le llega a Ceci por Telegram con botones |
 | `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CECI_CHAT_ID` | del bot / de Ceci | Solo acepta botones y correcciones de ese chat |

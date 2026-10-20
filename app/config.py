@@ -66,13 +66,14 @@ WATI_PLANTILLA_ASESOR = os.getenv("WATI_PLANTILLA_ASESOR", "avances")     # plan
 WATI_PLANTILLA_CLIENTE = os.getenv("WATI_PLANTILLA_CLIENTE", "")          # solo cuando se le pide algo
 WATI_PLANTILLA_CECI = os.getenv("WATI_PLANTILLA_CECI", "")               # intervención/visto bueno de Ceci
 CECI_WHATSAPP = os.getenv("CECI_WHATSAPP", "")                           # número fijo de Ceci (pendiente)
-# Etapa 1: plantilla "actualización de trámite" para los avisos por etapa (a Ceci, asesor y cliente).
-# Vacía → se usan las plantillas por rol de arriba con el parámetro {mensaje}. Los parámetros se
-# mapean "nombre_en_WATI=dato"; datos disponibles: ticket, tramite, etapa, cliente, telefono,
-# mensaje, poliza, solicitud.
-WATI_PLANTILLA_ETAPAS = os.getenv("WATI_PLANTILLA_ETAPAS", "")
-WATI_PARAMS_ETAPAS = _csv("WATI_PARAMS_ETAPAS", "ticket=ticket,tramite=tramite,cliente=cliente,"
-                                                "telefono=telefono,mensaje=mensaje")
+# Avisos del motor por etapa (Etapas 1 y 2): una plantilla por destinatario, creadas en WATI el
+# 20/10 (docs/TEXTOS_ETAPA2.md). Variables por NOMBRE (el despacho las arma):
+#   equipo  (asesor y Ceci): {{ticket}} {{cliente}} {{tramite}} {{mensaje}}
+#   cliente:                 {{nombre}} {{mensaje}}
+#   guía de aportación:      {{nombre}} {{producto}} {{poliza}} {{monto}} {{datos_deposito}}
+WATI_PLANTILLA_AVISO_EQUIPO = os.getenv("WATI_PLANTILLA_AVISO_EQUIPO", "tommy_aviso_equipo")
+WATI_PLANTILLA_AVISO_CLIENTE = os.getenv("WATI_PLANTILLA_AVISO_CLIENTE", "tommy_actualizacion_cliente")
+WATI_PLANTILLA_GUIA = os.getenv("WATI_PLANTILLA_GUIA", "tommy_guia_aportacion")
 
 # Base de datos: misma Supabase de Tommy, esquema aislado.
 DATABASE_URL = os.getenv("DATABASE_URL", "")
@@ -186,9 +187,6 @@ RECORDATORIO_PAGO_HORAS_HABILES = int(os.getenv("RECORDATORIO_PAGO_HORAS_HABILES
 TELEGRAM_APROBACIONES = _bool("TELEGRAM_APROBACIONES", "false")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CECI_CHAT_ID = os.getenv("TELEGRAM_CECI_CHAT_ID", "")
-# Texto de la guía de aportación (speech de Ceci). Vacío → texto provisorio de mensajes_etapa.py.
-# Variables: {nombre} {cliente} {producto} {poliza} {sol} {tk}. "\n" = salto de línea.
-GUIA_APORTACION_TEXTO = os.getenv("GUIA_APORTACION_TEXTO", "").replace("\\n", "\n")
 
 # Intervalo de polling IMAP (segundos).
 POLL_SEGUNDOS = int(os.getenv("POLL_SEGUNDOS", "90"))

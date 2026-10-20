@@ -15,7 +15,7 @@ from test_motor_etapa2 import ANA, C2_CORTO, CALLCENTER, LUNES, T1, et, fila, no
 def cli(tmp_path, monkeypatch):
     for k, v in (("MOTOR_ETAPAS", True), ("MOTOR_ETAPAS_PROCESOS", ["largo", "corto", "tramite"]),
                  ("MOTOR_ETAPAS_ROLES", ["ceci", "asesor", "cliente"]), ("TELEGRAM_APROBACIONES", False),
-                 ("GUIA_APORTACION_TEXTO", ""), ("NOTION_TOKEN", ""), ("OPENAI_API_KEY", ""), ("DRY_RUN", True),
+                 ("NOTION_TOKEN", ""), ("OPENAI_API_KEY", ""), ("DRY_RUN", True),
                  ("PANEL_URL", ""), ("API_TOKEN", "")):
         monkeypatch.setattr(config, k, v)
     repo = RepositorioSQLite(str(tmp_path / "t.sqlite"))
@@ -37,20 +37,23 @@ def test_guia_por_aprobar_en_para_ceci(cli):
     assert item["para_ceci"] == ["guia_por_aprobar"] and item["proceso"] == "corto"
     g = item["guia_pendiente"]
     assert g["version"] == 1 and g["falta_completar"] and not g["por_telegram"]
-    assert g["texto"].startswith("Hola Guillermo,")
+    assert g["texto"].startswith("Hola Guillermo 👋")
+    assert (g["monto"], g["datos_deposito"], g["faltan"]) == ("", "", ["monto", "datos para depositar"])
 
 
 def test_aprobar_desde_el_panel(cli):
     c, repo = cli
     tk = corto(repo)
     aid = repo.listar_aprobaciones(tk)[0]["id"]
-    # Con [completar] no se puede.
+    # Sin monto ni datos no se puede.
     r = c.post(f"/api/tickets-allianz/aprobacion/{aid}", json={"accion": "aprobar"})
-    assert r.status_code == 409 and "sin completar" in r.json()["detail"]
-    # Corregir → v2 (sigue pendiente).
+    assert r.status_code == 409 and r.json()["detail"] == "Falta completar: monto y datos para depositar."
+    # Guardar sin enviar → v2 (sigue pendiente).
     r = c.post(f"/api/tickets-allianz/aprobacion/{aid}",
-               json={"accion": "corregir", "texto": "Hola Guillermo, deposita $50,000 a la CLABE 0123."})
+               json={"accion": "corregir", "monto": "$50,000 MXN", "datos_deposito": "CLABE 0123"})
     assert r.status_code == 200 and repo.obtener_aprobacion(aid)["version"] == 2
+    g = c.get("/api/tickets-allianz").json()["items"][0]["guia_pendiente"]
+    assert (g["monto"], g["faltan"]) == ("$50,000 MXN", []) and "• Monto: $50,000 MXN" in g["texto"]
     # Aprobar → guía a cliente y asesor; sale de "Para Ceci".
     r = c.post(f"/api/tickets-allianz/aprobacion/{aid}", json={"accion": "aprobar", "usuario": "Ceci"})
     assert r.status_code == 200 and sorted(r.json()["avisos"]) == ["asesor", "cliente"]
@@ -77,7 +80,8 @@ def test_pago_enviado_a_mano(cli):
     c, repo = cli
     tk = corto(repo)
     aid = repo.listar_aprobaciones(tk)[0]["id"]
-    c.post(f"/api/tickets-allianz/aprobacion/{aid}", json={"accion": "aprobar", "texto": "Hola, deposita $10."})
+    c.post(f"/api/tickets-allianz/aprobacion/{aid}",
+           json={"accion": "aprobar", "monto": "$10", "datos_deposito": "CLABE 1"})
     r = c.post(f"/api/tickets-allianz/{tk}/etapa", json={"etapa": "documentos_enviados", "usuario": "Ceci"})
     assert r.status_code == 200 and sorted(r.json()["avisos"]) == ["asesor", "ceci", "cliente"]
     recs = {x["motivo"]: x["estado"] for x in repo.listar_recordatorios(tk)}
@@ -113,7 +117,7 @@ def test_panel_con_telegram_cierra_el_mensaje_viejo(cli, monkeypatch):
     tk = corto(repo)
     aid = repo.listar_aprobaciones(tk)[0]["id"]
     repo.actualizar_aprobacion(aid, telegram_msg_id="55", telegram_chat_id="777")
-    r = c.post(f"/api/tickets-allianz/aprobacion/{aid}", json={"accion": "corregir", "texto": "Hola, $10."})
+    r = c.post(f"/api/tickets-allianz/aprobacion/{aid}", json={"accion": "corregir", "monto": "$10"})
     assert r.status_code == 200
     assert [m for m, _ in llamadas] == ["editMessageReplyMarkup", "sendMessage"]
     assert repo.obtener_aprobacion(aid)["telegram_msg_id"] == ""  # el worker le manda la versión nueva
