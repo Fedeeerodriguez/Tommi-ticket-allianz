@@ -84,6 +84,18 @@ def job_recordatorios(repo, emisor) -> dict:
     return {**res, "despacho": desp}
 
 
+def job_telegram(repo, emisor) -> dict:
+    """Etapa 2: guías de aportación a Ceci por Telegram + sus botones/correcciones."""
+    from app.rieles import telegram
+    enviadas = telegram.enviar_pendientes(repo)
+    res = telegram.procesar_updates(repo)
+    desp = despachar_pendientes(repo, emisor) if res["plan"] else {"conteo": {}}
+    if enviadas or res["botones"] or res["correcciones"]:
+        log.info("telegram: %d guías enviadas · %d botones · %d correcciones · despacho=%s",
+                 enviadas, len(res["botones"]), len(res["correcciones"]), desp.get("conteo"))
+    return {**res, "enviadas": enviadas, "despacho": desp}
+
+
 def job_retencion(repo) -> dict:
     """Purga (o cuenta, en DRY_RUN) lo más viejo que RETENCION_DIAS."""
     res = repo.purgar_antiguos(config.RETENCION_DIAS, dry=config.DRY_RUN)
@@ -125,6 +137,9 @@ def construir_scheduler():
     sched.add_job(lambda: job_retencion(repo), "cron", hour=3, minute=30, id="retencion")
     if config.MOTOR_ETAPAS:
         sched.add_job(lambda: job_recordatorios(repo, emisor), "interval", minutes=30, id="recordatorios")
+        if config.hay_telegram():  # Etapa 2: aprobación de la guía de aportación
+            sched.add_job(lambda: job_telegram(repo, emisor), "interval", seconds=15, id="telegram",
+                          max_instances=1, coalesce=True)
     # Modo copiloto: resumen interno al equipo (solo si RESUMEN_EQUIPO_EMAIL está configurado).
     if config.RESUMEN_EQUIPO_EMAIL:
         sched.add_job(lambda: job_resumen_equipo(repo), "interval",
