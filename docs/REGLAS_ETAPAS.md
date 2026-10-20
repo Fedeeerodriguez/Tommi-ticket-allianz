@@ -40,7 +40,8 @@ Sin IA: son reglas fijas. Si ninguna aplica, el correo va a **REVISAR** (panel) 
 **Proceso**, según el título del hilo ("…escribió un mensaje en **<título>**:") y el producto:
 - `[EXT] Emisión póliza …` o producto SVIP/OPPT → **corto**.
 - Otro `[EXT] …`, o el acuse automático "hemos recibido" → **trámite** (lo abrimos nosotros con ese asunto).
-- El resto → **largo**. El producto sale del prefijo: GMMI/GMLI (gastos médicos), VIPP (vida), OP3D (educación), HOFP (residencial), PLU3.
+- El resto → **largo**. El producto sale del prefijo: GMMI/GMLI (gastos médicos), VIPP (vida), OP3D (educación), HOFP (residencial).
+- **PLU3 (OptiMaxx Plus) → corto** (Ceci, 20/10): no pide requisitos extra; se captura, se hace la preemisión, se autoriza y se cobra.
 
 ## Qué hacer en cada etapa
 
@@ -83,6 +84,5 @@ N° de ticket, n° de solicitud, póliza (normalizada como `PLU3-429083`, sin im
 - Póliza emitida: se avisa a los 3.
 
 ## Por confirmar
-1. **PLU3 (OptiMaxx Plus):** ¿proceso largo o corto (como Elite)? Hoy queda como largo.
-2. **"Autorizado" (C3 del proceso largo):** no hay captura. La regla busca "autorizado", "pasa a cobro" o "en proceso de cobro". Si llega un correo real, lo sumo como test.
-3. **Correo 3 del trámite (atendido / cerrado):** no hay captura. Se asume que es igual al C5 ("atendida", "folio cerrado").
+1. **"Autorizado" (C3 del proceso largo):** no hay captura. La regla busca "autorizado", "pasa a cobro" o "en proceso de cobro". Si llega un correo real, lo sumo como test.
+2. **Correo 3 del trámite (atendido / cerrado):** no hay captura. Se asume que es igual al C5 ("atendida", "folio cerrado").

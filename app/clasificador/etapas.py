@@ -116,7 +116,8 @@ PRODUCTOS: dict[str, tuple[str, str]] = {
     "GMMI": ("largo", "Gastos médicos"),
     "GMLI": ("largo", "Gastos médicos"),
     "VIPP": ("largo", "Vida"),
-    "PLU3": ("largo", "OptiMaxx Plus"),  # ⚠️ por confirmar con Ceci (¿corto como Elite?)
+    # Confirmado por Ceci (20/10): sin requisitos extra → captura, preemisión, autorización y cobro.
+    "PLU3": ("corto", "OptiMaxx Plus"),
 }
 _RE_PREFIJO = re.compile(r"(?<![A-Z0-9])(" + "|".join(PRODUCTOS) + r")(?![A-Z0-9])")  # GMLI_1131 incluido
 _NOMBRES_PRODUCTO = (

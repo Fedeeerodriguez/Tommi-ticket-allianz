@@ -299,14 +299,15 @@ def test_corto_c3_aviso_de_emision_cierra():
     assert r.accion.cerrar
 
 
-@pytest.mark.parametrize("asunto,remitente,poliza", [
-    ("Aviso de emisión de póliza VIPP-145029-0 DANIEL PRUEBA JUAREZ", "aviso.electronico@allianz.com.mx", "VIPP-145029"),
-    ("Aviso de emisión de póliza GMLI_1131_0 de RODRIGO PRUEBA BANCK", "comunicados.agentes@allianz.com.mx", "GMLI-1131"),
-    ("Aviso de emisión de póliza PLU3/436663 a nombre de Margarita Prueba Ruiz.", "notificaciones.optimaxx@allianz.com.mx", "PLU3-436663"),
+@pytest.mark.parametrize("asunto,remitente,poliza,proceso", [
+    ("Aviso de emisión de póliza VIPP-145029-0 DANIEL PRUEBA JUAREZ", "aviso.electronico@allianz.com.mx", "VIPP-145029", "largo"),
+    ("Aviso de emisión de póliza GMLI_1131_0 de RODRIGO PRUEBA BANCK", "comunicados.agentes@allianz.com.mx", "GMLI-1131", "largo"),
+    # PLU3 va por el proceso corto (Ceci, 20/10: sin requisitos extra).
+    ("Aviso de emisión de póliza PLU3/436663 a nombre de Margarita Prueba Ruiz.", "notificaciones.optimaxx@allianz.com.mx", "PLU3-436663", "corto"),
 ])
-def test_avisos_de_emision_de_otros_remitentes(asunto, remitente, poliza):
+def test_avisos_de_emision_de_otros_remitentes(asunto, remitente, poliza, proceso):
     r = det(asunto, "Estimado(a) BABILONIA SEGUROS ...", remitente)
-    assert r.etapa == Etapa.POLIZA_EMITIDA and r.poliza == poliza and r.proceso == "largo"
+    assert r.etapa == Etapa.POLIZA_EMITIDA and r.poliza == poliza and r.proceso == proceso
 
 
 # ============================================================ TRÁMITES (los abrimos nosotros)

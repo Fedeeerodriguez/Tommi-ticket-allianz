@@ -16,7 +16,7 @@ Todo en sandbox (DRY_RUN) hasta que Ceci lo apruebe.
 - **C3 Autorizado:** autorizan el cobro. **C5 Atendida:** ya se cobró.
 - **Rechazado / declinado:** se le avisa al asesor para que contacte al cliente. Al cliente no le sale nada automático.
 - **Póliza emitida:** aviso a los 3.
-- **PLU3:** pendiente de Fede. Hasta entonces va por este proceso.
+- **PLU3 (20/10, Ceci):** no pide requisitos extra (captura → preemisión → autorización → cobro) → va por el **proceso corto**, fuera de esta etapa.
 
 ## Fuera de esta etapa
 Quedan para después, porque cada una es una pieza propia del plan general:
@@ -118,5 +118,5 @@ Se entrega en una rama, con tests. No se mergea ni se prende nada sin tu OK.
 1. Nombre y parámetros de la plantilla WATI "actualización de trámite" → frena el paso 5.
 2. Que apruebes o corrijas los textos del paso 5.
 3. Confirmar el correo de Penny para la escalación, y si va alguien más en copia además de Ceci.
-4. PLU3: ¿largo o corto?
+4. ~~PLU3: ¿largo o corto?~~ → corto (Ceci, 20/10).
 5. (Si lo tenés) una captura de un correo C3 "autorizado".
