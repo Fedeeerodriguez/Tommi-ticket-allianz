@@ -10,6 +10,8 @@ Endpoints (todos bajo /api/tickets-allianz):
   GET  /api/tickets-allianz?filtro=para_ceci           -> solo lo que necesita a Ceci (Etapa 1)
   GET  /api/tickets-allianz/{id}/linea-tiempo          -> etapas C1→C5 con fecha, avisos y recordatorios
   PUT  /api/tickets-allianz/{id}/identificacion        -> Ceci asigna cliente/asesor a mano
+  POST /api/tickets-allianz/aprobacion/{id}            -> guía de aportación: aprobar | corregir | descartar (Etapa 2)
+  POST /api/tickets-allianz/{id}/etapa                 -> marcar a mano "pago/respuesta enviada" (Etapa 2)
   GET  /api/health                                     -> ping
 
 Seguridad: si `API_TOKEN` está seteado, exige `Authorization: Bearer <token>`. CORS por
@@ -27,7 +29,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from app import config
-from app.acciones.mensajes_etapa import ETIQUETAS
+from app.acciones.mensajes_etapa import ETIQUETAS, FALTA_COMPLETAR
 from app.acciones.motor_etapas import RANGO, _parse_ts
 from app.db import get_repo
 
@@ -125,6 +127,8 @@ def listar(filtro: Optional[str] = None, _=Depends(_auth)):
             "nro_solicitud": t.get("nro_solicitud"), "identificado_por": t.get("identificado_por"),
             "proximo_recordatorio": proximo_recordatorio(repo, t["id"]),
             "para_ceci": t["_para_ceci"],
+            # Etapa 2 (corto + trámites)
+            "titulo_hilo": t.get("titulo_hilo"), "guia_pendiente": guia_pendiente(repo, t["id"]),
         })
     resumen = {"tickets": len(items), "acciones": sum(len(i["acciones"]) for i in items),
                "pendientes": sum(i["pendientes"] for i in items),
@@ -154,9 +158,20 @@ def proximo_recordatorio(repo, ticket_id: int) -> Optional[dict]:
     return prox
 
 
+def guia_pendiente(repo, ticket_id: int) -> Optional[dict]:
+    """Etapa 2: la guía de aportación que espera a Ceci (si hay)."""
+    for ap in _seguro(lambda: repo.listar_aprobaciones(ticket_id, estados=["pendiente"]), []):
+        return {"id": ap["id"], "version": ap.get("version"), "texto": ap.get("texto"),
+                "por_telegram": bool(ap.get("telegram_msg_id")),
+                "falta_completar": FALTA_COMPLETAR in (ap.get("texto") or "")}
+    return None
+
+
 def motivos_para_ceci(repo, t: dict) -> list[str]:
     """Por qué este ticket necesita a Ceci (vacío = no la necesita)."""
     motivos = []
+    if guia_pendiente(repo, t["id"]):
+        motivos.append("guia_por_aprobar")
     if t.get("etapa") and not t.get("identificado_por") and (t.get("estado") or "") != "resuelto":
         motivos.append("sin_identificar")
     if _seguro(lambda: repo.listar_recordatorios(t["id"], estados=["escalado"]), []):
@@ -198,13 +213,19 @@ def linea_tiempo(ticket_id: int, _=Depends(_auth)):
     eventos = [{"tipo": e.get("tipo_evento"), "detalle": e.get("resumen"), "fecha": e.get("created_at")}
                for e in repo.listar_eventos(ticket_id)
                if e.get("tipo_evento") in ("etapa", "etapa_ignorada", "identificacion", "recordatorio",
-                                           "escalado", "revisar", "emision")]
+                                           "escalado", "revisar", "emision", "guia_por_aprobar",
+                                           "guia_aprobada", "guia_corregida", "guia_descartada", "etapa_manual")]
     return {
         "ticket": {"id": t["id"], "nro_ticket": t.get("nro_ticket"), "cliente_nombre": t.get("cliente_nombre"),
                    "etapa": t.get("etapa"), "etapa_nombre": ETIQUETAS.get(t.get("etapa") or "", t.get("etapa")),
                    "estado": t.get("estado"), "producto": t.get("producto"), "nro_solicitud": t.get("nro_solicitud"),
                    "poliza": t.get("poliza"), "identificado_por": t.get("identificado_por"),
+                   "proceso": t.get("proceso"), "titulo_hilo": t.get("titulo_hilo"),
                    "para_ceci": motivos_para_ceci(repo, t)},
+        "aprobaciones": [{"id": a["id"], "tipo": a.get("tipo"), "estado": a.get("estado"), "version": a.get("version"),
+                          "texto": a.get("texto"), "resuelto_por": a.get("resuelto_por"),
+                          "resuelto_en": a.get("resuelto_en"), "fecha": a.get("created_at")}
+                         for a in _seguro(lambda: repo.listar_aprobaciones(ticket_id), [])],
         "pasos": sorted(pasos.values(), key=lambda p: str(p["fecha"])),
         "recordatorios": [{"motivo": r.get("motivo"), "estado": r.get("estado"), "vence": r.get("vence_en"),
                            "escala": r.get("escala_en"), "recordado": r.get("recordado_en"),
@@ -235,6 +256,86 @@ def asignar_identificacion(ticket_id: int, body: IdentificacionIn, _=Depends(_au
     repo.actualizar_ticket(ticket_id, **campos, identificado_por="manual")
     repo.agregar_evento(ticket_id, None, "identificacion", "Cliente/asesor asignados a mano por Ceci")
     return {"ok": True, "ticket_id": ticket_id, "identificado_por": "manual"}
+
+
+# ─────────────────────────── Etapa 2: guía de aportación y etapa a mano ───────────────────────────
+class AprobacionIn(BaseModel):
+    accion: str                      # aprobar | corregir | descartar
+    texto: Optional[str] = None      # corregir (obligatorio) / aprobar (opcional: aprueba con este texto)
+    usuario: Optional[str] = None    # quién (para la bitácora)
+
+
+@app.post("/api/tickets-allianz/aprobacion/{aprobacion_id}")
+def resolver_aprobacion(aprobacion_id: int, body: AprobacionIn, _=Depends(_auth)):
+    """Ceci aprueba, corrige o descarta la guía de aportación desde el panel (lo mismo que los
+    botones de Telegram). Aprobar encola la guía al cliente y al asesor (el worker la despacha,
+    respetando DRY_RUN) y arranca el recordatorio de pago."""
+    from app.acciones import aprobaciones
+    repo = _get_repo()
+    ap = repo.obtener_aprobacion(aprobacion_id)
+    if not ap:
+        raise HTTPException(status_code=404, detail="aprobación no encontrada")
+    por = f"panel:{(body.usuario or 'ceci').strip()[:40]}"
+    if body.accion == "aprobar":
+        res = aprobaciones.aprobar(repo, aprobacion_id, por, texto=body.texto)
+        leyenda = "✅ Aprobada desde el panel: ya salió al cliente y al asesor."
+    elif body.accion == "descartar":
+        res = aprobaciones.descartar(repo, aprobacion_id, por)
+        leyenda = "🗑 Descartada desde el panel: no se mandó nada."
+    elif body.accion == "corregir":
+        res = aprobaciones.corregir(repo, aprobacion_id, body.texto or "", por)
+        leyenda = f"✏️ Corregida desde el panel (versión {res.get('version')}): te llega la nueva abajo."
+    else:
+        raise HTTPException(status_code=400, detail="accion: aprobar | corregir | descartar")
+    if not res["ok"]:
+        raise HTTPException(status_code=409, detail=res["motivo"])
+    _avisar_telegram(repo, ap, leyenda, reenviar=body.accion == "corregir")
+    return {"ok": True, "motivo": res["motivo"], "avisos": [a["rol"] for a in res.get("plan", [])]}
+
+
+def _avisar_telegram(repo, ap: dict, leyenda: str, reenviar: bool) -> None:
+    """Si la guía ya estaba en Telegram, ese mensaje deja de servir (sus botones son de otra versión
+    o ya está resuelta). Al corregir, el worker le manda a Ceci la versión nueva."""
+    if not ap.get("telegram_msg_id") or not config.hay_telegram():
+        return
+    from app.rieles import telegram
+    telegram.cerrar_mensaje(ap, leyenda)
+    if reenviar:
+        repo.actualizar_aprobacion(ap["id"], telegram_msg_id="")
+
+
+_ETAPAS_A_MANO = {"documentos_enviados"}
+
+
+class EtapaIn(BaseModel):
+    etapa: str
+    usuario: Optional[str] = None
+
+
+@app.post("/api/tickets-allianz/{ticket_id}/etapa")
+def marcar_etapa(ticket_id: int, body: EtapaIn, _=Depends(_auth)):
+    """Marcar a mano lo que no llega por correo al hilo. Hoy: 'documentos_enviados' = el pago de
+    Patrimonial (va en un correo nuevo a 'cliente inversión') o una respuesta mandada por fuera.
+    Corre por el mismo motor: avisos únicos, corta el recordatorio de pago y arranca 'esperando a Allianz'."""
+    from app.acciones.motor_etapas import decidir_por_etapa
+    repo = _get_repo()
+    t = repo.obtener_ticket(ticket_id)
+    if not t:
+        raise HTTPException(status_code=404, detail="ticket no encontrado")
+    if body.etapa not in _ETAPAS_A_MANO:
+        raise HTTPException(status_code=400, detail=f"etapa a mano: {', '.join(sorted(_ETAPAS_A_MANO))}")
+    if not t.get("etapa"):
+        raise HTTPException(status_code=409, detail="el ticket no está en el motor por etapa")
+    quien = (body.usuario or "ceci").strip()[:40]
+    res = decidir_por_etapa(repo, ticket_id, {"etapa": body.etapa, "proceso": t.get("proceso"),
+                                              "motivo": f"marcado a mano en el panel ({quien})"})
+    repo.agregar_evento(ticket_id, None, "etapa_manual",
+                        f"{ETIQUETAS.get(body.etapa, body.etapa)} — marcado a mano por {quien}"
+                        + ("" if res.get("aplicada") else f" (sin efecto: {res.get('motivo')})"))
+    if not res.get("aplicada"):
+        raise HTTPException(status_code=409, detail=res.get("motivo") or "no aplica")
+    return {"ok": True, "etapa": body.etapa, "avisos": [a["rol"] for a in res["plan"]],
+            "recordatorios": res.get("recordatorios", [])}
 
 
 def _correo_ticket(repo, ticket_id: int) -> Optional[dict]:
