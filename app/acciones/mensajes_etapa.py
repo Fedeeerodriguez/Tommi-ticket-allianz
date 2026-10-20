@@ -158,7 +158,7 @@ TEXTOS_RECORDATORIO: dict[tuple[str, str], dict[str, str]] = {
                 "Si vence el plazo, Allianz rechaza el ticket.",
     },
     ("esperando_allianz", "recordatorio"): {
-        "ceci": "Ticket {tk} · {cliente}{con_asunto}: Allianz no responde desde que le mandamos lo pedido ({desde}). "
+        "ceci": "Ticket {tk} · {cliente}{con_asunto}: Allianz no responde desde que mandamos {lo_enviado} ({desde}). "
                 "Si sigue sin responder, se escala con copia a la ejecutiva.",
     },
     ("esperando_allianz", "escalado"): {
@@ -186,8 +186,8 @@ TEXTOS_RECORDATORIO: dict[tuple[str, str], dict[str, str]] = {
 # Correo de escalación a Allianz (en el hilo del ticket, formal: usted).
 CORREO_ESCALACION = (
     "Buen día,\n\n"
-    "Damos seguimiento {referencia}. El {desde} enviamos la "
-    "documentación solicitada y a la fecha no hemos recibido respuesta.\n\n"
+    "Damos seguimiento {referencia}. El {desde} enviamos {lo_enviado_formal} "
+    "y a la fecha no hemos recibido respuesta.\n\n"
     "¿Nos apoyan con el estatus, por favor?\n\n"
     "Quedamos atentos.\nBabilonia"
 )
@@ -289,7 +289,9 @@ def contexto(ticket: dict, etapa: dict, datos: Optional[dict] = None,
     datos = datos or {}
     prod = etapa.get("producto") or ticket.get("producto")
     ramo = PRODUCTOS.get(prod, (None, prod or ""))[1]
-    ramo_cliente = ramo if any(c.isupper() for c in ramo[1:]) else ramo.lower()
+    # "gastos médicos" va en minúscula; las marcas del proceso corto (Elite, Patrimonial, OptiMaxx Plus), no.
+    marca = PRODUCTOS.get(prod, ("",))[0] == "corto" or any(c.isupper() for c in ramo[1:])
+    ramo_cliente = ramo if marca else ramo.lower()
     cliente = datos.get("cliente_nombre") or etapa.get("cliente") or ticket.get("cliente_nombre") or ""
     if cliente.isupper():  # Allianz escribe "MARTHA ZARATE URIBE"; Notion ya viene bien escrito
         cliente = cliente.title()
@@ -329,6 +331,11 @@ def contexto(ticket: dict, etapa: dict, datos: Optional[dict] = None,
         "con_asunto": f" · {asunto}" if asunto else "",
         "de_asunto": f" «{asunto}»" if asunto else "",
         "referencia": referencia,
+        # Lo que le mandamos a Allianz y quedó sin respuesta (recordatorio "esperando a Allianz").
+        "lo_enviado": {"corto": "el comprobante de pago", "tramite": "nuestra respuesta"}.get(
+            etapa.get("proceso") or ticket.get("proceso"), "los documentos"),
+        "lo_enviado_formal": {"corto": "el comprobante de pago", "tramite": "la información solicitada"}.get(
+            etapa.get("proceso") or ticket.get("proceso"), "la documentación solicitada"),
         "guia": "",
         "que_piden": _pedido(etapa.get("que_piden")) or "información adicional",
         "plazo": _plazo(etapa.get("plazo")),

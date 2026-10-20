@@ -334,3 +334,31 @@ def test_escalacion_del_tramite_nombra_el_tramite(repo, monkeypatch):
     correo = next(a for a in r["plan"] if a["tipo_accion"] == "escalar_allianz")
     assert "Damos seguimiento a el trámite" not in correo["cuerpo"]
     assert "al trámite «Aplicación de pago póliza OPPT-48211» de Ana Prueba Ruiz (ticket 2587626)" in correo["cuerpo"]
+
+
+# ================================================================ textos (docs/TEXTOS_ETAPA2.md)
+from app.acciones import mensajes_etapa as m  # noqa: E402
+
+
+@pytest.mark.parametrize("prod,esperado", [("SVIP", "tu solicitud de Elite"), ("OPPT", "tu solicitud de Patrimonial"),
+                                           ("PLU3", "tu solicitud de OptiMaxx Plus")])
+def test_guia_respeta_la_marca_del_producto(prod, esperado):
+    ctx = m.contexto({"producto": prod, "poliza": f"{prod}-1"}, {}, {"cliente_nombre": "Ana Ruiz"})
+    assert esperado in m.guia_aportacion(ctx)
+
+
+def test_el_largo_no_cambia_de_texto():
+    ctx = {**m.contexto({"nro_ticket": "2576612", "proceso": "largo", "nro_solicitud": "1950110"},
+                        {"cliente": "Hortencia González Gama"}), "desde": "26/10", "cc": "x"}
+    assert m.texto_recordatorio("ceci", "esperando_allianz", "recordatorio", ctx).startswith(
+        "Ticket 2576612 · Hortencia González Gama: Allianz no responde desde que mandamos los documentos (26/10).")
+    assert ("Damos seguimiento a la solicitud 1950110 de Hortencia González Gama (ticket 2576612). El 26/10 "
+            "enviamos la documentación solicitada y a la fecha") in m.CORREO_ESCALACION.format(**ctx)
+    assert m.contexto({"producto": "GMMI"}, {})["de_producto"] == " de gastos médicos"
+
+
+def test_escalacion_del_corto_habla_del_pago():
+    ctx = {**m.contexto({"nro_ticket": "2567479", "proceso": "corto", "poliza": "SVIP-21799"},
+                        {"cliente": "GUILLERMO SANDERS"}), "desde": "30/10"}
+    assert "Damos seguimiento a la póliza SVIP-21799 de Guillermo Sanders (ticket 2567479). El 30/10 enviamos " \
+           "el comprobante de pago" in m.CORREO_ESCALACION.format(**ctx)
