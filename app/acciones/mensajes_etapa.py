@@ -17,8 +17,8 @@ MAX_QUE_PIDEN = 300
 
 TEXTOS: dict[str, dict[str, str]] = {
     "apertura": {
-        "asesor": "Ticket {tk} · {cliente} · {producto}: Allianz abrió la solicitud {sol}.",
-        "cliente": "Hola {nombre}, tu solicitud de {producto_cliente} ya está en Allianz y está en proceso "
+        "asesor": "Ticket {tk} · {cliente}{con_producto}: Allianz abrió la solicitud{con_sol}.",
+        "cliente": "Hola {nombre}, tu solicitud{de_producto} ya está en Allianz y está en proceso "
                    "de autorización. Te avisamos cada avance.",
     },
     "requerimiento": {
@@ -72,8 +72,7 @@ TEXTOS_RECORDATORIO: dict[tuple[str, str], dict[str, str]] = {
     ("requerimiento", "recordatorio"): {
         "cliente": "Hola {nombre}, te recuerdo que Allianz sigue esperando: {que_piden}. "
                    "Mándamelo por aquí y yo lo envío.",
-        "asesor": "Ticket {tk} · {cliente}: sigue pendiente lo que pidió Allianz → {que_piden}. "
-                  "Ya le recordamos al cliente.",
+        "asesor": "Ticket {tk} · {cliente}: sigue pendiente lo que pidió Allianz → {que_piden}.{ya_cliente}",
     },
     ("requerimiento", "escalado"): {
         "asesor": "Ticket {tk} · {cliente}: el cliente todavía no manda lo que pidió Allianz ({que_piden}). "
@@ -88,6 +87,10 @@ TEXTOS_RECORDATORIO: dict[tuple[str, str], dict[str, str]] = {
     ("esperando_allianz", "escalado"): {
         "ceci": "Ticket {tk} · {cliente}: Allianz sigue sin responder. Dejé listo un correo en el hilo con "
                 "copia a {cc} para que lo apruebes.",
+    },
+    ("esperando_allianz", "escalado_sin_correo"): {  # ESCALAR_A_ALLIANZ apagado
+        "ceci": "Ticket {tk} · {cliente}: Allianz sigue sin responder. Conviene escribirles en el hilo con "
+                "copia a {cc}.",
     },
 }
 
@@ -130,12 +133,17 @@ ETIQUETAS = {
     "cerrado_inactividad": "Cerrado por inactividad",
     "poliza_emitida": "Póliza emitida",
     "nota_ejecutiva": "Nota de la ejecutiva",
-    "copia_ejecutiva": "La ejecutiva pide respuesta",
+    "copia_ejecutiva": "Copia de la ejecutiva",
+    "confirmacion_datos": "Allianz confirmó los datos",
+    "emision_registrada": "Emisión registrada",
+    "revisar": "Revisar a mano",
+    "recordatorio_allianz": "Recordatorio automático de Allianz",
     "rebote_ticket_cerrado": "Respuesta no entregada (ticket cerrado)",
     "recordatorio_requerimiento": "Recordatorio: Allianz espera documentos",
     "escalado_requerimiento": "Urgente: documentos pendientes",
     "recordatorio_esperando_allianz": "Allianz sin respuesta",
     "escalado_esperando_allianz": "Escalado a Allianz",
+    "escalado_sin_correo_esperando_allianz": "Allianz sigue sin responder",
 }
 
 
@@ -160,9 +168,14 @@ def _pedido(s: Optional[str]) -> str:
 
 
 def _recortar(s: Optional[str], n: int = MAX_QUE_PIDEN) -> str:
-    """Una línea, sin el punto final (lo pone la plantilla) y con '…' si se cortó."""
+    """Una línea, sin el punto final (lo pone la plantilla) y con '…' si se cortó (en una palabra entera)."""
     s = re.sub(r"\s+", " ", s or "").strip()
-    return s.rstrip(" .;:,") if len(s) <= n else s[: n - 1].rstrip(" ,.;:") + "…"
+    if len(s) <= n:
+        return s.rstrip(" .;:,")
+    corte = s[: n - 1]
+    if " " in corte[n // 2:]:
+        corte = corte.rsplit(" ", 1)[0]
+    return corte.rstrip(" ,.;:(") + "…"
 
 
 def _plazo(plazo) -> str:
@@ -183,17 +196,26 @@ def contexto(ticket: dict, etapa: dict, datos: Optional[dict] = None,
     """Variables de las plantillas. `datos` = lo identificado en Notion (nombres con acentos)."""
     datos = datos or {}
     prod = etapa.get("producto") or ticket.get("producto")
-    ramo = PRODUCTOS.get(prod, (None, prod or "tu seguro"))[1]
-    cliente = datos.get("cliente_nombre") or etapa.get("cliente") or ticket.get("cliente_nombre") or "—"
+    ramo = PRODUCTOS.get(prod, (None, prod or ""))[1]
+    ramo_cliente = ramo if any(c.isupper() for c in ramo[1:]) else ramo.lower()
+    cliente = datos.get("cliente_nombre") or etapa.get("cliente") or ticket.get("cliente_nombre") or ""
     if cliente.isupper():  # Allianz escribe "MARTHA ZARATE URIBE"; Notion ya viene bien escrito
         cliente = cliente.title()
+    # Nombres de Notion a veces traen ruido ("María .  del Carmen"): fuera puntos sueltos y espacios dobles.
+    cliente = re.sub(r"\s+", " ", re.sub(r"(?<!\w)\.(?!\w)", " ", cliente)).strip()
+    sol = etapa.get("nro_solicitud") or ticket.get("nro_solicitud")
     return {
         "tk": etapa.get("nro_ticket") or ticket.get("nro_ticket") or "—",
-        "cliente": re.sub(r"\s+", " ", cliente).strip(),
-        "nombre": _primer_nombre(cliente) if cliente != "—" else "",
-        "producto": ramo,
-        "producto_cliente": ramo if any(c.isupper() for c in ramo[1:]) else ramo.lower(),
-        "sol": etapa.get("nro_solicitud") or ticket.get("nro_solicitud") or "—",
+        "cliente": cliente or "cliente sin identificar",
+        "nombre": _primer_nombre(cliente),
+        "producto": ramo or "—",
+        "producto_cliente": ramo_cliente or "tu seguro",
+        # Partes que desaparecen si no se saben (para no escribir "tu seguro" o "solicitud —").
+        "con_producto": f" · {ramo}" if ramo else "",
+        "de_producto": f" de {ramo_cliente}" if ramo else "",
+        "con_sol": f" {sol}" if sol else "",
+        "ya_cliente": "",
+        "sol": sol or "—",
         "poliza": etapa.get("poliza") or ticket.get("poliza") or "—",
         "que_piden": _pedido(etapa.get("que_piden")) or "información adicional",
         "plazo": _plazo(etapa.get("plazo")),

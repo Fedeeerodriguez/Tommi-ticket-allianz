@@ -114,3 +114,11 @@ def test_despacho_sin_plantilla_de_etapas_usa_la_de_cada_rol(tmp_path, monkeypat
     ases = next(a for a in repo.listar_acciones(tk) if a["tipo_accion"] == "avisar_asesor")
     r = __import__("json").loads(ases["resultado"])
     assert r["plantilla"] == "avances" and list(r["params"]) == ["mensaje"]
+
+
+def test_recorte_en_palabra_entera_y_nombre_sin_ruido():
+    largo = "Historia clínica completa y actualizada, por su médico tratante, indicando antecedente " * 6
+    q = M.contexto({}, {**ETAPA_EJEMPLO, "que_piden": largo})["que_piden"]
+    assert q.endswith("…") and not q[:-1].endswith(" ") and q[:-1].split()[-1] in largo.split()
+    assert M.contexto({}, {}, {"cliente_nombre": "María .  del Carmen Montero  Querejeta"})["cliente"] == \
+        "María del Carmen Montero Querejeta"

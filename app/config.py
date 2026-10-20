@@ -153,6 +153,10 @@ SLA_AVISO_HORAS = int(os.getenv("SLA_AVISO_HORAS", "24"))
 # Etapa 1 — motor por etapa del proceso largo (docs/PLAN_ETAPA1_PROCESO_LARGO.md). Apagado por
 # default: con MOTOR_ETAPAS=1 el proceso largo deja de usar el motor viejo por tipo de correo.
 MOTOR_ETAPAS = _bool("MOTOR_ETAPAS", "false")
+# Encendido gradual (paso 8): a quién le salen avisos y recordatorios ("ceci,asesor" primero, después
+# sumar "cliente"), y si la escalación arma el correo a Allianz con copia a la ejecutiva.
+MOTOR_ETAPAS_ROLES = _csv("MOTOR_ETAPAS_ROLES", "ceci,asesor,cliente")
+ESCALAR_A_ALLIANZ = _bool("ESCALAR_A_ALLIANZ", "false")
 # Recordatorio: se vence a las N h hábiles (o antes, si el correo de Allianz da un plazo menor)
 # y se escala (correo con copia a la ejecutiva + aviso a Ceci) M h hábiles después.
 RECORDATORIO_HORAS_HABILES = int(os.getenv("RECORDATORIO_HORAS_HABILES", "72"))

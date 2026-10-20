@@ -63,7 +63,7 @@ def test_emision_de_un_cliente_que_no_seguimos_no_crea_nada(entorno, monkeypatch
     em = correo("m9", "Aviso de emisión de póliza PLU3-429083 a nombre de Alejandra Rivero Macias",
                 "<html><body>Aviso</body></html>", "notificaciones.optimaxx@allianz.com.mx")
     out = g.invoke({"correo": em, "despachar": False})
-    assert out["fin"] == "no_ticket" and repo.listar_tickets() == []
+    assert out["fin"] == "emision_sin_ticket" and repo.listar_tickets() == []
 
 
 @pytest.mark.parametrize("asunto,cuerpo", [

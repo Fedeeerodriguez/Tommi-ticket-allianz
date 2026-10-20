@@ -250,3 +250,37 @@ def test_solo_proceso_largo_y_con_el_interruptor(monkeypatch):
     assert not usa_motor_etapas({"etapa": "no_aplica", "proceso": "largo"})
     monkeypatch.setattr(config, "MOTOR_ETAPAS", False)
     assert not usa_motor_etapas({"etapa": "apertura", "proceso": "largo"})
+
+
+# ---------------- correcciones del replay con correos reales (paso 8) ----------------
+def test_sin_identificar_igual_guarda_el_nombre_que_escribe_allianz(repo, tk):
+    correr(repo, tk, C1, 1, buscar=notion())
+    assert repo.obtener_ticket(tk)["cliente_nombre"] == "HORTENCIA GONZALEZ GAMA"
+    assert repo.obtener_ticket(tk)["identificado_por"] is None
+
+
+def test_allianz_repite_el_mismo_pedido_no_avisa_de_nuevo(repo, tk):
+    correr(repo, tk, C1, 1)
+    correr(repo, tk, C3, 2)
+    otra_persona = (C3[0].replace("RAUL MARIN", "GLORIA MORALES"), C3[1].replace("RAUL MARIN", "GLORIA MORALES"))
+    r = correr(repo, tk, otra_persona, 3)
+    assert not r["aplicada"] and "mismo pedido" in r["motivo"] and r["plan"] == []
+    assert len(repo.listar_avisos(tk)) == 6
+
+
+def test_nota_de_la_ejecutiva_lleva_lo_que_escribio(repo, tk):
+    correr(repo, tk, C1, 1)
+    nota = (f"RV: {TK} RAUL MARIN escribió un mensaje",
+            "Hola, ya subí la hoja membretada al ticket.\nDe: Allianz.Mexico\n...")
+    r = decidir_por_etapa(repo, tk, detectar_etapa(*nota, "blanca.xuluc@allianz.com.mx").como_dict(),
+                          correo_id=2, ahora=LUNES, buscar=notion(fila()))
+    ases = next(a for a in r["plan"] if a["rol"] == "asesor")
+    assert ases["mensaje"].endswith("la ejecutiva de Allianz escribió: Hola, ya subí la hoja membretada al ticket")
+
+
+def test_apertura_sin_producto_ni_solicitud_no_dice_tu_seguro(repo, tk):
+    c1 = (C1[0], C1[1].replace(" TIPO DE SOLICITUD: GMMI", "").replace("NÚMERO DE SOLICITUD: 1950110\n", ""))
+    r = correr(repo, tk, c1, 1, buscar=notion(fila(sol=None)))
+    textos = {a["rol"]: a["mensaje"] for a in r["plan"]}
+    assert textos["asesor"] == "Ticket 2576612 · Hortencia González Gama: Allianz abrió la solicitud."
+    assert textos["cliente"].startswith("Hola Hortencia, tu solicitud ya está en Allianz")

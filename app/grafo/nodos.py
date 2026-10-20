@@ -64,12 +64,15 @@ def n_persistir(estado: EstadoCorreo, repo: Repositorio) -> dict:
     salida = {"correo_id": correo_id, "es_nuevo": es_nuevo, "fin": fin, "ruta": ["persistir"]}
     if config.MOTOR_ETAPAS and es_nuevo:
         etapa = _etapa(estado)
-        # Los avisos de emisión llegan como "sistema" y sin n° de ticket. Si son de un ticket del
-        # proceso largo que ya seguimos, siguen por su propio camino (n_emision).
-        if fin == "no_ticket" and etapa and etapa.get("etapa") in EMISIONES:
+        # Los avisos de emisión no traen n° de ticket (y el clasificador viejo a veces los toma por
+        # respuesta de ticket). Si son de un ticket del proceso largo que ya seguimos, siguen por su
+        # propio camino (n_emision); si no, no crean ticket.
+        if fin in (None, "no_ticket") and etapa and etapa.get("etapa") in EMISIONES:
             tid = ticket_para_emision(repo, etapa)
             if tid:
                 salida.update(fin=None, emision_ticket_id=tid)
+            else:
+                salida["fin"] = "emision_sin_ticket"
         # Avisos automáticos de Allianz que no son de ningún ticket (DAF, cobranzas, recordatorio de
         # pago…): fuera de alcance, no crean ticket. Los delicados siguen el camino de siempre (Ceci).
         elif fin is None and etapa is None and _buzon_de_avisos(correo.remitente) and not es_delicado(correo):

@@ -26,7 +26,7 @@ from app.db import Repositorio
 from app.tickets import sla
 
 from . import mensajes_etapa
-from .motor_etapas import REC_ESPERANDO_ALLIANZ, REC_REQUERIMIENTO, _encolar, _parse_ts, mas_horas_habiles
+from .motor_etapas import REC_ESPERANDO_ALLIANZ, _encolar, _parse_ts, mas_horas_habiles, rol_activo
 
 log = logging.getLogger(__name__)
 
@@ -46,7 +46,8 @@ def _ctx(ticket: dict, rec: dict) -> dict:
     etapa = {"nro_ticket": ticket.get("nro_ticket"), "producto": ticket.get("producto"),
              "nro_solicitud": ticket.get("nro_solicitud"), "poliza": ticket.get("poliza"),
              "que_piden": rec.get("nota")}
-    desde = _parse_ts(rec.get("created_at"))
+    # "Desde": cuándo entró el ticket a la etapa actual (ej. cuándo mandamos los documentos, C4).
+    desde = _parse_ts(ticket.get("etapa_desde")) or _parse_ts(rec.get("created_at"))
     return {**mensajes_etapa.contexto(ticket, etapa), "ticket_id": ticket["id"],
             "desde": f"{hora_mx(desde):%d/%m}" if desde else "—", "cc": ", ".join(config.ESCALA_CC) or "—"}
 
@@ -59,7 +60,9 @@ def _avisar(repo: Repositorio, ticket: dict, rec: dict, momento: str, roles: lis
     params = mensajes_etapa.params_wati(ctx, clave, ticket.get("telefono_cliente"))
     plan, omitidos = [], []
     identificado = bool(ticket.get("identificado_por"))
-    for rol in roles:
+    roles = [r for r in roles if rol_activo(r)]  # encendido gradual
+    # El cliente primero: el texto del asesor dice "Ya le recordamos al cliente" solo si de verdad salió.
+    for rol in sorted(roles, key=lambda r: r != "cliente"):
         if rol == "ceci":
             continue
         if not identificado:
@@ -74,6 +77,8 @@ def _avisar(repo: Repositorio, ticket: dict, rec: dict, momento: str, roles: lis
             a = _encolar(repo, ticket["id"], rol, t, clave, rec["id"], str(numero), rec.get("correo_id"), params)
             if a:
                 plan.append(a)
+                if rol == "cliente":
+                    ctx["ya_cliente"] = " Ya le recordamos al cliente."
     if "ceci" in roles or omitidos:
         t = mensajes_etapa.texto_recordatorio("ceci", motivo, momento, ctx, omitidos)
         a = _encolar(repo, ticket["id"], "ceci", t, clave, rec["id"], None, rec.get("correo_id"), params)
@@ -94,7 +99,7 @@ def _correo_escalacion(repo: Repositorio, ticket: dict, rec: dict) -> Optional[d
                "mensaje": f"Escalación: Allianz no responde (ticket {ctx['tk']}).", "requiere_visto_bueno": True,
                "etapa": f"escalado_{rec['motivo']}", "aviso_id": aviso_id}
     accion_id = repo.crear_accion(ticket["id"], "escalar_allianz", "email", payload)
-    return {"accion_id": accion_id, "tipo_accion": "escalar_allianz", **payload}
+    return {"accion_id": accion_id, "ticket_id": ticket["id"], "tipo_accion": "escalar_allianz", **payload}
 
 
 def escanear_recordatorios(repo: Repositorio, ahora: Optional[datetime] = None) -> dict:
@@ -126,10 +131,13 @@ def escanear_recordatorios(repo: Repositorio, ahora: Optional[datetime] = None) 
                                     f"Recordatorio ({rec['motivo']}) a {', '.join(roles)}")
         elif escala and escala <= ahora:
             if rec["motivo"] == REC_ESPERANDO_ALLIANZ:
-                correo = _correo_escalacion(repo, ticket, rec)
-                if correo:
-                    res["plan"].append(correo)
-                res["plan"] += _avisar(repo, ticket, rec, "escalado", ["ceci"])
+                if config.ESCALAR_A_ALLIANZ:
+                    correo = _correo_escalacion(repo, ticket, rec)
+                    if correo:
+                        res["plan"].append(correo)
+                    res["plan"] += _avisar(repo, ticket, rec, "escalado", ["ceci"])
+                else:  # encendido gradual: todavía sin correo a Allianz, solo se avisa a Ceci
+                    res["plan"] += _avisar(repo, ticket, rec, "escalado_sin_correo", ["ceci"])
             else:  # REC_REQUERIMIENTO: el que falta es el cliente → asesor + Ceci
                 res["plan"] += _avisar(repo, ticket, rec, "escalado", ["asesor", "ceci"])
             repo.actualizar_recordatorio(rec["id"], estado="escalado", escalado_en=ahora)

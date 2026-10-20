@@ -30,6 +30,7 @@ def aislado(monkeypatch):
     monkeypatch.setattr(config, "DRY_RUN", True)
     monkeypatch.setattr(config, "PANEL_URL", "")
     monkeypatch.setattr(config, "ESCALA_CC", ["penny.ortiz@allianz.com.mx"])
+    monkeypatch.setattr(config, "ESCALAR_A_ALLIANZ", True)
     monkeypatch.setattr(config, "ALLIANZ_DEST", "allianz.mexico@allianz.com.mx", raising=False)
     monkeypatch.setattr(config, "WATI_PLANTILLA_ETAPAS", "")
 
@@ -39,8 +40,8 @@ def repo(tmp_path):
     return RepositorioSQLite(str(tmp_path / "t.sqlite"))
 
 
-def ticket_con(repo, *correos, ahora=VIERNES, buscar=None):
-    tk = repo.crear_ticket({"nro_ticket": "2576612", "estado": "abierto"})
+def ticket_con(repo, *correos, ahora=VIERNES, buscar=None, nro="2576612"):
+    tk = repo.crear_ticket({"nro_ticket": nro, "estado": "abierto"})
     for i, c in enumerate(correos, 1):
         decidir_por_etapa(repo, tk, et(c), correo_id=i, ahora=ahora, buscar=buscar or notion(fila()))
     return tk
@@ -145,3 +146,34 @@ def test_los_escaneos_viejos_no_tocan_tickets_con_etapa(repo):
     repo.conn.execute("update tickets set ultima_actividad='2026-01-01 00:00:00' where id=?", (tk,))
     repo.conn.commit()
     assert escanear_inactividad(repo, dias=3) == [] and escanear_vencimientos(repo) == []
+
+
+def test_encendido_gradual_sin_correo_a_allianz(repo, monkeypatch):
+    monkeypatch.setattr(config, "ESCALAR_A_ALLIANZ", False)
+    tk = ticket_con(repo, C1, C3, C4)
+    escanear_recordatorios(repo, utc(28, 16))
+    e = escanear_recordatorios(repo, utc(29, 17))
+    assert [a["tipo_accion"] for a in e["plan"]] == ["avisar_ceci"]
+    assert "Conviene escribirles en el hilo" in e["plan"][0]["mensaje"]
+    assert not any(a["tipo_accion"] == "escalar_allianz" for a in repo.listar_acciones(tk))
+
+
+def test_encendido_gradual_primero_ceci_y_asesor(repo, monkeypatch):
+    monkeypatch.setattr(config, "MOTOR_ETAPAS_ROLES", ["ceci", "asesor"])
+    tk = ticket_con(repo, C1, C3)
+    assert sorted(a["destinatario"] for a in repo.listar_avisos(tk)) == ["asesor", "asesor", "ceci", "ceci"]
+    r = escanear_recordatorios(repo, utc(28, 16))
+    assert [a["rol"] for a in r["plan"]] == ["asesor"]  # al cliente todavía no
+    ceci = [a for a in repo.listar_avisos(tk) if a["destinatario"] == "ceci"]
+    assert not any("cliente" in (a["texto"] or "") and "⚠️" in (a["texto"] or "") for a in ceci)
+
+
+def test_ya_le_recordamos_al_cliente_solo_si_salio(repo):
+    tk = ticket_con(repo, C1, C3, buscar=notion(fila(tel_cliente=None)))
+    r = escanear_recordatorios(repo, utc(28, 16))
+    ases = next(a for a in r["plan"] if a["rol"] == "asesor")
+    assert "Ya le recordamos" not in ases["mensaje"]
+    tk2 = ticket_con(repo, C1, C3, nro="2576613")
+    r2 = escanear_recordatorios(repo, utc(28, 16, 30))
+    assert any(a["rol"] == "asesor" and a["mensaje"].endswith("Ya le recordamos al cliente.") for a in r2["plan"])
+    assert tk and tk2

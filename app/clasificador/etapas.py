@@ -162,7 +162,9 @@ _RE_PLAZO = re.compile(
     r"(?:tiene|cuenta\s+con|plazo\s+de|dispone\s+de)\s+(\d+)\s+(d[ií]as?|horas?)(\s+h[aá]biles)?", re.I)
 _RE_BRINDAR_RESPUESTA = re.compile(r"brindar\s+respuesta|dar\s+respuesta|su\s+apoyo\s+para\s+responder", re.I)
 _RE_BOILERPLATE_RV = re.compile(
-    r"^(?:internal|hola[^\n]*|buen[oa]s?\s+(?:d[ií]as?|tardes?)[^\n]*|comparto\s+para\s+(?:su|tu)\s+conocimiento[^\n]*|"
+    # Saludos solo si son cortos: "Hola, ya subí la hoja membretada" es una nota, no un saludo.
+    r"^(?:internal|hola\b[^\n]{0,25}|buen[oa]s?\s+(?:d[ií]as?|tardes?)\b[^\n]{0,25}|"
+    r"comparto\s+para\s+(?:su|tu)\s+conocimiento[^\n]*|"
     r"para\s+(?:su|tu)\s+conocimiento[^\n]*|saludos\.?|gracias\.?)$", re.I)
 _RE_FIRMA_EJECUTIVA = re.compile(r"\n[^\n]*\n\s*Ejecutiv[oa]\s+Comercial", re.I)
 
@@ -188,6 +190,8 @@ class EtapaCorreo:
     def como_dict(self) -> dict:
         d = {k: v for k, v in self.__dict__.items() if k not in ("accion", "mensaje") and v not in (None, "")}
         d["etapa"] = self.etapa.value
+        if self.etapa == Etapa.NOTA_EJECUTIVA and self.mensaje:  # el aviso cuenta lo que escribió
+            d["mensaje"] = self.mensaje[:600]
         d["accion"] = {k: v for k, v in self.accion.__dict__.items() if v}
         return d
 
@@ -405,12 +409,14 @@ def detectar_etapa(asunto: str, cuerpo: str, remitente: str) -> EtapaCorreo:
         propio = _RE_FIRMA_EJECUTIVA.split(propio)[0]
         lineas = [l.strip() for l in propio.splitlines() if l.strip()]
         sustancia = [l for l in lineas if not _RE_BOILERPLATE_RV.match(l)]
-        etapa = Etapa.NOTA_EJECUTIVA if sustancia else Etapa.COPIA_EJECUTIVA
+        pide_responder = bool(_RE_BRINDAR_RESPUESTA.search(propio))
+        # "Brindar respuesta" es una alerta para Ceci (copia que pide acción), aunque traiga texto propio.
+        etapa = Etapa.NOTA_EJECUTIVA if (sustancia and not pide_responder) else Etapa.COPIA_EJECUTIVA
         r = EtapaCorreo(etapa, nro_ticket=ticket, actor=addr, actor_tipo="ejecutiva",
                         mensaje=_plano(" ".join(sustancia)),
                         motivo="reenvío de ejecutiva" + (" con comentario propio" if sustancia else ""))
         acc = accion_para(etapa, None)
-        if _RE_BRINDAR_RESPUESTA.search(propio):  # Penny pide que respondamos en el ticket
+        if pide_responder:  # Penny pide que respondamos en el ticket
             acc = Accion(("ceci",), nota="La ejecutiva pide responder directo en el ticket (con copia a ella).")
         r.accion = acc
         return r

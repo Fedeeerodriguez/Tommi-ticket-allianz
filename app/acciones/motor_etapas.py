@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Callable, Optional
 
 from app import config
 from app.clasificador.etapas import Etapa, accion_para
@@ -100,8 +100,12 @@ def ticket_para_emision(repo: Repositorio, etapa: dict) -> Optional[int]:
     return None
 
 
+# Reloj inyectable: el replay del paso 8 lo fija a la fecha de cada correo real.
+reloj: Optional[Callable[[], datetime]] = None
+
+
 def _ahora(ahora: Optional[datetime]) -> datetime:
-    a = ahora or datetime.now(timezone.utc)
+    a = ahora or (reloj() if reloj else datetime.now(timezone.utc))
     return a if a.tzinfo else a.replace(tzinfo=timezone.utc)
 
 
@@ -139,6 +143,24 @@ def mas_horas_habiles(desde: datetime, horas: int) -> datetime:
     return sla.calcular_vencimiento(desde, dias, "dias_habiles") + timedelta(hours=resto)
 
 
+def _norm_pedido(s: Optional[str]) -> str:
+    import unicodedata
+    s = unicodedata.normalize("NFKD", s or "")
+    s = "".join(c for c in s if not unicodedata.combining(c)).lower()
+    return " ".join("".join(c if c.isalnum() else " " for c in s).split())[:150]
+
+
+def _pedido_vigente_igual(repo: Repositorio, ticket_id: int, que_piden: Optional[str]) -> bool:
+    """¿El pedido nuevo es el mismo que el del requerimiento que sigue vivo?"""
+    nuevo = _norm_pedido(que_piden)
+    if len(nuevo) < 20:
+        return False
+    for r in repo.listar_recordatorios(ticket_id, estados=["activo", "escalado"]):
+        if r.get("motivo") == REC_REQUERIMIENTO and _norm_pedido(r.get("nota")) == nuevo:
+            return True
+    return False
+
+
 def _vencimiento(motivo: str, etapa: dict, desde: datetime) -> tuple[datetime, datetime]:
     """Vence: plazo del correo o 72 h hábiles, el que llegue antes. Escala 24 h hábiles después."""
     vence = mas_horas_habiles(desde, config.RECORDATORIO_HORAS_HABILES)
@@ -163,7 +185,7 @@ def _recordatorios(repo: Repositorio, ticket_id: int, e: Etapa, etapa: dict, ron
             log_.append("se reemplazó el requerimiento anterior")
         vence, escala = _vencimiento(REC_REQUERIMIENTO, etapa, ahora)
         if repo.crear_recordatorio(ticket_id, REC_REQUERIMIENTO, _DEST_REC[REC_REQUERIMIENTO], vence, escala,
-                                   correo_id, nota=(etapa.get("que_piden") or "")[:200]):
+                                   correo_id, nota=(etapa.get("que_piden") or "")[:600]):
             log_.append(f"recordatorio al cliente/asesor para el {vence:%d/%m %H:%M} UTC")
     elif e == Etapa.DOCUMENTOS_ENVIADOS:
         if repo.cerrar_recordatorios(ticket_id, "cumplido", REC_REQUERIMIENTO, "se mandó lo pedido (C4)"):
@@ -180,9 +202,16 @@ def _recordatorios(repo: Repositorio, ticket_id: int, e: Etapa, etapa: dict, ron
     return vence, log_
 
 
+def rol_activo(rol: str) -> bool:
+    """Encendido gradual (MOTOR_ETAPAS_ROLES): a un rol apagado no se le registra ni encola nada."""
+    return rol in {r.strip().lower() for r in config.MOTOR_ETAPAS_ROLES}
+
+
 def _encolar(repo: Repositorio, ticket_id: int, rol: str, texto: str, etapa: str, ronda: int,
              numero: Optional[str], correo_id: Optional[int], params: dict) -> Optional[dict]:
-    """Registra el aviso (único) y lo encola. None si ese aviso ya había salido."""
+    """Registra el aviso (único) y lo encola. None si ese aviso ya había salido o el rol está apagado."""
+    if not rol_activo(rol):
+        return None
     aviso_id = repo.registrar_aviso(ticket_id, etapa, rol, ronda=ronda, canal="wati", texto=texto,
                                     correo_id=correo_id)
     if aviso_id is None:
@@ -190,7 +219,7 @@ def _encolar(repo: Repositorio, ticket_id: int, rol: str, texto: str, etapa: str
     payload = {"rol": rol, "destinatario": None, "numero": numero, "mensaje": texto,
                "etapa": etapa, "ronda": ronda, "aviso_id": aviso_id, "params": params}
     accion_id = repo.crear_accion(ticket_id, TIPO_ACCION[rol], "wati", payload)
-    return {"accion_id": accion_id, "aviso_id": aviso_id, "tipo_accion": TIPO_ACCION[rol], **payload}
+    return {"accion_id": accion_id, "aviso_id": aviso_id, "ticket_id": ticket_id, "tipo_accion": TIPO_ACCION[rol], **payload}
 
 
 def decidir_por_etapa(repo: Repositorio, ticket_id: int, etapa: dict, correo_id: Optional[int] = None,
@@ -213,7 +242,10 @@ def decidir_por_etapa(repo: Repositorio, ticket_id: int, etapa: dict, correo_id:
     # Datos que el correo trae y el ticket no tenía (no pisa lo que ya hay).
     for col, val in (("proceso", proceso if e not in SIN_AVANCE else etapa.get("proceso")),
                      ("producto", etapa.get("producto")), ("nro_solicitud", etapa.get("nro_solicitud")),
-                     ("poliza", etapa.get("poliza"))):
+                     ("poliza", etapa.get("poliza")),
+                     # El nombre como lo escribe Allianz (sirve para leer el panel y enganchar la emisión).
+                     # No identifica a nadie: eso lo decide `identificado_por`.
+                     ("cliente_nombre", etapa.get("cliente"))):
         if val and not ticket.get(col):
             campos[col] = val
 
@@ -222,6 +254,10 @@ def decidir_por_etapa(repo: Repositorio, ticket_id: int, etapa: dict, correo_id:
         ronda_nueva = False
     else:
         aplica, nueva_ronda, motivo = transicion(actual, e, ronda)
+        # Allianz a veces repite el MISMO pedido (otra persona, o como recordatorio): no es otra ronda.
+        if aplica and e == Etapa.REQUERIMIENTO and actual == Etapa.REQUERIMIENTO.value \
+                and _pedido_vigente_igual(repo, ticket_id, etapa.get("que_piden")):
+            aplica, nueva_ronda, motivo = False, ronda, "Allianz repitió el mismo pedido"
         ronda_nueva = nueva_ronda != ronda
         ronda = ronda_aviso = nueva_ronda
     res.update(aplicada=aplica, motivo=motivo, ronda=ronda)
@@ -250,6 +286,7 @@ def decidir_por_etapa(repo: Repositorio, ticket_id: int, etapa: dict, correo_id:
     # A quién avisar: lo que decidió el detector para ESTE correo (ej. la copia de la ejecutiva que
     # pide "brindar respuesta" → alerta a Ceci); si no vino, la tabla de acciones.
     roles = list((etapa.get("accion") or {}).get("avisar") or ()) if "accion" in etapa else list(acc.avisar)
+    roles = [r for r in roles if rol_activo(r)]  # encendido gradual
     if e == Etapa.REVISAR:
         repo.agregar_evento(ticket_id, correo_id, "revisar", f"Ninguna regla aplica: {etapa.get('motivo', '')}"[:200])
 

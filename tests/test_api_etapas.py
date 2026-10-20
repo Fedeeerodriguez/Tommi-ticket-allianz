@@ -14,7 +14,7 @@ from test_recordatorios import utc
 @pytest.fixture
 def cli(tmp_path, monkeypatch):
     for k, v in (("MOTOR_ETAPAS", True), ("NOTION_TOKEN", ""), ("OPENAI_API_KEY", ""), ("DRY_RUN", True),
-                 ("PANEL_URL", ""), ("API_TOKEN", "")):
+                 ("PANEL_URL", ""), ("API_TOKEN", ""), ("ESCALAR_A_ALLIANZ", True)):
         monkeypatch.setattr(config, k, v)
     repo = RepositorioSQLite(str(tmp_path / "t.sqlite"))
     monkeypatch.setattr(api, "_repo", repo)
