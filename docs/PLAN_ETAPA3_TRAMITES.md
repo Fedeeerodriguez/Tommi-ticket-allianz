@@ -1,6 +1,30 @@
 # Plan Etapa 3 — Trámites que hacemos nosotros (Fase 7)
 
-Estado: **propuesta (22/10)**, sin empezar. Va sobre la rama `feat/etapas-allianz`.
+Estado: **A hecha (23/10)**; B y C esperan material. Va sobre la rama `feat/etapas-allianz` (pantalla: `tomi-babilonia` → `feat/panel-etapas-allianz`).
+
+## A — cómo quedó (23/10)
+- **Panel → "Abrir un trámite con Allianz"**:
+  - Ceci elige el trámite (del catálogo u "Otro…") y la póliza, y suma una nota y adjuntos (hasta 5, 8 MB en total).
+  - **Ver cómo sale** muestra el cliente y el asesor identificados, el destino, el asunto y el cuerpo.
+  - **Abrir trámite** lo crea.
+- **Identificación:** la póliza se busca exacta en Notion Emisiones. Si no aparece o es ambigua, **no se abre**: no se adivina a quién avisar después.
+- **El correo** (`app/acciones/abrir_tramite.py`):
+  - texto fijo, sin IA; sale desde hola@ en el próximo ciclo del worker (respeta `DRY_RUN`);
+  - asunto `<Trámite> - Póliza <X> - <Cliente>`, con guion ASCII para que Allianz no lo deforme;
+  - destino: `ALLIANZ_DIRECTORIO[clave]`, o si no está, `ALLIANZ_DEST`. Sin destino queda **bloqueado** y aparece en "Para Ceci".
+  - **No se retiene para aprobar:** lo armó y lo revisó Ceci misma. Por eso tampoco se frena si el tema es "crítico".
+- **Vuelta de Allianz:** el acuse `[EXT] <nuestro asunto>` se engancha solo a ese ticket (`enlazar`, en `n_upsert_ticket`). La coincidencia tolera acentos y títulos recortados. Desde ahí sigue el seguimiento de trámites de la Etapa 2.
+- **Al abrir no se avisa al cliente ni al asesor:** el aviso sale con el acuse, que ya trae el n° de ticket. Así no les llegan dos mensajes en minutos.
+- **Ventaja:** como sale de hola@, la respuesta de Allianz vuelve a hola@. Los trámites que abrimos desde el panel ya no dependen del reenvío desde `integraciones@`.
+- **También en esta entrega:**
+  - **Enviar / Descartar** desde el panel los correos retenidos para Ceci. Antes no había cómo aprobar la escalación a Allianz con copia a Penny.
+  - **El borrador editado en el panel ahora es el que se envía.** Antes salía el original.
+- **Duplicados:** un trámite igual (mismo asunto) que sigue abierto → 409, no se abre otro.
+- **Tests:** `tests/test_abrir_tramite.py` (20). Total: 259.
+- **Variable nueva opcional:** `ALLIANZ_DIRECTORIO` (JSON clave→correo, por ejemplo `{"cambio_conducto_cobro": "…@allianz.com.mx"}`). Ya pasa por el compose.
+
+---
+**Propuesta original (22/10):**
 
 ## Qué ya está (Etapa 2)
 - **Seguimiento del trámite** una vez abierto (hilo `[EXT] <nuestro asunto>`):

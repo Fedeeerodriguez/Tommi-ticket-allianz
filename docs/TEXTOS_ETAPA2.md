@@ -126,4 +126,21 @@ Son los mismos de la Etapa 1, con el asunto:
 > Quedamos atentos.
 > Babilonia
 
+### Correo para abrir un trámite desde el panel (Etapa 3)
+Sale desde hola@ al correo de Allianz de ese trámite. El texto es fijo; la nota de Ceci y los adjuntos son opcionales.
+
+**Asunto:** `Cambio de conducto de cobro - Póliza PLU3-408444 - Ana Prueba Lopez`
+> Buen día,
+>
+> Solicitamos su apoyo con el trámite de cambio de conducto de cobro para la póliza PLU3-408444, contratante Ana Prueba Lopez.
+>
+> *(nota de Ceci, si escribió una)*
+>
+> Adjuntamos: formato.pdf.
+>
+> Quedamos atentos.
+> Babilonia
+
+Al abrir **no** se avisa al cliente ni al asesor: les llega el aviso del acuse de Allianz (el de arriba, con el n° de ticket).
+
 Los textos del proceso largo (Etapa 1) **no cambian**.
