@@ -85,7 +85,8 @@ def mismo_asunto(nuestro: Optional[str], titulo_allianz: Optional[str]) -> bool:
     a, b = _norm(nuestro), _norm(titulo_allianz)
     if len(a) < 12 or len(b) < 12:
         return a == b and bool(a)
-    return a == b or a.startswith(b) or b.startswith(a)
+    # Recorte por palabra entera: "… oppt 1" no es el principio de "… oppt 12 …".
+    return a == b or (a + " ").startswith(b + " ") or (b + " ").startswith(a + " ")
 
 
 def _limpiar_adjuntos(adjuntos: Optional[list[dict]]) -> list[dict]:
@@ -192,7 +193,10 @@ def enlazar(repo: Repositorio, etapa: Optional[dict]) -> Optional[dict]:
         candidatos = repo.listar_tramites_abiertos(sin_ticket=True)
     except Exception:  # noqa: BLE001 — base sin la migración de etapas: no hay trámites nuestros
         return None
-    for t in candidatos:
-        if t.get("estado") not in _CERRADOS and mismo_asunto(t.get("asunto_hilo"), etapa["titulo_hilo"]):
-            return t
-    return None
+    abiertos = [t for t in candidatos if t.get("estado") not in _CERRADOS]
+    exactos = [t for t in abiertos if _norm(t.get("asunto_hilo")) == _norm(etapa["titulo_hilo"])]
+    if exactos:
+        return exactos[0]
+    # Título recortado: solo si apunta a un único trámite (si no, Ceci lo engancha a mano).
+    parecidos = [t for t in abiertos if mismo_asunto(t.get("asunto_hilo"), etapa["titulo_hilo"])]
+    return parecidos[0] if len(parecidos) == 1 else None

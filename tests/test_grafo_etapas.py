@@ -93,3 +93,35 @@ def test_sin_interruptor_sigue_el_motor_viejo(entorno, monkeypatch):
     assert "decidir" in out["ruta"] and "decidir_etapa" not in out["ruta"]
     assert repo.listar_avisos(out["ticket_id"]) == []
     assert repo.obtener_ticket(out["ticket_id"])["etapa"] is None
+
+
+def test_otro_numero_de_ticket_no_se_mezcla_con_uno_viejo_de_la_misma_poliza(entorno, monkeypatch):
+    # Un ticket nuevo de Allianz (otro número) para la misma póliza es OTRO ticket, aunque el viejo
+    # ya esté resuelto: antes se buscaba por póliza y se pegaba al viejo.
+    from app.grafo import nodos
+    repo, _ = entorno
+    viejo = repo.crear_ticket({"nro_ticket": "1111111", "poliza": "GMMI-101770", "estado": "resuelto"})
+    c = correo("m1", *C1)
+    estado = {"correo": c, **nodos.n_clasificar_l1({"correo": c}, repo)}
+    estado.update(nodos.n_extraer(estado, repo))
+    estado["entidades"] = {**estado["entidades"], "nro_ticket": "2576612", "poliza": "GMMI-101770"}
+    estado.update(nodos.n_persistir(estado, repo), notion={}, delicado=False)
+    tid = nodos.n_upsert_ticket(estado, repo)["ticket_id"]
+    assert tid != viejo and repo.obtener_ticket(tid)["nro_ticket"] == "2576612"
+    assert repo.obtener_ticket(viejo)["estado"] == "resuelto"
+
+
+def test_emision_va_al_ticket_del_proceso_no_a_un_tramite_de_la_misma_poliza(entorno, monkeypatch):
+    from app.acciones.motor_etapas import ticket_para_emision
+    monkeypatch.setattr(config, "MOTOR_ETAPAS", True)
+    monkeypatch.setattr(config, "MOTOR_ETAPAS_PROCESOS", ["largo", "corto", "tramite"])
+    repo, _ = entorno
+    corto = repo.crear_ticket({"nro_ticket": "2590001", "poliza": "OPPT-51234", "estado": "abierto",
+                               "proceso": "corto", "etapa": "documentos_enviados"})
+    repo.crear_ticket({"nro_ticket": "2590002", "poliza": "OPPT-51234", "estado": "abierto",
+                       "proceso": "tramite", "etapa": "apertura"})
+    repo.conn.execute("update tickets set ultima_actividad=?, created_at=? where id=?", ("2026-01-01", "2026-01-01", corto))
+    repo.conn.commit()  # el trámite es el más reciente
+    assert ticket_para_emision(repo, {"etapa": "poliza_emitida", "poliza": "OPPT-51234"}) == corto
+    # La póliza del ticket puede venir con otro separador o sufijo.
+    assert ticket_para_emision(repo, {"etapa": "poliza_emitida", "poliza": "OPPT/51234-0"}) == corto

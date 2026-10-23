@@ -162,9 +162,22 @@ def test_un_tramite_ajeno_no_se_engancha(repo):
     ("Cambio de conducto de cobro - Póliza PLU3-1 - Ana Prueba", "[EXT] Cambio de conducto de cobro - Póliza PLU3-1", True),
     ("Cambio de conducto de cobro - Póliza PLU3-1", "[EXT] Cambio de conducto de cobro - Póliza PLU3-2", False),
     ("Pago", "[EXT] Pago de póliza", False),
+    # Recortado en medio del número: OPPT-1 no es OPPT-12.
+    ("Cambio de conducto de cobro - Póliza OPPT-12 - Ana", "[EXT] Cambio de conducto de cobro - Póliza OPPT-1", False),
 ])
 def test_mismo_asunto(a, b, igual):
     assert abrir_tramite.mismo_asunto(a, b) is igual
+
+
+def test_titulo_recortado_que_sirve_para_dos_tramites_no_se_engancha(repo):
+    base = "Cambio de conducto de cobro - Póliza PLU3-1"
+    for cliente in ("Ana Prueba", "Ana Ruiz"):
+        repo.crear_ticket({"proceso": "tramite", "abierto_por": "babilonia", "estado": "abierto",
+                           "asunto_hilo": f"{base} - {cliente}"})
+    etapa = {"proceso": "tramite", "titulo_hilo": f"[EXT] {base}"}
+    assert abrir_tramite.enlazar(repo, etapa) is None  # ambiguo → Ceci lo engancha a mano
+    assert abrir_tramite.enlazar(repo, {**etapa, "titulo_hilo": f"[EXT] {base} - Ana Ruiz"})["asunto_hilo"] \
+        == f"{base} - Ana Ruiz"
 
 
 # ---------------------------------------------------------------- API

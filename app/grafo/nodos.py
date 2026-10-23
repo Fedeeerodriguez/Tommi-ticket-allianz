@@ -143,7 +143,10 @@ def n_upsert_ticket(estado: EstadoCorreo, repo: Repositorio) -> dict:
         # Etapa 3: el acuse de un trámite que abrimos desde el panel ("[EXT] <nuestro asunto>").
         ticket = enlazar_tramite(repo, _etapa(estado))
     if not ticket:
-        ticket = repo.buscar_ticket(ent.get("nro_ticket"), ent.get("poliza"), ent.get("cliente_correo"))
+        ticket = repo.buscar_ticket(None, ent.get("poliza"), ent.get("cliente_correo"))
+        # Otro n° de ticket de Allianz es otro ticket, aunque sea de la misma póliza o cliente.
+        if ticket and ent.get("nro_ticket") and ticket.get("nro_ticket") not in (None, "", ent["nro_ticket"]):
+            ticket = None
     if ticket:
         ticket_id = ticket["id"]
         campos = {"estado": estado_tk.value, "ultimo_message_id": correo.message_id, "vence_en": vence_en}

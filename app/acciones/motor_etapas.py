@@ -98,23 +98,26 @@ def ticket_para_emision(repo: Repositorio, etapa: dict) -> Optional[int]:
     por etapa (por póliza, n° de solicitud o nombre). Si no hay uno solo → None (no se crea un
     ticket nuevo por cada emisión)."""
     from app.enriquecimiento.identificar import mismo_nombre
+    from app.rieles.notion import misma_poliza
 
     activos = procesos_activos()
 
     def en_motor(t):
-        return t if t and t.get("etapa") and ((t.get("proceso") or "largo") in activos) else None
+        # Una emisión es del proceso largo o corto, nunca de un trámite (aunque sea de la misma póliza).
+        proceso = t.get("proceso") or "largo"
+        return t.get("etapa") and proceso in activos and proceso != "tramite"
 
+    tickets = [t for t in repo.listar_tickets(limite=500) if en_motor(t)]  # más reciente primero
     if etapa.get("poliza"):
-        t = en_motor(repo.buscar_ticket(None, etapa["poliza"], None))
+        t = next((t for t in tickets if misma_poliza(t.get("poliza"), etapa["poliza"])), None)
         if t:
             return t["id"]
     if etapa.get("nro_solicitud"):
-        t = en_motor(repo.buscar_ticket_por_solicitud(etapa["nro_solicitud"]))
+        t = next((t for t in tickets if str(t.get("nro_solicitud") or "") == str(etapa["nro_solicitud"])), None)
         if t:
             return t["id"]
     if etapa.get("cliente"):
-        cands = [t for t in repo.listar_tickets(limite=500)
-                 if en_motor(t) and mismo_nombre(t.get("cliente_nombre"), etapa["cliente"])]
+        cands = [t for t in tickets if mismo_nombre(t.get("cliente_nombre"), etapa["cliente"])]
         if len(cands) == 1:
             return cands[0]["id"]
     return None
