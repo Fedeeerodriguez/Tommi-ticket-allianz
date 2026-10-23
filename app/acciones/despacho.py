@@ -159,6 +159,14 @@ def sin_saludo(texto: str) -> str:
     return t[:1].upper() + t[1:] if t else t
 
 
+def sin_encabezado(texto: str) -> str:
+    """La plantilla del equipo ya muestra Ticket / Cliente / Trámite arriba:
+    'Ticket 2576612 · Ana: Allianz pide → …' → 'Allianz pide → …'."""
+    import re
+    t = re.sub(r"^\s*Ticket\s[^:\n]{1,200}:\s*", "", texto or "", count=1)
+    return t[:1].upper() + t[1:] if t else t
+
+
 def plantilla_etapas(pay: dict) -> tuple[str, dict]:
     """Avisos del motor por etapa → (plantilla WATI, variables por nombre). Una plantilla por
     destinatario: equipo (asesor/Ceci), cliente, y la guía de aportación."""
@@ -174,7 +182,7 @@ def plantilla_etapas(pay: dict) -> tuple[str, dict]:
             "mensaje": una_linea(sin_saludo(pay.get("mensaje", "")))}
     return config.WATI_PLANTILLA_AVISO_EQUIPO, {
         "ticket": una_linea(p.get("ticket")), "cliente": una_linea(p.get("cliente")),
-        "tramite": una_linea(p.get("tramite")), "mensaje": una_linea(pay.get("mensaje", ""))}
+        "tramite": una_linea(p.get("tramite")), "mensaje": una_linea(sin_encabezado(pay.get("mensaje", "")))}
 
 
 def _despachar_una(repo: Repositorio, accion: dict, emisor: Emisor, ahora: datetime) -> str:

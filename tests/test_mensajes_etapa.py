@@ -86,8 +86,18 @@ def test_plantilla_del_equipo():
            "params": _P}
     assert plantilla_etapas(pay) == ("tommy_aviso_equipo", {
         "ticket": "2576612", "cliente": "Hortencia Prueba Gama", "tramite": "Gastos médicos · Allianz pide documentos",
-        "mensaje": "Ticket 2576612 · Hortencia: Allianz pide → la carta. · ⚠️ Falta el teléfono"})
+        "mensaje": "Allianz pide → la carta. · ⚠️ Falta el teléfono"})  # sin repetir ticket y cliente
     assert plantilla_etapas({**pay, "rol": "ceci"})[0] == "tommy_aviso_equipo"
+
+
+def test_plantilla_del_equipo_en_un_tramite_lleva_el_asunto():
+    tk = {"nro_ticket": "2587626", "proceso": "tramite"}
+    ctx = M.contexto(tk, {"proceso": "tramite", "titulo_hilo": "[EXT] Aplicación de mensualidad"},
+                     {"cliente_nombre": "Ana Ruiz Pérez"})
+    assert M.params_wati(ctx, "apertura", None, "tramite")["tramite"] == "Aplicación de mensualidad · Trámite recibido por Allianz"
+    pay = {"rol": "ceci", "params": M.params_wati(ctx, "rebote_ticket_cerrado", None, "tramite"),
+           "mensaje": "Ticket 2587626: nuestra respuesta NO entró."}
+    assert plantilla_etapas(pay)[1]["mensaje"] == "Nuestra respuesta NO entró."
 
 
 def test_plantilla_del_cliente_sin_saludo_repetido():

@@ -269,7 +269,9 @@ def etiqueta(etapa: Optional[str], proceso: Optional[str] = None) -> str:
 def params_wati(ctx: dict, etapa: str, telefono_cliente: Optional[str], proceso: Optional[str] = None) -> dict:
     """Datos sueltos para la plantilla 'actualización de trámite' (el despacho elige cuáles usa)."""
     nombre = etiqueta(etapa, proceso)
-    return {"ticket": ctx.get("tk"), "tramite": f"{ctx.get('producto')} · {nombre}",
+    # Trámites: el asunto con que lo abrimos (pedido de Ceci); el resto, el producto.
+    que = ctx.get("asunto") if proceso == "tramite" and ctx.get("asunto") not in (None, "", "—") else ctx.get("producto")
+    return {"ticket": ctx.get("tk"), "tramite": f"{que} · {nombre}",
             "etapa": nombre, "cliente": ctx.get("cliente"), "nombre": ctx.get("nombre"),
             "telefono": telefono_cliente or "—", "poliza": ctx.get("poliza"), "solicitud": ctx.get("sol")}
 
