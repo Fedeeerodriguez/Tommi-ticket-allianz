@@ -80,6 +80,8 @@ class Repositorio(Protocol):
                             texto: Optional[str] = None) -> bool: ...
     def leer_valor(self, clave: str) -> Optional[str]: ...
     def guardar_valor(self, clave: str, valor: str) -> None: ...
+    # --- Etapa 3: trámites que abrimos nosotros desde el panel ---
+    def listar_tramites_abiertos(self, sin_ticket: bool = False) -> list[dict]: ...
 
 
 # ------------------------------------------------------------------ Postgres
@@ -211,6 +213,13 @@ class RepositorioPostgres:
     def listar_tickets(self, limite: int = 100) -> list[dict]:
         with self.conn.cursor() as cur:
             cur.execute(f"select * from {self._t('tickets')} order by ultima_actividad desc limit %s", (limite,))
+            return self._rows(cur)
+
+    def listar_tramites_abiertos(self, sin_ticket: bool = False) -> list[dict]:
+        extra = " and nro_ticket is null" if sin_ticket else ""
+        with self.conn.cursor() as cur:
+            cur.execute(f"select * from {self._t('tickets')} where proceso='tramite' and abierto_por=%s{extra} "
+                        f"order by created_at desc limit 200", ("babilonia",))
             return self._rows(cur)
 
     def obtener_ticket(self, ticket_id: int) -> Optional[dict]:
@@ -564,6 +573,12 @@ class RepositorioSQLite:
 
     def listar_tickets(self, limite: int = 100) -> list[dict]:
         cur = self.conn.execute("select * from tickets order by ultima_actividad desc limit ?", (limite,))
+        return [dict(r) for r in cur.fetchall()]
+
+    def listar_tramites_abiertos(self, sin_ticket: bool = False) -> list[dict]:
+        extra = " and nro_ticket is null" if sin_ticket else ""
+        cur = self.conn.execute(f"select * from tickets where proceso='tramite' and abierto_por=?{extra} "
+                                f"order by created_at desc limit 200", ("babilonia",))
         return [dict(r) for r in cur.fetchall()]
 
     def obtener_ticket(self, ticket_id: int) -> Optional[dict]:

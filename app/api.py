@@ -12,6 +12,10 @@ Endpoints (todos bajo /api/tickets-allianz):
   PUT  /api/tickets-allianz/{id}/identificacion        -> Ceci asigna cliente/asesor a mano
   POST /api/tickets-allianz/aprobacion/{id}            -> guía de aportación: aprobar | corregir | descartar (Etapa 2)
   POST /api/tickets-allianz/{id}/etapa                 -> marcar a mano "pago/respuesta enviada" (Etapa 2)
+  POST /api/tickets-allianz/accion/{id}/aprobar        -> correo retenido para Ceci: enviar | descartar
+  GET  /api/tickets-allianz/tramites/catalogo          -> trámites para el selector (Etapa 3)
+  POST /api/tickets-allianz/tramites/vista-previa      -> identifica la póliza y arma el correo (no guarda)
+  POST /api/tickets-allianz/tramites                   -> abre el trámite: ticket + correo a Allianz
   GET  /api/health                                     -> ping
 
 Seguridad: si `API_TOKEN` está seteado, exige `Authorization: Bearer <token>`. CORS por
@@ -129,6 +133,8 @@ def listar(filtro: Optional[str] = None, _=Depends(_auth)):
             "para_ceci": t["_para_ceci"],
             # Etapa 2 (corto + trámites)
             "titulo_hilo": t.get("titulo_hilo"), "guia_pendiente": guia_pendiente(repo, t["id"]),
+            # Etapa 3 (trámites abiertos desde el panel)
+            "abierto_por": t.get("abierto_por"),
         })
     resumen = {"tickets": len(items), "acciones": sum(len(i["acciones"]) for i in items),
                "pendientes": sum(i["pendientes"] for i in items),
@@ -182,7 +188,8 @@ def motivos_para_ceci(repo, t: dict) -> list[str]:
     if repo.listar_acciones(ticket_id=t["id"], estado="pendiente_ceci"):
         motivos.append("para_aprobar")
     # Correo a Allianz que no pudo ni armarse (ej. falta ALLIANZ_DEST): que no quede en silencio.
-    if any(a.get("tipo_accion") == "escalar_allianz" for a in repo.listar_acciones(ticket_id=t["id"], estado="bloqueada")):
+    if any(a.get("tipo_accion") in ("escalar_allianz", "abrir_tramite")
+           for a in repo.listar_acciones(ticket_id=t["id"], estado="bloqueada")):
         motivos.append("escalacion_bloqueada")
     eventos = repo.listar_eventos(t["id"])
     if eventos and eventos[-1].get("tipo_evento") == "revisar":
@@ -378,3 +385,79 @@ def editar_borrador(accion_id: int, body: BorradorIn, _=Depends(_auth)):
     if _get_repo().set_borrador(accion_id, body.borrador) == 0:
         raise HTTPException(status_code=404, detail="acción no encontrada")
     return {"ok": True, "accion_id": accion_id}
+
+
+# ─────────────────────────── Correos retenidos para Ceci: enviar o descartar ───────────────────────────
+class DecisionIn(BaseModel):
+    decision: str                         # enviar | descartar
+    usuario: Optional[str] = None
+    motivo: Optional[str] = None
+
+
+@app.post("/api/tickets-allianz/accion/{accion_id}/aprobar")
+def aprobar_accion(accion_id: int, body: DecisionIn, _=Depends(_auth)):
+    """Correos retenidos para el visto bueno de Ceci (escalación a Allianz con copia a Penny,
+    temas críticos): 'enviar' lo libera para el próximo despacho (con el borrador editado, si
+    lo editó); 'descartar' no lo manda. De a una acción: aprobar una no aprueba las demás."""
+    repo = _get_repo()
+    a = next((x for x in repo.listar_acciones(estado="pendiente_ceci") if x["id"] == accion_id), None)
+    if not a:
+        raise HTTPException(status_code=404, detail="no hay un correo esperando aprobación con ese id")
+    por = f"panel:{(body.usuario or 'ceci').strip()[:40]}"
+    if body.decision == "enviar":
+        repo.actualizar_accion(accion_id, "sugerida", {"aprobado_por": por})
+        repo.agregar_evento(a["ticket_id"], None, "visto_bueno", f"Correo aprobado por {por}")
+        return {"ok": True, "accion_id": accion_id, "estado": "sugerida",
+                "motivo": "aprobado: sale en el próximo ciclo"}
+    if body.decision == "descartar":
+        repo.actualizar_accion(accion_id, "rechazada", {"rechazado_por": por, "motivo": body.motivo or ""})
+        repo.agregar_evento(a["ticket_id"], None, "visto_bueno", f"Correo descartado por {por}")
+        return {"ok": True, "accion_id": accion_id, "estado": "rechazada", "motivo": "descartado: no se manda"}
+    raise HTTPException(status_code=400, detail="decision: enviar | descartar")
+
+
+# ─────────────────────────── Etapa 3: abrir un trámite desde el panel ───────────────────────────
+class AdjuntoIn(BaseModel):
+    nombre: str
+    tipo: Optional[str] = None
+    base64: str
+
+
+class TramiteIn(BaseModel):
+    tramite: str                          # clave del catálogo o nombre libre
+    poliza: str
+    nota: Optional[str] = None
+    adjuntos: list[AdjuntoIn] = []
+    usuario: Optional[str] = None
+
+
+@app.get("/api/tickets-allianz/tramites/catalogo")
+def catalogo_tramites(_=Depends(_auth)):
+    from app.acciones import abrir_tramite
+    return {"tramites": abrir_tramite.catalogo()}
+
+
+def _publico(p: dict) -> dict:
+    return {k: v for k, v in p.items() if not k.startswith("_")}
+
+
+@app.post("/api/tickets-allianz/tramites/vista-previa")
+def vista_previa_tramite(body: TramiteIn, _=Depends(_auth)):
+    """Identifica la póliza y muestra el correo tal como saldría. No guarda nada."""
+    from app.acciones import abrir_tramite
+    p = abrir_tramite.preparar(body.tramite, body.poliza, body.nota,
+                               [a.model_dump() for a in body.adjuntos])
+    return _publico(p)
+
+
+@app.post("/api/tickets-allianz/tramites")
+def abrir_tramite_panel(body: TramiteIn, _=Depends(_auth)):
+    """Abre el trámite: crea el ticket y encola el correo a Allianz (sale en el próximo ciclo del
+    worker, respetando DRY_RUN). El acuse de Allianz se engancha solo a este ticket."""
+    from app.acciones import abrir_tramite
+    r = abrir_tramite.abrir(_get_repo(), body.tramite, body.poliza, body.nota,
+                            [a.model_dump() for a in body.adjuntos],
+                            usuario=(body.usuario or "ceci").strip()[:40])
+    if not r["ok"]:
+        raise HTTPException(status_code=409 if r.get("duplicado") else 422, detail=r["motivo"])
+    return _publico(r)

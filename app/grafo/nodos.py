@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from app import config
 from app.acciones import decidir_y_encolar, despachar_pendientes
+from app.acciones.abrir_tramite import enlazar as enlazar_tramite
 from app.acciones.motor_etapas import EMISIONES, decidir_por_etapa, ticket_para_emision, usa_motor_etapas
 from app.clasificador import clasificar_l1, clasificar_l2
 from app.clasificador.allianz import es_correo_allianz
@@ -137,7 +138,12 @@ def n_upsert_ticket(estado: EstadoCorreo, repo: Repositorio) -> dict:
     hilo = {"gmail_thread_id": correo.hilo_id, "asunto_hilo": correo.asunto}
     # SLA (Fase C): vencimiento según el plazo de Allianz (o 72 h hábiles por default); cierre → None.
     vence_en = sla.vence_en_para(correo, clf)
-    ticket = repo.buscar_ticket(ent.get("nro_ticket"), ent.get("poliza"), ent.get("cliente_correo"))
+    ticket = repo.buscar_ticket(ent.get("nro_ticket"), None, None) if ent.get("nro_ticket") else None
+    if not ticket:
+        # Etapa 3: el acuse de un trámite que abrimos desde el panel ("[EXT] <nuestro asunto>").
+        ticket = enlazar_tramite(repo, _etapa(estado))
+    if not ticket:
+        ticket = repo.buscar_ticket(ent.get("nro_ticket"), ent.get("poliza"), ent.get("cliente_correo"))
     if ticket:
         ticket_id = ticket["id"]
         campos = {"estado": estado_tk.value, "ultimo_message_id": correo.message_id, "vence_en": vence_en}

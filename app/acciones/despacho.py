@@ -19,8 +19,12 @@ Nada de esto envía nada salvo que haya SMTP y `DRY_RUN=false` (lo decide `emiso
 """
 from __future__ import annotations
 
+import base64
 import json
 import logging
+import os
+import tempfile
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -95,6 +99,9 @@ def _guardar_si_critico(repo: Repositorio, accion: dict, ticket: dict, pay: dict
     """Fase E: si la acción es crítica y el ticket NO está autorizado, retiene el borrador para
     el visto bueno de Ceci y devuelve 'pendiente_ceci'. Si no es crítica o Ceci ya autorizó,
     devuelve None (sigue el envío normal)."""
+    # Trámite abierto por Ceci desde el panel: ella misma lo armó y lo revisó → no se retiene.
+    if accion.get("tipo_accion") == "abrir_tramite":
+        return None
     # Escalación a Allianz (Etapa 1): se aprueba de a UNA acción (no alcanza con el ticket autorizado).
     if pay.get("requiere_visto_bueno"):
         res = accion.get("resultado")
@@ -113,6 +120,22 @@ def _guardar_si_critico(repo: Repositorio, accion: dict, ticket: dict, pay: dict
         return None  # Ceci ya dio el visto bueno → se ejecuta
     retener_para_ceci(repo, accion, ticket, borrador)
     return "pendiente_ceci"
+
+
+@contextmanager
+def _archivos(adjuntos: Optional[list]):
+    """Adjuntos guardados en el payload ({nombre, base64}) → archivos temporales para el emisor."""
+    if not adjuntos:
+        yield []
+        return
+    with tempfile.TemporaryDirectory(prefix="adjuntos_") as carpeta:
+        rutas = []
+        for a in adjuntos:
+            ruta = os.path.join(carpeta, os.path.basename(a.get("nombre") or "adjunto"))
+            with open(ruta, "wb") as f:
+                f.write(base64.b64decode(a.get("base64") or ""))
+            rutas.append(ruta)
+        yield rutas
 
 
 _MAX_VARIABLE = 900  # WhatsApp: el cuerpo entero no puede pasar de 1024 caracteres
@@ -211,7 +234,7 @@ def _despachar_una(repo: Repositorio, accion: dict, emisor: Emisor, ahora: datet
             repo.actualizar_accion(aid, "bloqueada", {"motivo": "sin destinatario para responder"})
             return "bloqueada"
         asunto = pay.get("asunto") or "Sobre tu trámite"
-        cuerpo = pay.get("mensaje") or ""
+        cuerpo = accion.get("borrador_editado") or pay.get("mensaje") or ""  # lo editado en el panel manda
         # Guardarraíl crítico (Fase E): confirmaciones al cliente en temas críticos (cancelación,
         # suspensión de aportaciones, período de descanso…) pasan primero por Ceci.
         ticket = repo.obtener_ticket(accion["ticket_id"]) or {}
@@ -234,7 +257,8 @@ def _despachar_una(repo: Repositorio, accion: dict, emisor: Emisor, ahora: datet
     if canal == "email":
         ticket = repo.obtener_ticket(accion["ticket_id"]) or {}
         # Guardarraíl 1: sin Directorio Allianz no hay a quién mandarle.
-        destino = config.ALLIANZ_DEST
+        # Directorio por trámite (lo resuelve quien encola, p. ej. abrir_tramite); si no, ALLIANZ_DEST.
+        destino = pay.get("destinatario") or config.ALLIANZ_DEST
         if not destino:
             repo.actualizar_accion(aid, "bloqueada",
                                    {"motivo": "falta ALLIANZ_DEST (Directorio Allianz sin confirmar)"})
@@ -244,7 +268,8 @@ def _despachar_una(repo: Repositorio, accion: dict, emisor: Emisor, ahora: datet
         # encadenamos con el último Message-ID; si es un ticket nuevo, sale sin hilo.
         asunto = ticket.get("asunto_hilo") or _asunto_allianz(ticket)
         # Cuerpo: si el ORQUESTADOR (LLM) ya lo redactó (asertivo), lo usamos; si no, plantilla.
-        cuerpo = pay.get("cuerpo") or _cuerpo_allianz(ticket, pay)
+        # Lo que Ceci editó en el panel tiene prioridad sobre el borrador original.
+        cuerpo = accion.get("borrador_editado") or pay.get("cuerpo") or _cuerpo_allianz(ticket, pay)
         # Guardarraíl 2 crítico (Fase E): si es delicado/crítico y Ceci no lo autorizó, se
         # compone el borrador pero NO se manda: espera el visto bueno de Ceci.
         cc = [c for c in (pay.get("cc") or []) if c] or None
@@ -253,9 +278,10 @@ def _despachar_una(repo: Repositorio, accion: dict, emisor: Emisor, ahora: datet
                                     "canal": "email", "cc": cc})
         if hold:
             return hold
-        res = emisor.enviar([destino], asunto, cuerpo, cc=cc,
-                            hilo_id=ticket.get("gmail_thread_id"),
-                            in_reply_to=ticket.get("ultimo_message_id"))
+        with _archivos(pay.get("adjuntos")) as adjuntos:
+            res = emisor.enviar([destino], asunto, cuerpo, cc=cc, adjuntos=adjuntos or None,
+                                hilo_id=ticket.get("gmail_thread_id"),
+                                in_reply_to=ticket.get("ultimo_message_id"))
         if res.get("simulado"):
             repo.actualizar_accion(aid, "simulada", res)
             return "simulada"
