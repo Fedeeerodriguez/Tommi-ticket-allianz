@@ -120,7 +120,6 @@ def test_plantilla_de_la_guia():
 
 
 @pytest.mark.parametrize("entra,sale", [
-    ("Hola Ana, ¡listo! Tu solicitud quedó atendida.", "¡listo! Tu solicitud quedó atendida."),
     ("Hola, te recuerdo que falta tu aportación.", "Te recuerdo que falta tu aportación."),
     ("Tu póliza ya está emitida.", "Tu póliza ya está emitida."),
 ])
@@ -181,3 +180,12 @@ def test_cada_producto_sale_por_su_plantilla_de_guia(prod, plantilla, variables)
                      {}, {"cliente_nombre": "Guillermo Prueba Castro"})
     g = M.datos_guia(ctx, prod)
     assert plantilla_etapas({"rol": "cliente", "mensaje": "…", "params": {"guia": g}}) == (plantilla, variables)
+
+
+@pytest.mark.parametrize("entra,sale", [
+    ("Hola Guillermo, ¡tu póliza SVIP-21799 ya está emitida!", "¡Tu póliza SVIP-21799 ya está emitida!"),
+    ("Hola Ana, ¡listo! Tu solicitud quedó atendida.", "¡Listo! Tu solicitud quedó atendida."),
+    ("Hola, ya enviamos tus documentos.", "Ya enviamos tus documentos."),
+])
+def test_sin_saludo_deja_mayuscula_aunque_empiece_con_exclamacion(entra, sale):
+    assert sin_saludo(entra) == sale

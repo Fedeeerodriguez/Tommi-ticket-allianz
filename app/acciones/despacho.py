@@ -156,7 +156,8 @@ def sin_saludo(texto: str) -> str:
     """La plantilla del cliente ya dice 'Hola {{nombre}} 👋': 'Hola Ana, tu solicitud…' → 'Tu solicitud…'."""
     import re
     t = re.sub(r"^\s*hola(?:\s+[^,.!¡]{1,40})?\s*[,!.]\s*", "", texto or "", count=1, flags=re.I)
-    return t[:1].upper() + t[1:] if t else t
+    # Mayúscula en la primera letra, aunque arranque con '¡' o '¿' ("¡tu póliza…" → "¡Tu póliza…").
+    return re.sub(r"^([¡¿\s]*)(\w)", lambda m: m.group(1) + m.group(2).upper(), t, count=1)
 
 
 def sin_encabezado(texto: str) -> str:
