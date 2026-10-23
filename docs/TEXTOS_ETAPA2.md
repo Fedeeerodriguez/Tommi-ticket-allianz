@@ -22,19 +22,26 @@ Al cliente y al asesor **no les sale nada** hasta que Ceci aprueba.
 | Ceci (Telegram) | Guía de aportación · Ticket 2567479 · Guillermo Prueba Castro · Elite<br><br>*(la guía, abajo)*<br><br>[✅ Aprobar] [🗑 Descartar] |
 | Ceci (WhatsApp, solo si no está Telegram) | Ticket 2567479 · Guillermo Prueba Castro · Elite: Allianz confirmó los datos (póliza SVIP-21799). La guía de aportación está lista para que la apruebes. |
 
-**Guía de aportación:** sale por la plantilla de WhatsApp `tommy_guia_aportacion`. Nombre, producto y póliza los pone el sistema; **Ceci completa el monto y los datos para depositar**. No es texto libre: WhatsApp no deja cambiar el texto de una plantilla.
-> Hola Guillermo 👋 Allianz ya confirmó tu solicitud de Elite (póliza SVIP-21799). Para activarla falta tu aportación inicial:
->
-> • Monto: *(lo completa Ceci)*
-> • Datos para depositar: *(lo completa Ceci)*
-> • Referencia: póliza SVIP-21799
->
-> Cuando deposites, mándame por aquí el comprobante y tu estado de cuenta, y yo lo envío a Allianz.
+**Guía de aportación:** una por producto, cada una con su plantilla de WhatsApp. Son los pasos que Ceci le manda hoy al cliente (22/10). La cuenta para depositar viene en el correo "Felicidades" de Allianz; **lo que Ceci confirma es el número de solicitud**, que es la referencia del pago. El número ya viene precargado del correo de Allianz.
 
-- Sin monto y datos para depositar, **no se puede aprobar**.
-- Dónde los completa Ceci:
-  - **en Telegram**, respondiendo al mensaje con `Monto: $50,000 MXN` y `Datos: CLABE … a nombre de …` (en dos líneas o en una). Le llega la versión nueva con botones nuevos.
-  - **en el panel**, en los dos campos. Ahí ve cómo le llega al cliente antes de aprobar.
+**Patrimonial** (`tommy_guia_patrimonial`):
+> Hola Ana 👋 Allianz ya registró tu solicitud de Patrimonial. Para activarla falta tu aportación:
+>
+> 1. En el correo de Allianz “Felicidades” (Emisión de póliza) está la cuenta bancaria para la aportación.
+> 2. Haz el pago por la cantidad exacta registrada en tu solicitud. En concepto y referencia pon SOLO tu número de solicitud: 25290001. Si no lo incluyes, Allianz no podrá reconocer tu pago.
+> 3. Envía el comprobante y tu estado de cuenta bancario a cliente.inversion@allianz.com.mx con copia a soporte@babilonia.ai. En el asunto pon: Aplicación de fondos / OPPT-48211 / Ana Prueba Ruiz
+>
+> Tu aportación se refleja en el portal 48 horas hábiles después de que Allianz confirme el pago.
+
+**Elite** (`tommy_guia_elite`): igual, pero el comprobante va **como respuesta al mismo ticket de soporte**:
+> 3. Envía el comprobante y tu estado de cuenta bancario respondiendo al correo del ticket de soporte 2567479 de Allianz (no abras uno nuevo), con copia a soporte@babilonia.ai. En el asunto pon: Aplicación de fondos / SVIP-21799 / Guillermo Prueba Castro
+
+**OptiMaxx Plus** (`tommy_guia_aportacion`, provisoria hasta tener sus pasos): Ceci completa monto y datos para depositar.
+
+- Sin número de solicitud (o, en OptiMaxx Plus, sin monto y datos) **no se puede aprobar**.
+- Dónde lo confirma o corrige Ceci:
+  - **en Telegram**: si está bien, aprieta Aprobar; para corregirlo, responde `Solicitud: 25290001` y le llega la versión nueva.
+  - **en el panel**, en el campo. Ahí ve cómo le llega al cliente antes de aprobar.
 - Tampoco se puede aprobar si el cliente y el asesor no están identificados. En ese caso, primero se asignan en el panel.
 
 ### 2. Ceci aprueba → sale la guía
@@ -42,31 +49,29 @@ Al cliente y al asesor **no les sale nada** hasta que Ceci aprueba.
 | Para | Texto |
 |---|---|
 | Cliente | *(la guía tal cual la aprobó Ceci)* |
-| Asesor | Ticket 2567479 · Guillermo Prueba Castro: le mandamos al cliente la guía de aportación (aprobada por Ceci). Monto: $50,000 MXN · Datos para depositar: CLABE … |
-
-Arranca el **recordatorio de pago**.
+| Asesor | Le mandamos al cliente la guía de aportación (aprobada por Ceci). Número de solicitud: 25287681. |
 
 ### 3. Recordatorio de pago
-Se manda a los 3 días hábiles desde la aprobación. Si al día hábil siguiente sigue sin llegar el pago, se escala.
+**Patrimonial y Elite no tienen recordatorio de pago**: el cliente manda el comprobante por su cuenta. Solo OptiMaxx Plus lo tiene (variable `RECORDATORIO_PAGO_PRODUCTOS`, hoy `PLU3`): a los 3 días hábiles de aprobar la guía, y si al día hábil siguiente sigue sin llegar, se escala.
 
 | Cuándo | Para | Texto |
 |---|---|---|
-| Recordatorio | Cliente | Hola Guillermo, te recuerdo que falta tu aportación para activar tu Elite. Cuando deposites, mándame por aquí el comprobante y tu estado de cuenta. |
-| Recordatorio | Asesor | Ticket 2567479 · Guillermo Prueba Castro: el cliente todavía no manda el comprobante de pago de la guía de aportación. Ya le recordamos al cliente. |
-| Escalado | Asesor | Ticket 2567479 · Guillermo Prueba Castro: sigue sin llegar el comprobante de pago de la guía de aportación. Contacta al cliente. |
-| Escalado | Ceci | Ticket 2567479 · Guillermo Prueba Castro: sigue sin llegar el comprobante de pago de la guía de aportación. |
+| Recordatorio | Cliente | Te recuerdo que falta tu aportación para activar tu OptiMaxx Plus. Cuando deposites, mándame por aquí el comprobante y tu estado de cuenta. |
+| Recordatorio | Asesor | El cliente todavía no manda el comprobante de pago de la guía de aportación. Ya le recordamos al cliente. |
+| Escalado | Asesor | Sigue sin llegar el comprobante de pago de la guía de aportación. Contacta al cliente. |
+| Escalado | Ceci | Sigue sin llegar el comprobante de pago de la guía de aportación. |
 
 ### 4. Pago enviado a Allianz
 Cuándo se da por enviado:
-- **Elite:** cuando respondemos en el hilo.
-- **Patrimonial:** cuando se aprieta **Pago enviado** en el panel, porque ese pago va en un correo nuevo a "cliente inversión".
+- **Elite:** cuando el comprobante llega como respuesta al ticket.
+- **Patrimonial:** cuando se aprieta **Pago enviado** en el panel, porque ese comprobante va en un correo aparte a cliente.inversion@ (con copia a soporte@).
 
 | Para | Texto |
 |---|---|
-| Asesor | Ticket 2567479 · Guillermo Prueba Castro: se envió a Allianz el comprobante de pago, esperamos la emisión. |
-| Cliente | Hola Guillermo, ya enviamos tu comprobante de pago a Allianz. Te aviso cuando tu póliza quede emitida. |
+| Asesor | Ticket 2567479 · Guillermo Prueba Castro: Allianz ya tiene el comprobante de pago, esperamos la emisión. |
+| Cliente | Hola Guillermo, Allianz ya tiene tu comprobante de pago. Te aviso cuando tu póliza quede emitida. |
 
-Corta el recordatorio de pago y arranca el de "esperando a Allianz", el mismo de la Etapa 1.
+Arranca el recordatorio de "esperando a Allianz", el mismo de la Etapa 1 (y en OptiMaxx Plus corta el de pago).
 
 ### 5. Póliza emitida → cierra
 Es el mismo texto de la Etapa 1.

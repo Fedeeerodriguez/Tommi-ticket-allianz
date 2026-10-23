@@ -173,9 +173,12 @@ def plantilla_etapas(pay: dict) -> tuple[str, dict]:
     p = pay.get("params") or {}
     rol = (pay.get("rol") or "").lower()
     if rol == "cliente" and p.get("guia"):
-        g = p["guia"]
-        return config.WATI_PLANTILLA_GUIA, {k: una_linea(g.get(k)) for k in
-                                            ("nombre", "producto", "poliza", "monto", "datos_deposito")}
+        from app.acciones.mensajes_etapa import guia_de, valores_guia
+        g, guia = p["guia"], guia_de(p["guia"])
+        plantilla = {"patrimonial": config.WATI_PLANTILLA_GUIA_PATRIMONIAL,
+                     "elite": config.WATI_PLANTILLA_GUIA_ELITE}.get(guia["plantilla"], config.WATI_PLANTILLA_GUIA)
+        valores = valores_guia(g)
+        return plantilla, {k: una_linea(valores[k]) for k in guia["variables"]}
     if rol == "cliente":
         return config.WATI_PLANTILLA_AVISO_CLIENTE, {
             "nombre": una_linea(p.get("nombre") or "de nuevo"),

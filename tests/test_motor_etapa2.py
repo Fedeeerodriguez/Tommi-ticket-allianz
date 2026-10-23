@@ -69,6 +69,14 @@ def notion(*filas):
 
 
 ANA = fila(nombre="Ana Prueba Ruiz", sol=25290001, poliza="OPPT-48211", tel_cliente="5511112222")
+# OptiMaxx Plus: guía general (monto + datos para depositar) y con recordatorio de pago.
+LUISA = fila(nombre="Luisa Prueba Soto", sol=25290002, poliza="PLU3-408444", tel_cliente="5533334444")
+TIT_P3 = "[EXT] Emisión póliza No. Póliza: PLU3-408444 No. Solicitud: 25290002"
+C2_PLU3 = ("[Allianz México Ticket-2590002] Sistema escribió un mensaje", mail("SISTEMA", """Estimado cliente,
+Le confirmamos que recibimos su solicitud para trámite que se describe a continuación:
+ * NOMBRE DEL CONTRATANTE: LUISA PRUEBA SOTO
+ * NÚMERO DE SOLICITUD: 25290002
+ * TIPO DE SOLICITUD: PLU3, Nuevo negocio""", TIT_P3))
 
 
 @pytest.fixture(autouse=True)
@@ -90,7 +98,7 @@ def repo(tmp_path):
 
 def correr(repo, tk, ac, cid, buscar=None, ahora=LUNES, remitente=SISTEMA):
     return decidir_por_etapa(repo, tk, et(ac, remitente), correo_id=cid, ahora=ahora,
-                             buscar=buscar or notion(fila(), ANA))
+                             buscar=buscar or notion(fila(), ANA, LUISA))
 
 
 def roles(res):
@@ -105,11 +113,33 @@ CAMPOS = {"monto": "$50,000 MXN", "datos_deposito": "CLABE 012345678901234567 a 
 
 
 def guia_lista(repo, tk):
-    """C2 corto → guía pendiente → Ceci completa monto y datos para depositar."""
+    """C2 Elite → guía pendiente, con el n° de solicitud ya puesto (Ceci solo lo confirma)."""
     correr(repo, tk, C2_CORTO, 1)
+    ap = repo.listar_aprobaciones(tk)[0]
+    return ap["id"], ap["texto"]
+
+
+def plu3(repo):
+    return repo.crear_ticket({"nro_ticket": "2590002", "estado": "abierto"})
+
+
+def guia_general_lista(repo, tk):
+    """C2 OptiMaxx Plus → guía general pendiente → Ceci completa monto y datos para depositar."""
+    correr(repo, tk, C2_PLU3, 1)
     ap = repo.listar_aprobaciones(tk)[0]
     aprobaciones.corregir(repo, ap["id"], "panel:ceci", **CAMPOS)
     return ap["id"], repo.obtener_aprobacion(ap["id"])["texto"]
+
+
+GUIA_ELITE_GUILLERMO = (
+    "Hola Guillermo 👋 Allianz ya registró tu solicitud de Elite. Para activarla falta tu aportación:\n\n"
+    "1. En el correo de Allianz “Felicidades” (Emisión de póliza) está la cuenta bancaria para la aportación.\n"
+    "2. Haz el pago por la cantidad exacta registrada en tu solicitud. En concepto y referencia pon tu número de "
+    "solicitud: 25287681. Si no lo incluyes, Allianz no podrá reconocer tu pago.\n"
+    "3. Envía el comprobante y tu estado de cuenta bancario respondiendo al correo del ticket de soporte 2567479 "
+    "de Allianz (no abras uno nuevo), con copia a soporte@babilonia.ai. En el asunto pon: Aplicación de fondos / "
+    "SVIP-21799 / Guillermo Prueba Castro\n\n"
+    "Tu aportación se refleja en el portal 48 horas hábiles después de que Allianz confirme el pago.")
 
 
 # ================================================================ interruptor por proceso
@@ -133,11 +163,12 @@ def test_c2_corto_deja_la_guia_pendiente_y_no_le_escribe_al_cliente(repo):
     assert t["identificado_por"] == "solicitud"
     ap = repo.listar_aprobaciones(tk)
     assert len(ap) == 1 and ap[0]["estado"] == "pendiente" and ap[0]["tipo"] == "guia_aportacion"
-    assert ap[0]["texto"].startswith("Hola Guillermo 👋 Allianz ya confirmó tu solicitud de Elite (póliza SVIP-21799).")
-    assert "• Monto: [completar]" in ap[0]["texto"]  # Ceci completa monto y datos de depósito
-    assert ap[0]["datos"] == {"nombre": "Guillermo", "producto": "Elite", "poliza": "SVIP-21799",
-                              "monto": "", "datos_deposito": ""}
-    assert vivos(repo, tk) == {}  # el recordatorio de pago arranca recién con la aprobación
+    # Elite: los pasos de Ceci, con el n° de solicitud del correo (Ceci solo lo confirma).
+    assert ap[0]["texto"] == GUIA_ELITE_GUILLERMO
+    assert ap[0]["datos"] == {"tipo": "SVIP", "nombre": "Guillermo", "producto": "Elite", "poliza": "SVIP-21799",
+                              "ticket": "2567479", "cliente": "Guillermo Prueba Castro",
+                              "monto": "", "datos_deposito": "", "solicitud": "25287681"}
+    assert vivos(repo, tk) == {}
 
 
 def test_c2_repetido_no_pide_otra_aprobacion(repo):
@@ -157,12 +188,22 @@ def test_con_telegram_ceci_no_recibe_ademas_el_whatsapp(repo, monkeypatch):
     assert r["plan"] == [] and len(repo.listar_aprobaciones(tk, estados=["pendiente"])) == 1
 
 
-def test_la_guia_es_la_plantilla_de_wati(repo):
+def test_ceci_corrige_el_numero_de_solicitud(repo):
     tk = repo.crear_ticket({"nro_ticket": "2567479", "estado": "abierto"})
-    aid, texto = guia_lista(repo, tk)
-    assert texto == ("Hola Guillermo 👋 Allianz ya confirmó tu solicitud de Elite (póliza SVIP-21799). Para "
+    aid, _ = guia_lista(repo, tk)
+    r = aprobaciones.corregir(repo, aid, "panel:ceci", solicitud="25287682")
+    ap = repo.obtener_aprobacion(aid)
+    assert r["ok"] and ap["version"] == 2 and "número de solicitud: 25287682." in ap["texto"]
+    # Monto y datos no son campos de Elite: no cambian nada.
+    assert not aprobaciones.corregir(repo, aid, "panel:ceci", **CAMPOS)["ok"]
+
+
+def test_la_guia_general_es_la_plantilla_de_wati(repo):
+    tk = plu3(repo)
+    aid, texto = guia_general_lista(repo, tk)
+    assert texto == ("Hola Luisa 👋 Allianz ya confirmó tu solicitud de OptiMaxx Plus (póliza PLU3-408444). Para "
                      "activarla falta tu aportación inicial:\n\n• Monto: $50,000 MXN\n• Datos para depositar: CLABE "
-                     "012345678901234567 a nombre de Allianz\n• Referencia: póliza SVIP-21799\n\nCuando deposites, "
+                     "012345678901234567 a nombre de Allianz\n• Referencia: póliza PLU3-408444\n\nCuando deposites, "
                      "mándame por aquí el comprobante y tu estado de cuenta, y yo lo envío a Allianz.")
     ap = repo.obtener_aprobacion(aid)
     assert ap["version"] == 2 and ap["datos"]["monto"] == "$50,000 MXN"
@@ -177,8 +218,8 @@ def test_la_guia_es_la_plantilla_de_wati(repo):
 
 
 def test_no_se_aprueba_con_datos_sin_completar(repo):
-    tk = repo.crear_ticket({"nro_ticket": "2567479", "estado": "abierto"})
-    correr(repo, tk, C2_CORTO, 1)
+    tk = plu3(repo)
+    correr(repo, tk, C2_PLU3, 1)
     ap = repo.listar_aprobaciones(tk)[0]
     r = aprobaciones.aprobar(repo, ap["id"], "panel:ceci", ahora=LUNES)
     assert not r["ok"] and r["motivo"] == "Falta completar: monto y datos para depositar."
@@ -187,31 +228,39 @@ def test_no_se_aprueba_con_datos_sin_completar(repo):
     assert repo.obtener_aprobacion(ap["id"])["estado"] == "pendiente"
 
 
-def test_aprobar_manda_la_guia_y_arranca_el_recordatorio_de_pago(repo):
+def test_aprobar_elite_manda_la_guia_sin_recordatorio_de_pago(repo):
     tk = repo.crear_ticket({"nro_ticket": "2567479", "estado": "abierto"})
     aid, texto = guia_lista(repo, tk)
-    r = aprobaciones.aprobar(repo, aid, "telegram:ceci", ahora=LUNES)
+    r = aprobaciones.aprobar(repo, aid, "telegram:ceci", ahora=LUNES)  # Ceci confirmó el n° de solicitud
     assert r["ok"] and roles(r) == ["asesor", "cliente"]
     cli = next(a for a in r["plan"] if a["rol"] == "cliente")
     assert cli["mensaje"] == texto and cli["numero"] == "5512345678"  # exactamente lo aprobado
-    assert cli["params"]["guia"]["monto"] == "$50,000 MXN"  # → plantilla tommy_guia_aportacion
+    assert cli["params"]["guia"]["solicitud"] == "25287681"  # → plantilla tommy_guia_elite
     ase = next(a for a in r["plan"] if a["rol"] == "asesor")
     assert ase["mensaje"] == ("Ticket 2567479 · Guillermo Prueba Castro: le mandamos al cliente la guía de "
-                              "aportación (aprobada por Ceci). Monto: $50,000 MXN · Datos para depositar: CLABE "
-                              "012345678901234567 a nombre de Allianz.")
+                              "aportación (aprobada por Ceci). Número de solicitud: 25287681.")
     ap = repo.obtener_aprobacion(aid)
-    assert (ap["estado"], ap["resuelto_por"], ap["version"]) == ("aprobada", "telegram:ceci", 2)
-    pago = vivos(repo, tk)["pago"]
-    assert pago["destinatarios"] == ["cliente", "asesor"]
-    assert pago["vence_en"].startswith("2026-10-22")  # 72 h hábiles = 3 días hábiles
+    assert (ap["estado"], ap["resuelto_por"], ap["version"]) == ("aprobada", "telegram:ceci", 1)
+    assert vivos(repo, tk) == {}  # Elite y Patrimonial: el cliente paga por su cuenta, sin recordatorio
     # Segunda vez (el panel después de Telegram): no sale nada de nuevo.
     r2 = aprobaciones.aprobar(repo, aid, "panel:ceci", ahora=LUNES)
     assert not r2["ok"] and r2["plan"] == []
 
 
+def test_aprobar_general_arranca_el_recordatorio_de_pago(repo):
+    tk = plu3(repo)
+    aid, _ = guia_general_lista(repo, tk)
+    r = aprobaciones.aprobar(repo, aid, "panel:ceci", ahora=LUNES)
+    assert r["ok"] and next(a for a in r["plan"] if a["rol"] == "asesor")["mensaje"].endswith(
+        "Monto: $50,000 MXN · Datos para depositar: CLABE 012345678901234567 a nombre de Allianz.")
+    pago = vivos(repo, tk)["pago"]
+    assert pago["destinatarios"] == ["cliente", "asesor"]
+    assert pago["vence_en"].startswith("2026-10-22")  # 72 h hábiles = 3 días hábiles
+
+
 def test_aprobar_completando_en_el_momento(repo):
-    tk = repo.crear_ticket({"nro_ticket": "2567479", "estado": "abierto"})
-    correr(repo, tk, C2_CORTO, 1)
+    tk = plu3(repo)
+    correr(repo, tk, C2_PLU3, 1)
     ap = repo.listar_aprobaciones(tk)[0]
     r = aprobaciones.aprobar(repo, ap["id"], "panel:ceci", monto="$10", datos_deposito="CLABE 1", ahora=LUNES)
     assert r["ok"] and "• Monto: $10\n• Datos para depositar: CLABE 1" in \
@@ -238,13 +287,22 @@ def test_descartar_no_manda_nada(repo):
     assert vivos(repo, tk) == {}
 
 
-def test_pago_elite_en_el_hilo_corta_el_recordatorio_de_pago(repo):
+def test_pago_elite_en_el_hilo_avisa_y_espera_a_allianz(repo):
     tk = repo.crear_ticket({"nro_ticket": "2567479", "estado": "abierto"})
     aid, _ = guia_lista(repo, tk)
     aprobaciones.aprobar(repo, aid, "panel:ceci", ahora=LUNES)
     r = correr(repo, tk, PAGO_ELITE, 3, ahora=LUNES + timedelta(hours=5))
     assert r["aplicada"] and roles(r) == ["asesor", "ceci", "cliente"]
-    assert "comprobante de pago" in next(a for a in r["plan"] if a["rol"] == "cliente")["mensaje"]
+    assert "Allianz ya tiene tu comprobante de pago" in next(a for a in r["plan"] if a["rol"] == "cliente")["mensaje"]
+    assert set(vivos(repo, tk)) == {"esperando_allianz"}
+
+
+def test_pago_general_corta_el_recordatorio_de_pago(repo):
+    tk = plu3(repo)
+    aid, _ = guia_general_lista(repo, tk)
+    aprobaciones.aprobar(repo, aid, "panel:ceci", ahora=LUNES)
+    pago = (PAGO_ELITE[0].replace("2567479", "2590002"), PAGO_ELITE[1].replace(TIT_C, TIT_P3))
+    correr(repo, tk, pago, 3, ahora=LUNES + timedelta(hours=5))
     assert set(vivos(repo, tk)) == {"esperando_allianz"}
     assert repo.listar_recordatorios(tk, estados=["cumplido"])[0]["motivo"] == "pago"
 
@@ -269,8 +327,8 @@ def test_emision_corto_no_engancha_si_el_corto_esta_apagado(repo, monkeypatch):
 
 
 def test_recordatorio_y_escalado_del_pago(repo):
-    tk = repo.crear_ticket({"nro_ticket": "2567479", "estado": "abierto"})
-    aid, _ = guia_lista(repo, tk)
+    tk = plu3(repo)
+    aid, _ = guia_general_lista(repo, tk)
     aprobaciones.aprobar(repo, aid, "panel:ceci", ahora=LUNES)
     jueves = datetime(2026, 10, 22, 16, 0, tzinfo=timezone.utc)
     r = escanear_recordatorios(repo, jueves)
@@ -361,7 +419,16 @@ from app.acciones import mensajes_etapa as m  # noqa: E402
                                            ("PLU3", "tu solicitud de OptiMaxx Plus")])
 def test_guia_respeta_la_marca_del_producto(prod, esperado):
     ctx = m.contexto({"producto": prod, "poliza": f"{prod}-1"}, {}, {"cliente_nombre": "Ana Ruiz"})
-    assert esperado in m.texto_guia(m.datos_guia(ctx))
+    assert esperado in m.texto_guia(m.datos_guia(ctx, prod))
+
+
+def test_guia_de_patrimonial_manda_el_comprobante_a_cliente_inversion():
+    ctx = m.contexto({"producto": "OPPT", "poliza": "OPPT-48211", "nro_solicitud": "25290001"}, {},
+                     {"cliente_nombre": "Ana Prueba Ruiz"})
+    t = m.texto_guia(m.datos_guia(ctx, "OPPT"))
+    assert "pon SOLO tu número de solicitud: 25290001." in t
+    assert "a cliente.inversion@allianz.com.mx con copia a soporte@babilonia.ai" in t
+    assert "Aplicación de fondos / OPPT-48211 / Ana Prueba Ruiz" in t
 
 
 def test_el_largo_no_cambia_de_texto():

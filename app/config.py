@@ -76,6 +76,9 @@ CECI_WHATSAPP = os.getenv("CECI_WHATSAPP", "")                           # núme
 WATI_PLANTILLA_AVISO_EQUIPO = os.getenv("WATI_PLANTILLA_AVISO_EQUIPO", "tommy_aviso_equipo")
 WATI_PLANTILLA_AVISO_CLIENTE = os.getenv("WATI_PLANTILLA_AVISO_CLIENTE", "tommy_actualizacion_cliente")
 WATI_PLANTILLA_GUIA = os.getenv("WATI_PLANTILLA_GUIA", "tommy_guia_aportacion")
+# Guías por producto (los pasos de Ceci): Patrimonial y Elite tienen la suya; el resto usa la general.
+WATI_PLANTILLA_GUIA_PATRIMONIAL = os.getenv("WATI_PLANTILLA_GUIA_PATRIMONIAL", "tommy_guia_patrimonial")
+WATI_PLANTILLA_GUIA_ELITE = os.getenv("WATI_PLANTILLA_GUIA_ELITE", "tommy_guia_elite")
 
 # Base de datos: misma Supabase de Tommy, esquema aislado.
 DATABASE_URL = os.getenv("DATABASE_URL", "")
@@ -182,6 +185,9 @@ PANEL_URL = os.getenv("PANEL_URL", "")
 # motor viejo.
 MOTOR_ETAPAS_PROCESOS = _csv("MOTOR_ETAPAS_PROCESOS", "largo")
 # Recordatorio de pago del proceso corto (desde que Ceci aprueba la guía de aportación).
+# Productos del proceso corto que llevan recordatorio de pago. Patrimonial y Elite no: el cliente
+# manda el comprobante por su cuenta (a cliente.inversion@ o al ticket), según la guía de Ceci.
+RECORDATORIO_PAGO_PRODUCTOS = _csv("RECORDATORIO_PAGO_PRODUCTOS", "PLU3")
 RECORDATORIO_PAGO_HORAS_HABILES = int(os.getenv("RECORDATORIO_PAGO_HORAS_HABILES",
                                                 str(RECORDATORIO_HORAS_HABILES)))
 # Aprobación de la guía de aportación por Telegram. Sin token/chat (o apagado) se aprueba desde el

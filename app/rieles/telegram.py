@@ -57,14 +57,27 @@ def texto_mensaje(ap: dict, ticket: dict) -> str:
     cab = f"Guía de aportación · Ticket {ctx['tk']} · {ctx['cliente']}{ctx['con_producto']}"
     if int(ap.get("version") or 1) > 1:
         cab += f" (versión {ap['version']})"
-    faltan = mensajes_etapa.faltan_en_guia(ap.get("datos") or {})
-    como = "Monto: $50,000 MXN\nDatos: CLABE 012345678901234567 a nombre de …"
-    pie = (f"⚠️ Falta completar {' y '.join(faltan)}. Responde a este mensaje así:\n{como}" if faltan
-           else f"Para corregirla, responde a este mensaje así (puede ser una sola línea):\n{como}")
+    datos = ap.get("datos") or {}
+    faltan = mensajes_etapa.faltan_en_guia(datos)
+    como = como_responder(datos)
+    if faltan:
+        pie = f"⚠️ Falta completar {' y '.join(faltan)}. Responde a este mensaje así:\n{como}"
+    elif "solicitud" in mensajes_etapa.campos_guia(datos):
+        pie = (f"Revisa que el número de solicitud ({datos.get('solicitud')}) sea el correcto: es la referencia "
+               f"del pago. Si está bien, aprueba. Para corregirlo, responde a este mensaje así:\n{como}")
+    else:
+        pie = f"Para corregirla, responde a este mensaje así (puede ser una sola línea):\n{como}"
     return f"{cab}\n\n{ap['texto']}\n\n{pie}"
 
 
-_RE_CAMPO = re.compile(r"\b(monto|importe|datos(?:\s+para\s+depositar)?|dep[oó]sito)\s*[:=]", re.I)
+def como_responder(datos: dict) -> str:
+    if "solicitud" in mensajes_etapa.campos_guia(datos):
+        return "Solicitud: 25290001"
+    return "Monto: $50,000 MXN\nDatos: CLABE 012345678901234567 a nombre de …"
+
+
+_RE_CAMPO = re.compile(r"\b(monto|importe|datos(?:\s+para\s+depositar)?|dep[oó]sito|"
+                       r"(?:n[uú]mero\s+de\s+|no\.?\s*(?:de\s+)?)?solicitud)\s*[:=]", re.I)
 
 
 def leer_campos(texto: str) -> dict:
@@ -75,7 +88,9 @@ def leer_campos(texto: str) -> dict:
     for i, m in enumerate(marcas):
         fin = marcas[i + 1].start() if i + 1 < len(marcas) else len(texto)
         valor = " ".join(texto[m.end():fin].split()).strip(" ,;·-")
-        clave = "monto" if m.group(1).lower() in ("monto", "importe") else "datos_deposito"
+        tipo = m.group(1).lower()
+        clave = ("monto" if tipo in ("monto", "importe") else "solicitud" if "solicitud" in tipo
+                 else "datos_deposito")
         if valor:
             out[clave] = valor
     return out
@@ -149,7 +164,8 @@ def _boton(repo: Repositorio, cq: dict, enviar: Transporte) -> dict:
 
 
 def _respuesta(repo: Repositorio, msg: dict, enviar: Transporte) -> Optional[dict]:
-    """Ceci responde al mensaje de una guía con 'Monto: …' y/o 'Datos: …' → versión nueva."""
+    """Ceci responde al mensaje de una guía con sus campos ('Solicitud: …', o 'Monto: …' / 'Datos: …')
+    → versión nueva."""
     original = str((msg.get("reply_to_message") or {}).get("message_id") or "")
     ap = next((a for a in aprobaciones.pendientes(repo) if str(a.get("telegram_msg_id")) == original), None)
     if not ap:
@@ -159,8 +175,7 @@ def _respuesta(repo: Repositorio, msg: dict, enviar: Transporte) -> Optional[dic
     campos = leer_campos(msg.get("text") or "")
     if not campos:
         enviar("sendMessage", {"chat_id": _chat_ceci(), "reply_to_message_id": msg["message_id"],
-                               "text": "No entendí qué cambiar. Responde así:\nMonto: $50,000 MXN\n"
-                                       "Datos: CLABE 012345678901234567 a nombre de …"})
+                               "text": "No entendí qué cambiar. Responde así:\n" + como_responder(ap.get("datos") or {})})
         return None
     res = aprobaciones.corregir(repo, ap["id"], _quien(msg.get("from") or {}), **campos)
     if res["ok"] and res.get("version", 0) > int(ap.get("version") or 1):

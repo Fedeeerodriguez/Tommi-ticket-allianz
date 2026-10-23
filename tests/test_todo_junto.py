@@ -81,17 +81,11 @@ def test_una_semana_con_los_cuatro_recorridos(mundo):
         telegram.enviar_pendientes(repo)  # el job de Telegram
 
         if cuando == dia(19, 10) and remitente == SISTEMA:  # llegó el C2 de Elite
-            # Ceci ve la guía en Telegram, la corrige respondiendo y la aprueba con el botón.
+            # Ceci ve la guía en Telegram, revisa el n° de solicitud y la aprueba con el botón.
             ap = guia(ELITE)
-            assert "[completar]" in ap["texto"] and ap["telegram_msg_id"]
-            bot.updates = [{"update_id": 1, "message": {
-                "message_id": 900, "text": f"Monto: {GUIA_ELITE['monto']}\nDatos: {GUIA_ELITE['datos_deposito']}",
-                "from": {"username": "ceci"}, "chat": {"id": 777},
-                "reply_to_message": {"message_id": int(ap["telegram_msg_id"])}}}]
-            telegram.procesar_updates(repo)
-            ap = guia(ELITE)
+            assert f"número de solicitud: {GUIA_ELITE['solicitud']}." in ap["texto"] and ap["telegram_msg_id"]
             bot.updates = [{"update_id": 2, "callback_query": {
-                "id": "c2", "data": f"ap:{ap['id']}:2", "from": {"username": "ceci"},
+                "id": "c2", "data": f"ap:{ap['id']}:1", "from": {"username": "ceci"},
                 "message": {"message_id": int(ap["telegram_msg_id"]), "chat": {"id": 777}}}}]
             res = telegram.procesar_updates(repo)
             assert sorted(a["rol"] for a in res["plan"]) == ["asesor", "cliente"]
@@ -140,7 +134,7 @@ def test_una_semana_con_los_cuatro_recorridos(mundo):
                     if a["etapa"] == etapa and a["destinatario"] == "cliente")
 
     for nro, g in ((ELITE, GUIA_ELITE), (PATRI, GUIA_PATRI)):
-        assert f"• Monto: {g['monto']}\n• Datos para depositar: {g['datos_deposito']}" in a_cliente(nro, "guia_aportacion")
+        assert f"número de solicitud: {g['solicitud']}." in a_cliente(nro, "guia_aportacion")
     assert {(guia(n)["estado"], guia(n)["resuelto_por"]) for n in (ELITE, PATRI)} == \
         {("aprobada", "telegram:ceci"), ("aprobada", "panel:Ceci")}
     assert "«Aplicación de pago póliza OPPT-48211»" in a_cliente(TRAM, "atendida")

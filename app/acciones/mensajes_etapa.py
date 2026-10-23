@@ -102,19 +102,20 @@ TEXTOS_PROCESO: dict[tuple[str, str], dict[str, str]] = {
                 "aportación está lista para que la apruebes.",
     },
     ("corto", "documentos_enviados"): {
-        "asesor": "Ticket {tk} · {cliente}: se envió a Allianz el comprobante de pago, esperamos la emisión.",
-        "cliente": "Hola {nombre}, ya enviamos tu comprobante de pago a Allianz. Te aviso cuando tu póliza "
+        # En Elite y Patrimonial el comprobante lo manda el cliente (al ticket o a cliente.inversion@).
+        "asesor": "Ticket {tk} · {cliente}: Allianz ya tiene el comprobante de pago, esperamos la emisión.",
+        "cliente": "Hola {nombre}, Allianz ya tiene tu comprobante de pago. Te aviso cuando tu póliza "
                    "quede emitida.",
     },
     ("corto", "atendida"): {
         "asesor": "Ticket {tk} · {cliente}: Allianz lo atendió. Ticket cerrado.",
         "cliente": "Hola {nombre}, ¡listo! Allianz atendió tu solicitud.",
     },
-    # Aviso de la guía aprobada por Ceci. Al cliente le sale la plantilla de la guía (GUIA_PLANTILLA);
-    # el texto queda registrado tal cual le llega.
+    # Aviso de la guía aprobada por Ceci. Al cliente le sale la plantilla de la guía de su producto
+    # (GUIAS); el texto queda registrado tal cual le llega.
     ("corto", "guia_aportacion"): {
         "asesor": "Ticket {tk} · {cliente}: le mandamos al cliente la guía de aportación (aprobada por Ceci). "
-                  "Monto: {monto} · Datos para depositar: {datos_deposito}.",
+                  "{resumen_guia}.",
         "cliente": "{guia}",
     },
 }
@@ -130,29 +131,86 @@ GUIA_PLANTILLA = (
     "• Referencia: póliza {poliza}\n\n"
     "Cuando deposites, mándame por aquí el comprobante y tu estado de cuenta, y yo lo envío a Allianz."
 )
-CAMPOS_CECI = ("monto", "datos_deposito")
-NOMBRES_CAMPOS = {"monto": "monto", "datos_deposito": "datos para depositar"}
+# Patrimonial y Elite: los pasos que Ceci les manda hoy (22/10). La cuenta para depositar viene en el
+# correo "Felicidades" de Allianz; lo que Ceci confirma es el N° DE SOLICITUD (la referencia del pago).
+# Patrimonial: el comprobante va a cliente.inversion@; Elite: como respuesta al mismo ticket de soporte.
+GUIA_PATRIMONIAL = (
+    "Hola {nombre} 👋 Allianz ya registró tu solicitud de Patrimonial. Para activarla falta tu aportación:\n\n"
+    "1. En el correo de Allianz “Felicidades” (Emisión de póliza) está la cuenta bancaria para la aportación.\n"
+    "2. Haz el pago por la cantidad exacta registrada en tu solicitud. En concepto y referencia pon SOLO tu número "
+    "de solicitud: {solicitud}. Si no lo incluyes, Allianz no podrá reconocer tu pago.\n"
+    "3. Envía el comprobante y tu estado de cuenta bancario a cliente.inversion@allianz.com.mx con copia a "
+    "soporte@babilonia.ai. En el asunto pon: Aplicación de fondos / {poliza} / {cliente}\n\n"
+    "Tu aportación se refleja en el portal 48 horas hábiles después de que Allianz confirme el pago."
+)
+GUIA_ELITE = (
+    "Hola {nombre} 👋 Allianz ya registró tu solicitud de Elite. Para activarla falta tu aportación:\n\n"
+    "1. En el correo de Allianz “Felicidades” (Emisión de póliza) está la cuenta bancaria para la aportación.\n"
+    "2. Haz el pago por la cantidad exacta registrada en tu solicitud. En concepto y referencia pon tu número "
+    "de solicitud: {solicitud}. Si no lo incluyes, Allianz no podrá reconocer tu pago.\n"
+    "3. Envía el comprobante y tu estado de cuenta bancario respondiendo al correo del ticket de soporte {ticket} "
+    "de Allianz (no abras uno nuevo), con copia a soporte@babilonia.ai. En el asunto pon: Aplicación de fondos / "
+    "{poliza} / {cliente}\n\n"
+    "Tu aportación se refleja en el portal 48 horas hábiles después de que Allianz confirme el pago."
+)
+# Una guía por producto: texto, lo que completa/confirma Ceci y las variables de su plantilla de WATI.
+# Los productos que no están acá (OptiMaxx Plus) usan la guía general (monto + datos para depositar).
+GUIAS = {
+    "OPPT": {"plantilla": "patrimonial", "texto": GUIA_PATRIMONIAL, "campos": ("solicitud",),
+             "variables": ("nombre", "solicitud", "poliza", "cliente")},
+    "SVIP": {"plantilla": "elite", "texto": GUIA_ELITE, "campos": ("solicitud",),
+             "variables": ("nombre", "solicitud", "ticket", "poliza", "cliente")},
+}
+GUIA_GENERAL = {"plantilla": "general", "texto": GUIA_PLANTILLA, "campos": ("monto", "datos_deposito"),
+                "variables": ("nombre", "producto", "poliza", "monto", "datos_deposito")}
+CAMPOS_CECI = ("monto", "datos_deposito", "solicitud")
+NOMBRES_CAMPOS = {"monto": "monto", "datos_deposito": "datos para depositar", "solicitud": "número de solicitud"}
 FALTA_COMPLETAR = "[completar"
 
 
-def datos_guia(ctx: dict) -> dict:
-    """Variables de la guía que pone el sistema; las de Ceci arrancan vacías."""
-    return {"nombre": ctx.get("nombre") or "", "producto": ctx.get("producto_cliente") or "",
-            "poliza": ctx.get("poliza") or "", "monto": "", "datos_deposito": ""}
+def guia_de(datos: Optional[dict]) -> dict:
+    """La guía que corresponde (por el producto guardado en la aprobación; las viejas, la general)."""
+    return GUIAS.get((datos or {}).get("tipo") or "", GUIA_GENERAL)
+
+
+def campos_guia(datos: Optional[dict]) -> tuple:
+    return guia_de(datos)["campos"]
+
+
+def datos_guia(ctx: dict, producto: Optional[str] = None) -> dict:
+    """Variables de la guía que pone el sistema. Lo de Ceci arranca vacío, salvo el n° de solicitud,
+    que viene del correo de Allianz y Ceci solo lo confirma (o lo corrige)."""
+    sol = ctx.get("sol")
+    return {"tipo": producto if producto in GUIAS else "", "nombre": ctx.get("nombre") or "",
+            "producto": ctx.get("producto_cliente") or "", "poliza": ctx.get("poliza") or "",
+            "ticket": ctx.get("tk") or "", "cliente": ctx.get("cliente") or "",
+            "monto": "", "datos_deposito": "", "solicitud": "" if sol in (None, "", "—") else str(sol)}
 
 
 def faltan_en_guia(datos: dict) -> list[str]:
-    return [NOMBRES_CAMPOS[k] for k in CAMPOS_CECI if not str((datos or {}).get(k) or "").strip()]
+    return [NOMBRES_CAMPOS[k] for k in campos_guia(datos) if not str((datos or {}).get(k) or "").strip()]
+
+
+def valores_guia(datos: dict) -> dict:
+    """Todas las variables de la guía, con [completar] en lo que falta (nunca vacías: WhatsApp no las acepta)."""
+    d = {k: str(v).strip() for k, v in (datos or {}).items() if v is not None}
+    valores = {"nombre": d.get("nombre") or "de nuevo", "producto": d.get("producto") or "tu plan",
+               "poliza": d.get("poliza") or "[completar]", "ticket": d.get("ticket") or "[completar]",
+               "cliente": d.get("cliente") or "[completar]"}
+    for k in CAMPOS_CECI:
+        valores[k] = d.get(k) or "[completar]"
+    return valores
 
 
 def texto_guia(datos: dict) -> str:
     """Lo que le llega al cliente (lo que no está completo queda como [completar])."""
-    d = {k: str(v).strip() for k, v in (datos or {}).items() if v is not None}
-    valores = {"nombre": d.get("nombre") or "de nuevo", "producto": d.get("producto") or "tu plan",
-               "poliza": d.get("poliza") or "[completar]"}
-    for k in CAMPOS_CECI:
-        valores[k] = d.get(k) or "[completar]"
-    return GUIA_PLANTILLA.format(**valores)
+    return guia_de(datos)["texto"].format(**valores_guia(datos))
+
+
+def resumen_guia(datos: dict) -> str:
+    """Lo que completó Ceci, para el aviso al asesor: 'N° de solicitud: 25290001'."""
+    v = valores_guia(datos)
+    return " · ".join(f"{NOMBRES_CAMPOS[k][:1].upper()}{NOMBRES_CAMPOS[k][1:]}: {v[k]}" for k in campos_guia(datos))
 
 
 # Recordatorios (paso 6). Clave: (motivo, momento) → rol → texto. momento = recordatorio | escalado.
@@ -367,6 +425,7 @@ def contexto(ticket: dict, etapa: dict, datos: Optional[dict] = None,
         "lo_enviado_formal": {"corto": "el comprobante de pago", "tramite": "la información solicitada"}.get(
             etapa.get("proceso") or ticket.get("proceso"), "la documentación solicitada"),
         "guia": "",
+        "resumen_guia": "",
         "que_piden": _pedido(etapa.get("que_piden")) or "información adicional",
         "plazo": _plazo(etapa.get("plazo")),
         "fecha": vence.strftime("%d/%m/%Y") if vence else "—",

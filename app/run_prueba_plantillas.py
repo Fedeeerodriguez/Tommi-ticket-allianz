@@ -1,10 +1,12 @@
-"""Prueba de las 3 plantillas de WATI con el MISMO camino que los avisos del motor por etapa.
+"""Prueba de las plantillas de WATI con el MISMO camino que los avisos del motor por etapa.
 
 Arma un aviso de cada tipo con datos de prueba (textos y variables de mensajes_etapa.py, plantilla
 y variables de despacho.plantilla_etapas) y los manda a UN número:
   1. tommy_aviso_equipo           (lo que recibe el asesor / Ceci)
   2. tommy_actualizacion_cliente  (lo que recibe el cliente)
-  3. tommy_guia_aportacion        (la guía de aportación aprobada)
+  3. tommy_guia_aportacion        (guía general: OptiMaxx Plus)
+  4. tommy_guia_patrimonial       (guía de Patrimonial)
+  5. tommy_guia_elite             (guía de Elite)
 
 Sin --enviar solo muestra lo que mandaría. Con --enviar manda de verdad (ignora DRY_RUN: es un
 envío de prueba a mano, a un solo número). Credenciales: WATI_API_URL + WATI_API_TOKEN (también
@@ -35,12 +37,15 @@ def avisos_de_prueba() -> list[dict]:
               "mensaje": m.texto("asesor", "requerimiento", ctx, proceso="largo")}
     cliente = {"rol": "cliente", "etapa": "requerimiento", "params": params,
                "mensaje": m.texto("cliente", "requerimiento", ctx, proceso="largo")}
-    corto = {"nro_ticket": "PRUEBA-0002", "producto": "SVIP", "poliza": "SVIP-00000", "proceso": "corto"}
-    ctx_c = m.contexto(corto, {}, datos)
-    g = {**m.datos_guia(ctx_c), "monto": "$1 MXN (prueba)", "datos_deposito": "CLABE de prueba, no depositar"}
-    guia = {"rol": "cliente", "etapa": "guia_aportacion", "mensaje": m.texto_guia(g),
-            "params": {**m.params_wati(ctx_c, "guia_aportacion", None, "corto"), "guia": g}}
-    return [equipo, cliente, guia]
+    guias = []
+    for prod, poliza in (("PLU3", "PLU3-00000"), ("OPPT", "OPPT-00000"), ("SVIP", "SVIP-00000")):
+        corto = {"nro_ticket": "PRUEBA-0002", "producto": prod, "poliza": poliza, "nro_solicitud": "00000000",
+                 "proceso": "corto"}
+        ctx_c = m.contexto(corto, {}, datos)
+        g = {**m.datos_guia(ctx_c, prod), "monto": "$1 MXN (prueba)", "datos_deposito": "CLABE de prueba, no depositar"}
+        guias.append({"rol": "cliente", "etapa": "guia_aportacion", "mensaje": m.texto_guia(g),
+                      "params": {**m.params_wati(ctx_c, "guia_aportacion", None, "corto"), "guia": g}})
+    return [equipo, cliente, *guias]
 
 
 def main() -> int:

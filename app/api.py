@@ -33,7 +33,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from app import config
-from app.acciones.mensajes_etapa import ETIQUETAS, FALTA_COMPLETAR, etiqueta, faltan_en_guia
+from app.acciones.mensajes_etapa import (
+    ETIQUETAS, FALTA_COMPLETAR, NOMBRES_CAMPOS, campos_guia, etiqueta, faltan_en_guia,
+)
 from app.acciones.motor_etapas import RANGO, _parse_ts
 from app.db import get_repo
 
@@ -171,6 +173,9 @@ def guia_pendiente(repo, ticket_id: int) -> Optional[dict]:
         return {"id": ap["id"], "version": ap.get("version"), "texto": ap.get("texto"),
                 "por_telegram": bool(ap.get("telegram_msg_id")),
                 "monto": datos.get("monto") or "", "datos_deposito": datos.get("datos_deposito") or "",
+                # Lo que Ceci completa o confirma en esta guía (depende del producto).
+                "campos": [{"clave": k, "nombre": NOMBRES_CAMPOS[k], "valor": datos.get(k) or ""}
+                           for k in campos_guia(datos)],
                 "faltan": faltan_en_guia(datos),
                 "falta_completar": FALTA_COMPLETAR in (ap.get("texto") or "")}
     return None
@@ -273,6 +278,7 @@ class AprobacionIn(BaseModel):
     accion: str                           # aprobar | corregir | descartar
     monto: Optional[str] = None           # lo que completa Ceci (aprobar: opcional, aprueba con esto)
     datos_deposito: Optional[str] = None
+    solicitud: Optional[str] = None       # Patrimonial / Elite: el n° de solicitud que confirma Ceci
     usuario: Optional[str] = None         # quién (para la bitácora)
 
 
@@ -288,13 +294,15 @@ def resolver_aprobacion(aprobacion_id: int, body: AprobacionIn, _=Depends(_auth)
         raise HTTPException(status_code=404, detail="aprobación no encontrada")
     por = f"panel:{(body.usuario or 'ceci').strip()[:40]}"
     if body.accion == "aprobar":
-        res = aprobaciones.aprobar(repo, aprobacion_id, por, monto=body.monto, datos_deposito=body.datos_deposito)
+        res = aprobaciones.aprobar(repo, aprobacion_id, por, monto=body.monto, datos_deposito=body.datos_deposito,
+                                   solicitud=body.solicitud)
         leyenda = "✅ Aprobada desde el panel: ya salió al cliente y al asesor."
     elif body.accion == "descartar":
         res = aprobaciones.descartar(repo, aprobacion_id, por)
         leyenda = "🗑 Descartada desde el panel: no se mandó nada."
     elif body.accion == "corregir":
-        res = aprobaciones.corregir(repo, aprobacion_id, por, monto=body.monto, datos_deposito=body.datos_deposito)
+        res = aprobaciones.corregir(repo, aprobacion_id, por, monto=body.monto, datos_deposito=body.datos_deposito,
+                                    solicitud=body.solicitud)
         leyenda = f"✏️ Corregida desde el panel (versión {res.get('version')}): te llega la nueva abajo."
     else:
         raise HTTPException(status_code=400, detail="accion: aprobar | corregir | descartar")

@@ -4,7 +4,7 @@ import pytest
 from app import config
 from app.rieles import telegram
 
-from test_motor_etapa2 import C2_CORTO, aislado, correr, repo  # noqa: F401  (fixtures)
+from test_motor_etapa2 import C2_CORTO, C2_PLU3, aislado, correr, repo  # noqa: F401  (fixtures)
 
 CECI = "777"
 
@@ -47,9 +47,9 @@ def respuesta(uid, texto, a_mid=101, chat=CECI):
                                           "chat": {"id": int(chat)}, "reply_to_message": {"message_id": a_mid}}}
 
 
-def preparar(repo, bot):
-    tk = repo.crear_ticket({"nro_ticket": "2567479", "estado": "abierto"})
-    correr(repo, tk, C2_CORTO, 1)
+def preparar(repo, bot, c2=C2_CORTO, nro="2567479"):
+    tk = repo.crear_ticket({"nro_ticket": nro, "estado": "abierto"})
+    correr(repo, tk, c2, 1)
     assert telegram.enviar_pendientes(repo, bot) == 1
     return tk, repo.listar_aprobaciones(tk)[0]
 
@@ -59,16 +59,29 @@ def test_la_guia_le_llega_a_ceci_con_botones(repo, bot):
     msg = bot.de("sendMessage")[0]
     assert msg["chat_id"] == CECI
     assert msg["text"].startswith("Guía de aportación · Ticket 2567479 · Guillermo Prueba Castro · Elite")
-    assert "⚠️ Falta completar monto y datos para depositar. Responde a este mensaje así:" in msg["text"]
-    assert "• Monto: [completar]" in msg["text"]
+    # Elite: el n° de solicitud ya viene; Ceci lo revisa y aprueba (o lo corrige respondiendo).
+    assert "Revisa que el número de solicitud (25287681) sea el correcto" in msg["text"]
+    assert msg["text"].endswith("Solicitud: 25290001") and "Falta completar" not in msg["text"]
     botones = msg["reply_markup"]["inline_keyboard"][0]
     assert [b["callback_data"] for b in botones] == [f"ap:{ap['id']}:1", f"de:{ap['id']}:1"]
     assert ap["telegram_msg_id"] == "101"
     assert telegram.enviar_pendientes(repo, bot) == 0  # no se manda dos veces
 
 
-def test_corregir_respondiendo_y_aprobar(repo, bot):
+def test_elite_corrige_la_solicitud_y_aprueba(repo, bot):
     tk, ap = preparar(repo, bot)
+    bot.updates = [respuesta(6, "Solicitud: 25287682")]
+    assert telegram.procesar_updates(repo, bot)["correcciones"][0]["version"] == 2
+    bot.updates = [boton(8, f"ap:{ap['id']}:2", mid=int(repo.obtener_aprobacion(ap["id"])["telegram_msg_id"]))]
+    r = telegram.procesar_updates(repo, bot)
+    cli = next(a for a in r["plan"] if a["rol"] == "cliente")
+    assert "número de solicitud: 25287682." in cli["mensaje"]
+
+
+def test_corregir_respondiendo_y_aprobar(repo, bot):
+    # OptiMaxx Plus: guía general, Ceci completa monto y datos para depositar.
+    tk, ap = preparar(repo, bot, C2_PLU3, "2590002")
+    assert "⚠️ Falta completar monto y datos para depositar" in bot.de("sendMessage")[0]["text"]
     # Aprobar sin monto ni datos → no se puede (alerta) y no sale nada.
     bot.updates = [boton(1, f"ap:{ap['id']}:1")]
     r = telegram.procesar_updates(repo, bot)

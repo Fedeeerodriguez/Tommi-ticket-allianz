@@ -362,7 +362,7 @@ def decidir_por_etapa(repo: Repositorio, ticket_id: int, etapa: dict, correo_id:
 
     omitidos = res["avisos_omitidos"]
     if guia:
-        datos_guia = mensajes_etapa.datos_guia(ctx)
+        datos_guia = mensajes_etapa.datos_guia(ctx, etapa.get("producto") or ticket.get("producto"))
         ap = repo.crear_aprobacion(ticket_id, GUIA, mensajes_etapa.texto_guia(datos_guia), ronda=ronda,
                                    correo_id=correo_id, datos=datos_guia)
         res["aprobacion"] = ap

@@ -32,9 +32,9 @@ FILAS_NOTION = [
                         ("Ana Ruiz Pérez", 25111111, "OPPT-48211", "5544445555"))
 ]
 
-# Lo que Ceci completa en cada guía antes de aprobarla (monto y datos para depositar).
-GUIA_ELITE = {"monto": "$50,000 MXN", "datos_deposito": "CLABE 012345678901234567 a nombre de Allianz México"}
-GUIA_PATRI = {"monto": "$80,000 MXN", "datos_deposito": "CLABE 045678901234567890 a nombre de Allianz México"}
+# Lo que Ceci confirma en cada guía antes de aprobarla: el n° de solicitud (viene del correo de Allianz).
+GUIA_ELITE = {"solicitud": "25287681"}
+GUIA_PATRI = {"solicitud": "25290001"}
 
 
 def buscar_notion(campo, op, valor, n):
