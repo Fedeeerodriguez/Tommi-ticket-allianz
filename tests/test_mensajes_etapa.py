@@ -95,6 +95,9 @@ def test_plantilla_del_equipo_en_un_tramite_lleva_el_asunto():
     ctx = M.contexto(tk, {"proceso": "tramite", "titulo_hilo": "[EXT] Aplicación de mensualidad"},
                      {"cliente_nombre": "Ana Ruiz Pérez"})
     assert M.params_wati(ctx, "apertura", None, "tramite")["tramite"] == "Aplicación de mensualidad · Trámite recibido por Allianz"
+    # Sin producto ni asunto: solo la etapa (no "— · …").
+    sin = M.contexto({"nro_ticket": "1"}, {}, None)
+    assert M.params_wati(sin, "apertura", None, "largo")["tramite"] == "Solicitud abierta en Allianz"
     pay = {"rol": "ceci", "params": M.params_wati(ctx, "rebote_ticket_cerrado", None, "tramite"),
            "mensaje": "Ticket 2587626: nuestra respuesta NO entró."}
     assert plantilla_etapas(pay)[1]["mensaje"] == "Nuestra respuesta NO entró."

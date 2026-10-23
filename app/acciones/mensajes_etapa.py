@@ -330,7 +330,7 @@ def params_wati(ctx: dict, etapa: str, telefono_cliente: Optional[str], proceso:
     nombre = etiqueta(etapa, proceso)
     # Trámites: el asunto con que lo abrimos (pedido de Ceci); el resto, el producto.
     que = ctx.get("asunto") if proceso == "tramite" and ctx.get("asunto") not in (None, "", "—") else ctx.get("producto")
-    return {"ticket": ctx.get("tk"), "tramite": f"{que} · {nombre}",
+    return {"ticket": ctx.get("tk"), "tramite": f"{que} · {nombre}" if que not in (None, "", "—") else nombre,
             "etapa": nombre, "cliente": ctx.get("cliente"), "nombre": ctx.get("nombre"),
             "telefono": telefono_cliente or "—", "poliza": ctx.get("poliza"), "solicitud": ctx.get("sol")}
 
