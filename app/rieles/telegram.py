@@ -63,8 +63,9 @@ def texto_mensaje(ap: dict, ticket: dict) -> str:
     if faltan:
         pie = f"⚠️ Falta completar {' y '.join(faltan)}. Responde a este mensaje así:\n{como}"
     elif "solicitud" in mensajes_etapa.campos_guia(datos):
-        pie = (f"Revisa que el número de solicitud ({datos.get('solicitud')}) sea el correcto: es la referencia "
-               f"del pago. Si está bien, aprueba. Para corregirlo, responde a este mensaje así:\n{como}")
+        pie = (f"Revisa que el monto ({datos.get('monto')}) y el número de solicitud ({datos.get('solicitud')}) sean "
+               f"correctos: el número es la referencia del pago. Si están bien, aprueba. Para corregirlos, responde a "
+               f"este mensaje así:\n{como}")
     else:
         pie = f"Para corregirla, responde a este mensaje así (puede ser una sola línea):\n{como}"
     return f"{cab}\n\n{ap['texto']}\n\n{pie}"
@@ -72,7 +73,7 @@ def texto_mensaje(ap: dict, ticket: dict) -> str:
 
 def como_responder(datos: dict) -> str:
     if "solicitud" in mensajes_etapa.campos_guia(datos):
-        return "Solicitud: 25290001"
+        return "Monto: $50,000 MXN\nSolicitud: 25290001"
     return "Monto: $50,000 MXN\nDatos: CLABE 012345678901234567 a nombre de …"
 
 

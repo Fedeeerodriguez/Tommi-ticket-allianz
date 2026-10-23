@@ -7,7 +7,7 @@ el panel; las dos vías terminan acá.
 Cada producto tiene su guía y su plantilla de WATI (mensajes_etapa.GUIAS). El sistema pone nombre,
 producto, póliza y ticket; Ceci completa o confirma sus campos (no texto libre: WhatsApp no deja
 cambiar el texto de una plantilla):
-  - Patrimonial y Elite: el N° DE SOLICITUD (viene del correo de Allianz; Ceci lo confirma);
+  - Patrimonial y Elite: el MONTO y el N° DE SOLICITUD (este viene del correo de Allianz; Ceci lo confirma);
   - el resto (OptiMaxx Plus): MONTO y DATOS PARA DEPOSITAR.
 Reglas:
   - se resuelve una sola vez (la base lo garantiza: Telegram y el panel no la aprueban dos veces);

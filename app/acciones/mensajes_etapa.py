@@ -132,13 +132,14 @@ GUIA_PLANTILLA = (
     "Cuando deposites, mándame por aquí el comprobante y tu estado de cuenta, y yo lo envío a Allianz."
 )
 # Patrimonial y Elite: los pasos que Ceci les manda hoy (22/10). La cuenta para depositar viene en el
-# correo "Felicidades" de Allianz; lo que Ceci confirma es el N° DE SOLICITUD (la referencia del pago).
+# correo "Felicidades" de Allianz; Ceci confirma el MONTO (la cantidad exacta de la solicitud) y el
+# N° DE SOLICITUD (la referencia del pago; viene precargado del correo de Allianz).
 # Patrimonial: el comprobante va a cliente.inversion@; Elite: como respuesta al mismo ticket de soporte.
 GUIA_PATRIMONIAL = (
     "Hola {nombre} 👋 Allianz ya registró tu solicitud de Patrimonial. Para activarla falta tu aportación:\n\n"
     "1. En el correo de Allianz “Felicidades” (Emisión de póliza) está la cuenta bancaria para la aportación.\n"
-    "2. Haz el pago por la cantidad exacta registrada en tu solicitud. En concepto y referencia pon SOLO tu número "
-    "de solicitud: {solicitud}. Si no lo incluyes, Allianz no podrá reconocer tu pago.\n"
+    "2. Haz el pago por {monto}, la cantidad exacta registrada en tu solicitud. En concepto y referencia pon SOLO "
+    "tu número de solicitud: {solicitud}. Si no lo incluyes, Allianz no podrá reconocer tu pago.\n"
     "3. Envía el comprobante y tu estado de cuenta bancario a cliente.inversion@allianz.com.mx con copia a "
     "soporte@babilonia.ai. En el asunto pon: Aplicación de fondos / {poliza} / {cliente}\n\n"
     "Tu aportación se refleja en el portal 48 horas hábiles después de que Allianz confirme el pago."
@@ -146,8 +147,8 @@ GUIA_PATRIMONIAL = (
 GUIA_ELITE = (
     "Hola {nombre} 👋 Allianz ya registró tu solicitud de Elite. Para activarla falta tu aportación:\n\n"
     "1. En el correo de Allianz “Felicidades” (Emisión de póliza) está la cuenta bancaria para la aportación.\n"
-    "2. Haz el pago por la cantidad exacta registrada en tu solicitud. En concepto y referencia pon tu número "
-    "de solicitud: {solicitud}. Si no lo incluyes, Allianz no podrá reconocer tu pago.\n"
+    "2. Haz el pago por {monto}, la cantidad exacta registrada en tu solicitud. En concepto y referencia pon tu "
+    "número de solicitud: {solicitud}. Si no lo incluyes, Allianz no podrá reconocer tu pago.\n"
     "3. Envía el comprobante y tu estado de cuenta bancario respondiendo al correo del ticket de soporte {ticket} "
     "de Allianz (no abras uno nuevo), con copia a soporte@babilonia.ai. En el asunto pon: Aplicación de fondos / "
     "{poliza} / {cliente}\n\n"
@@ -156,10 +157,10 @@ GUIA_ELITE = (
 # Una guía por producto: texto, lo que completa/confirma Ceci y las variables de su plantilla de WATI.
 # Los productos que no están acá (OptiMaxx Plus) usan la guía general (monto + datos para depositar).
 GUIAS = {
-    "OPPT": {"plantilla": "patrimonial", "texto": GUIA_PATRIMONIAL, "campos": ("solicitud",),
-             "variables": ("nombre", "solicitud", "poliza", "cliente")},
-    "SVIP": {"plantilla": "elite", "texto": GUIA_ELITE, "campos": ("solicitud",),
-             "variables": ("nombre", "solicitud", "ticket", "poliza", "cliente")},
+    "OPPT": {"plantilla": "patrimonial", "texto": GUIA_PATRIMONIAL, "campos": ("monto", "solicitud"),
+             "variables": ("nombre", "monto", "solicitud", "poliza", "cliente")},
+    "SVIP": {"plantilla": "elite", "texto": GUIA_ELITE, "campos": ("monto", "solicitud"),
+             "variables": ("nombre", "monto", "solicitud", "ticket", "poliza", "cliente")},
 }
 GUIA_GENERAL = {"plantilla": "general", "texto": GUIA_PLANTILLA, "campos": ("monto", "datos_deposito"),
                 "variables": ("nombre", "producto", "poliza", "monto", "datos_deposito")}

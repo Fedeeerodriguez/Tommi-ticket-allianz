@@ -113,10 +113,11 @@ CAMPOS = {"monto": "$50,000 MXN", "datos_deposito": "CLABE 012345678901234567 a 
 
 
 def guia_lista(repo, tk):
-    """C2 Elite → guía pendiente, con el n° de solicitud ya puesto (Ceci solo lo confirma)."""
+    """C2 Elite → guía pendiente con el n° de solicitud ya puesto → Ceci completa el monto."""
     correr(repo, tk, C2_CORTO, 1)
     ap = repo.listar_aprobaciones(tk)[0]
-    return ap["id"], ap["texto"]
+    aprobaciones.corregir(repo, ap["id"], "panel:ceci", monto="$50,000 MXN")
+    return ap["id"], repo.obtener_aprobacion(ap["id"])["texto"]
 
 
 def plu3(repo):
@@ -134,8 +135,8 @@ def guia_general_lista(repo, tk):
 GUIA_ELITE_GUILLERMO = (
     "Hola Guillermo 👋 Allianz ya registró tu solicitud de Elite. Para activarla falta tu aportación:\n\n"
     "1. En el correo de Allianz “Felicidades” (Emisión de póliza) está la cuenta bancaria para la aportación.\n"
-    "2. Haz el pago por la cantidad exacta registrada en tu solicitud. En concepto y referencia pon tu número de "
-    "solicitud: 25287681. Si no lo incluyes, Allianz no podrá reconocer tu pago.\n"
+    "2. Haz el pago por {monto}, la cantidad exacta registrada en tu solicitud. En concepto y referencia pon tu "
+    "número de solicitud: 25287681. Si no lo incluyes, Allianz no podrá reconocer tu pago.\n"
     "3. Envía el comprobante y tu estado de cuenta bancario respondiendo al correo del ticket de soporte 2567479 "
     "de Allianz (no abras uno nuevo), con copia a soporte@babilonia.ai. En el asunto pon: Aplicación de fondos / "
     "SVIP-21799 / Guillermo Prueba Castro\n\n"
@@ -163,8 +164,8 @@ def test_c2_corto_deja_la_guia_pendiente_y_no_le_escribe_al_cliente(repo):
     assert t["identificado_por"] == "solicitud"
     ap = repo.listar_aprobaciones(tk)
     assert len(ap) == 1 and ap[0]["estado"] == "pendiente" and ap[0]["tipo"] == "guia_aportacion"
-    # Elite: los pasos de Ceci, con el n° de solicitud del correo (Ceci solo lo confirma).
-    assert ap[0]["texto"] == GUIA_ELITE_GUILLERMO
+    # Elite: los pasos de Ceci, con el n° de solicitud del correo; Ceci completa el monto y confirma los dos.
+    assert ap[0]["texto"] == GUIA_ELITE_GUILLERMO.format(monto="[completar]")
     assert ap[0]["datos"] == {"tipo": "SVIP", "nombre": "Guillermo", "producto": "Elite", "poliza": "SVIP-21799",
                               "ticket": "2567479", "cliente": "Guillermo Prueba Castro",
                               "monto": "", "datos_deposito": "", "solicitud": "25287681"}
@@ -191,11 +192,21 @@ def test_con_telegram_ceci_no_recibe_ademas_el_whatsapp(repo, monkeypatch):
 def test_ceci_corrige_el_numero_de_solicitud(repo):
     tk = repo.crear_ticket({"nro_ticket": "2567479", "estado": "abierto"})
     aid, _ = guia_lista(repo, tk)
+    assert "Haz el pago por $50,000 MXN, la cantidad exacta" in repo.obtener_aprobacion(aid)["texto"]
     r = aprobaciones.corregir(repo, aid, "panel:ceci", solicitud="25287682")
     ap = repo.obtener_aprobacion(aid)
-    assert r["ok"] and ap["version"] == 2 and "número de solicitud: 25287682." in ap["texto"]
-    # Monto y datos no son campos de Elite: no cambian nada.
-    assert not aprobaciones.corregir(repo, aid, "panel:ceci", **CAMPOS)["ok"]
+    assert r["ok"] and ap["version"] == 3 and "número de solicitud: 25287682." in ap["texto"]
+    # Los datos para depositar no son campo de Elite (vienen en el correo "Felicidades"): no cambian nada.
+    assert not aprobaciones.corregir(repo, aid, "panel:ceci", datos_deposito="CLABE 1")["ok"]
+
+
+def test_elite_no_se_aprueba_sin_monto(repo):
+    tk = repo.crear_ticket({"nro_ticket": "2567479", "estado": "abierto"})
+    correr(repo, tk, C2_CORTO, 1)
+    ap = repo.listar_aprobaciones(tk)[0]
+    r = aprobaciones.aprobar(repo, ap["id"], "panel:ceci", ahora=LUNES)
+    assert not r["ok"] and r["motivo"] == "Falta completar: monto."
+    assert aprobaciones.aprobar(repo, ap["id"], "panel:ceci", monto="$50,000 MXN", ahora=LUNES)["ok"]
 
 
 def test_la_guia_general_es_la_plantilla_de_wati(repo):
@@ -235,12 +246,12 @@ def test_aprobar_elite_manda_la_guia_sin_recordatorio_de_pago(repo):
     assert r["ok"] and roles(r) == ["asesor", "cliente"]
     cli = next(a for a in r["plan"] if a["rol"] == "cliente")
     assert cli["mensaje"] == texto and cli["numero"] == "5512345678"  # exactamente lo aprobado
-    assert cli["params"]["guia"]["solicitud"] == "25287681"  # → plantilla tommy_guia_elite
+    assert (cli["params"]["guia"]["monto"], cli["params"]["guia"]["solicitud"]) == ("$50,000 MXN", "25287681")
     ase = next(a for a in r["plan"] if a["rol"] == "asesor")
     assert ase["mensaje"] == ("Ticket 2567479 · Guillermo Prueba Castro: le mandamos al cliente la guía de "
-                              "aportación (aprobada por Ceci). Número de solicitud: 25287681.")
+                              "aportación (aprobada por Ceci). Monto: $50,000 MXN · Número de solicitud: 25287681.")
     ap = repo.obtener_aprobacion(aid)
-    assert (ap["estado"], ap["resuelto_por"], ap["version"]) == ("aprobada", "telegram:ceci", 1)
+    assert (ap["estado"], ap["resuelto_por"], ap["version"]) == ("aprobada", "telegram:ceci", 2)
     assert vivos(repo, tk) == {}  # Elite y Patrimonial: el cliente paga por su cuenta, sin recordatorio
     # Segunda vez (el panel después de Telegram): no sale nada de nuevo.
     r2 = aprobaciones.aprobar(repo, aid, "panel:ceci", ahora=LUNES)

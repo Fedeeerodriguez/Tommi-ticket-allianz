@@ -170,15 +170,17 @@ def test_recorte_en_palabra_entera_y_nombre_sin_ruido():
 
 
 @pytest.mark.parametrize("prod,plantilla,variables", [
-    ("SVIP", "tommy_guia_elite", {"nombre": "Guillermo", "solicitud": "25287681", "ticket": "2567479",
+    ("SVIP", "tommy_guia_elite", {"nombre": "Guillermo", "monto": "$50,000 MXN", "solicitud": "25287681",
+                                  "ticket": "2567479",
                                   "poliza": "SVIP-21799", "cliente": "Guillermo Prueba Castro"}),
-    ("OPPT", "tommy_guia_patrimonial", {"nombre": "Guillermo", "solicitud": "25287681", "poliza": "SVIP-21799",
+    ("OPPT", "tommy_guia_patrimonial", {"nombre": "Guillermo", "monto": "$50,000 MXN", "solicitud": "25287681",
+                                        "poliza": "SVIP-21799",
                                         "cliente": "Guillermo Prueba Castro"}),
 ])
 def test_cada_producto_sale_por_su_plantilla_de_guia(prod, plantilla, variables):
     ctx = M.contexto({"nro_ticket": "2567479", "poliza": "SVIP-21799", "nro_solicitud": "25287681", "producto": prod},
                      {}, {"cliente_nombre": "Guillermo Prueba Castro"})
-    g = M.datos_guia(ctx, prod)
+    g = {**M.datos_guia(ctx, prod), "monto": "$50,000 MXN"}
     assert plantilla_etapas({"rol": "cliente", "mensaje": "…", "params": {"guia": g}}) == (plantilla, variables)
 
 

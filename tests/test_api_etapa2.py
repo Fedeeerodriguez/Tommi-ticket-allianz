@@ -36,22 +36,28 @@ def test_guia_por_aprobar_en_para_ceci(cli):
     item = next(i for i in r["items"] if i["id"] == tk)
     assert item["para_ceci"] == ["guia_por_aprobar"] and item["proceso"] == "corto"
     g = item["guia_pendiente"]
-    assert g["version"] == 1 and not g["falta_completar"] and not g["por_telegram"]
+    assert g["version"] == 1 and g["falta_completar"] and not g["por_telegram"]
     assert g["texto"].startswith("Hola Guillermo 👋 Allianz ya registró tu solicitud de Elite.")
-    # Elite: Ceci confirma el n° de solicitud, que ya viene del correo de Allianz.
-    assert g["campos"] == [{"clave": "solicitud", "nombre": "número de solicitud", "valor": "25287681"}]
-    assert g["faltan"] == []
+    # Elite: Ceci completa el monto y confirma el n° de solicitud, que ya viene del correo de Allianz.
+    assert g["campos"] == [{"clave": "monto", "nombre": "monto", "valor": ""},
+                           {"clave": "solicitud", "nombre": "número de solicitud", "valor": "25287681"}]
+    assert g["faltan"] == ["monto"]
 
 
 def test_aprobar_desde_el_panel(cli):
     c, repo = cli
     tk = corto(repo)
     aid = repo.listar_aprobaciones(tk)[0]["id"]
-    # Guardar sin enviar con el n° de solicitud corregido → v2 (sigue pendiente).
-    r = c.post(f"/api/tickets-allianz/aprobacion/{aid}", json={"accion": "corregir", "solicitud": "25287682"})
+    # Sin monto no se puede.
+    r = c.post(f"/api/tickets-allianz/aprobacion/{aid}", json={"accion": "aprobar"})
+    assert r.status_code == 409 and r.json()["detail"] == "Falta completar: monto."
+    # Guardar sin enviar con el monto y el n° de solicitud corregido → v2 (sigue pendiente).
+    r = c.post(f"/api/tickets-allianz/aprobacion/{aid}",
+               json={"accion": "corregir", "monto": "$50,000 MXN", "solicitud": "25287682"})
     assert r.status_code == 200 and repo.obtener_aprobacion(aid)["version"] == 2
     g = c.get("/api/tickets-allianz").json()["items"][0]["guia_pendiente"]
-    assert g["campos"][0]["valor"] == "25287682" and "número de solicitud: 25287682." in g["texto"]
+    assert [x["valor"] for x in g["campos"]] == ["$50,000 MXN", "25287682"] and g["faltan"] == []
+    assert "Haz el pago por $50,000 MXN" in g["texto"] and "número de solicitud: 25287682." in g["texto"]
     # Aprobar → guía a cliente y asesor; sale de "Para Ceci".
     r = c.post(f"/api/tickets-allianz/aprobacion/{aid}", json={"accion": "aprobar", "usuario": "Ceci"})
     assert r.status_code == 200 and sorted(r.json()["avisos"]) == ["asesor", "cliente"]
@@ -78,7 +84,7 @@ def test_pago_enviado_a_mano(cli):
     c, repo = cli
     tk = corto(repo)
     aid = repo.listar_aprobaciones(tk)[0]["id"]
-    c.post(f"/api/tickets-allianz/aprobacion/{aid}", json={"accion": "aprobar"})
+    c.post(f"/api/tickets-allianz/aprobacion/{aid}", json={"accion": "aprobar", "monto": "$10"})
     r = c.post(f"/api/tickets-allianz/{tk}/etapa", json={"etapa": "documentos_enviados", "usuario": "Ceci"})
     assert r.status_code == 200 and sorted(r.json()["avisos"]) == ["asesor", "ceci", "cliente"]
     recs = {x["motivo"]: x["estado"] for x in repo.listar_recordatorios(tk)}

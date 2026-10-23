@@ -59,9 +59,8 @@ def test_la_guia_le_llega_a_ceci_con_botones(repo, bot):
     msg = bot.de("sendMessage")[0]
     assert msg["chat_id"] == CECI
     assert msg["text"].startswith("Guía de aportación · Ticket 2567479 · Guillermo Prueba Castro · Elite")
-    # Elite: el n° de solicitud ya viene; Ceci lo revisa y aprueba (o lo corrige respondiendo).
-    assert "Revisa que el número de solicitud (25287681) sea el correcto" in msg["text"]
-    assert msg["text"].endswith("Solicitud: 25290001") and "Falta completar" not in msg["text"]
+    # Elite: el n° de solicitud ya viene; falta el monto (Ceci lo completa respondiendo).
+    assert "⚠️ Falta completar monto. Responde a este mensaje así:\nMonto: $50,000 MXN\nSolicitud: 25290001" in msg["text"]
     botones = msg["reply_markup"]["inline_keyboard"][0]
     assert [b["callback_data"] for b in botones] == [f"ap:{ap['id']}:1", f"de:{ap['id']}:1"]
     assert ap["telegram_msg_id"] == "101"
@@ -70,12 +69,14 @@ def test_la_guia_le_llega_a_ceci_con_botones(repo, bot):
 
 def test_elite_corrige_la_solicitud_y_aprueba(repo, bot):
     tk, ap = preparar(repo, bot)
-    bot.updates = [respuesta(6, "Solicitud: 25287682")]
+    bot.updates = [respuesta(6, "Monto: $50,000 MXN\nSolicitud: 25287682")]
     assert telegram.procesar_updates(repo, bot)["correcciones"][0]["version"] == 2
+    nuevo = bot.de("sendMessage")[-1]["text"]
+    assert "Revisa que el monto ($50,000 MXN) y el número de solicitud (25287682) sean correctos" in nuevo
     bot.updates = [boton(8, f"ap:{ap['id']}:2", mid=int(repo.obtener_aprobacion(ap["id"])["telegram_msg_id"]))]
     r = telegram.procesar_updates(repo, bot)
     cli = next(a for a in r["plan"] if a["rol"] == "cliente")
-    assert "número de solicitud: 25287682." in cli["mensaje"]
+    assert "Haz el pago por $50,000 MXN" in cli["mensaje"] and "número de solicitud: 25287682." in cli["mensaje"]
 
 
 def test_corregir_respondiendo_y_aprobar(repo, bot):
