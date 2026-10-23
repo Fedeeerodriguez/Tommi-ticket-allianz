@@ -99,6 +99,17 @@ Selección de riesgos."""))
     assert r.accion.recordatorio and r.accion.responder_allianz and len(r.accion.avisar) == 3
 
 
+@pytest.mark.parametrize("msg", [
+    "Para que su solicitud sea atendida, favor de enviar la identificación oficial vigente.",
+    "Una vez autorizado el trámite se procede al cobro. Favor de enviar la carta firmada.",
+    "Para poder ser autorizada la solicitud requerimos la carta de no adeudo.",
+])
+def test_c3_pedido_que_nombra_atendida_o_autorizado_sigue_siendo_requerimiento(msg):
+    # "sea atendida" / "una vez autorizado" es una condición, no un aviso: no se cierra el ticket.
+    r = det(f"{TK} RAUL MARIN escribió un mensaje", correo("RAUL MARIN", "1945278 ANA PRUEBA", msg))
+    assert r.etapa == Etapa.REQUERIMIENTO
+
+
 def test_c3_requerimiento_gmm_historia_clinica():
     r = det(f"{TK} SILVIA LILIAN GARCIA escribió un mensaje", correo("SILVIA LILIAN GARCIA", "GMMI 98577 MARTA\nPRUEBA URIBE N", """Buen día
 Favor de enviar Historia clínica completa y actualizada (por parte de
@@ -388,6 +399,7 @@ def test_rebote_ticket_ya_cerrado_alerta_a_ceci():
     r = det("Solicitud finalizada Ticket 2533643 Asunto GMLI 15964 PEDRO PRUEBA N",
             "<p>Su mensaje corresponde a un ticket que ya se encuentra cerrado, por lo que no es posible continuar</p>")
     assert r.etapa == Etapa.REBOTE_TICKET_CERRADO and r.nro_ticket == "2533643"
+    assert r.titulo_hilo == "GMLI 15964 PEDRO PRUEBA N"  # para que Ceci sepa qué hilo rebotó
     assert r.accion.avisar == ("ceci",) and not r.accion.cerrar
 
 

@@ -144,7 +144,9 @@ _RE_RECHAZO = re.compile(r"proced\w*\s+a\s+rechazar|(?:ticket|solicitud)\s+(?:qu
 _RE_DECLINADO = re.compile(r"\bdeclinad[oa]\b", re.I)
 _RE_ATENDIDA = re.compile(r"\batendid[ao]\b", re.I)
 _RE_CERRADO = re.compile(r"folio\s+cerrado|(?:ticket|folio)\s+queda\s+cerrado", re.I)
-_RE_NEGACION = re.compile(r"\b(?:no|a[uú]n|todav[ií]a|sin|pendiente)\b", re.I)
+# Negación o condición: "aún no atendida", "para que sea atendida", "una vez autorizado" (son pedidos).
+_RE_NEGACION = re.compile(r"\b(?:no|a[uú]n|todav[ií]a|sin|pendiente|sean?|ser(?:[aá]n?)?|puedan?|"
+                          r"una\s+vez|para\s+que|hasta\s+que|cuando|antes\s+de)\b", re.I)
 _RE_AUTORIZADO = re.compile(
     r"\bautorizad[oa]\b|\bha\s+sido\s+autoriz|\bse\s+autoriz[oó]\b|"
     r"(?:pasa|turna\w*|envi\w*)\s+a\s+cobro|en\s+proceso\s+de\s+cobro", re.I)
@@ -267,6 +269,12 @@ def _campo(texto: str, *nombres: str) -> Optional[str]:
         if m and m.group(1).strip():
             return _plano(m.group(1)).rstrip(" .")
     return None
+
+
+def _asunto_rebote(asunto: str) -> Optional[str]:
+    """'Solicitud finalizada Ticket 2533643 Asunto GMLI 15964 PEDRO PRUEBA N' (sin dos puntos)."""
+    m = re.search(r"\bAsunto\s*:?\s*(.+)$", asunto, re.I)
+    return _plano(m.group(1)) if m else None
 
 
 def _cliente_de_titulo(titulo: str) -> Optional[str]:
@@ -395,7 +403,7 @@ def detectar_etapa(asunto: str, cuerpo: str, remitente: str) -> EtapaCorreo:
 
     # --- Rebote: respondimos a un ticket que ya estaba cerrado ---
     if re.search(r"ticket\s+que\s+ya\s+se\s+encuentra\s+cerrado", plano, re.I):
-        r = EtapaCorreo(Etapa.REBOTE_TICKET_CERRADO, nro_ticket=ticket, titulo_hilo=_campo(asunto, "Asunto"),
+        r = EtapaCorreo(Etapa.REBOTE_TICKET_CERRADO, nro_ticket=ticket, titulo_hilo=_asunto_rebote(asunto),
                         motivo="Allianz avisa que el ticket ya estaba cerrado")
         r.accion = accion_para(r.etapa, None)
         return r

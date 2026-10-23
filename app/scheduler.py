@@ -51,6 +51,7 @@ def job_intake(repo, grafo, emisor, lector=None, fuente=None) -> dict:
             grafo.invoke({"correo": correo, "despachar": False})
             nuevos += 1
         except Exception:  # noqa: BLE001
+            correo.fallo = True  # el lector lo deja sin leer: se reintenta en el próximo ciclo
             log.exception("intake: falló procesando un correo (%s)", getattr(correo, "message_id", "?"))
     desp = despachar_pendientes(repo, emisor)
     log.info("intake[%s]: %d correos · despacho=%s", fuente, nuevos, desp.get("conteo"))
