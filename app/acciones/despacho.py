@@ -24,6 +24,7 @@ import json
 import logging
 import os
 import tempfile
+import threading
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Optional
@@ -308,15 +309,31 @@ def _despachar_una(repo: Repositorio, accion: dict, emisor: Emisor, ahora: datet
     return "omitida"
 
 
+# Los jobs del worker (intake, Telegram, recordatorios…) corren en hilos y todos despachan: sin
+# esto, dos a la vez leían la misma acción 'sugerida' y el mensaje salía dos veces.
+_UNO_A_LA_VEZ = threading.Lock()
+
+
 def despachar_pendientes(repo: Repositorio, emisor: Optional[Emisor] = None,
                          ahora: Optional[datetime] = None, limite: int = 500) -> dict:
     """Procesa todas las acciones en estado 'sugerida'. Devuelve el conteo por resultado."""
+    with _UNO_A_LA_VEZ:
+        return _despachar_pendientes(repo, emisor, ahora, limite)
+
+
+def _despachar_pendientes(repo: Repositorio, emisor: Optional[Emisor], ahora: Optional[datetime],
+                          limite: int) -> dict:
     emisor = emisor or emisor_desde_config()
     ahora = ahora or _ahora()
     conteo: dict[str, int] = {}
     detalle: list[dict] = []
     for accion in repo.listar_acciones(estado="sugerida")[:limite]:
-        r = _despachar_una(repo, accion, emisor, ahora)
+        try:
+            r = _despachar_una(repo, accion, emisor, ahora)
+        except Exception as ex:  # noqa: BLE001 — una acción rota no frena al resto de la cola
+            log.exception("despacho: falló la acción %s", accion.get("id"))
+            repo.actualizar_accion(accion["id"], "fallida", {"error": f"{type(ex).__name__}: {ex}"[:300]})
+            r = "fallida"
         conteo[r] = conteo.get(r, 0) + 1
         detalle.append({"accion_id": accion["id"], "ticket_id": accion.get("ticket_id"),
                         "tipo_accion": accion.get("tipo_accion"), "canal": accion.get("canal"),
