@@ -62,9 +62,14 @@ def puede_aprobarse(repo: Repositorio, ap: Optional[dict], cambios: Optional[dic
         return "No encontré esa guía."
     if ap.get("estado") != "pendiente":
         return f"Esa guía ya estaba {ap.get('estado')}."
-    faltan = mensajes_etapa.faltan_en_guia({**(ap.get("datos") or {}), **(cambios or {})})
+    datos = {**(ap.get("datos") or {}), **(cambios or {})}
+    faltan = mensajes_etapa.faltan_en_guia(datos)
     if faltan:
         return f"Falta completar: {' y '.join(faltan)}."
+    sin = mensajes_etapa.faltan_del_ticket(datos)
+    if sin:
+        return (f"Al ticket le falta {' y '.join(sin)}: así la guía le llega rota al cliente. "
+                f"Descártala y mándala a mano, o espera a que Allianz lo mande.")
     ticket = repo.obtener_ticket(ap["ticket_id"]) or {}
     if not ticket.get("identificado_por"):
         return "Todavía no está identificado el cliente/asesor del ticket: asígnalo en el panel y vuelve a aprobar."
@@ -78,6 +83,17 @@ def aprobar(repo: Repositorio, aprobacion_id: int, por: str, monto: Optional[str
     cliente y asesor."""
     ap = repo.obtener_aprobacion(aprobacion_id)
     cambios = _campos(monto, datos_deposito, solicitud)
+    if ap and ap.get("estado") == "pendiente":
+        # Lo que el ticket supo después de crearse la guía (póliza, nombre…): versión nueva para que
+        # Ceci la vea antes de aprobar (se aprueba exactamente lo que se ve).
+        del_ticket = mensajes_etapa.completar_del_ticket(ap.get("datos") or {},
+                                                         repo.obtener_ticket(ap["ticket_id"]) or {})
+        if del_ticket:
+            nueva = _guardar(repo, ap, {**del_ticket, **cambios})
+            repo.agregar_evento(ap["ticket_id"], ap.get("correo_id"), "guia_corregida",
+                                f"Guía completada con datos del ticket (v{nueva['version']})")
+            return _resultado(False, "Completé la guía con datos nuevos del ticket: revisa la versión "
+                                     f"{nueva['version']} y aprueba.", version=int(nueva["version"]))
     motivo = puede_aprobarse(repo, ap, cambios)
     if motivo:
         return _resultado(False, motivo)

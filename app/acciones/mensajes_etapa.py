@@ -178,18 +178,38 @@ def campos_guia(datos: Optional[dict]) -> tuple:
     return guia_de(datos)["campos"]
 
 
+def _dato(v) -> str:
+    """Los rellenos de `contexto` ("—", "cliente sin identificar") no son datos: la guía los deja vacíos."""
+    return "" if v in (None, "", "—", "cliente sin identificar") else str(v)
+
+
 def datos_guia(ctx: dict, producto: Optional[str] = None) -> dict:
     """Variables de la guía que pone el sistema. Lo de Ceci arranca vacío, salvo el n° de solicitud,
     que viene del correo de Allianz y Ceci solo lo confirma (o lo corrige)."""
-    sol = ctx.get("sol")
     return {"tipo": producto if producto in GUIAS else "", "nombre": ctx.get("nombre") or "",
-            "producto": ctx.get("producto_cliente") or "", "poliza": ctx.get("poliza") or "",
-            "ticket": ctx.get("tk") or "", "cliente": ctx.get("cliente") or "",
-            "monto": "", "datos_deposito": "", "solicitud": "" if sol in (None, "", "—") else str(sol)}
+            "producto": ctx.get("producto_cliente") or "", "poliza": _dato(ctx.get("poliza")),
+            "ticket": _dato(ctx.get("tk")), "cliente": _dato(ctx.get("cliente")),
+            "monto": "", "datos_deposito": "", "solicitud": _dato(ctx.get("sol"))}
 
 
 def faltan_en_guia(datos: dict) -> list[str]:
     return [NOMBRES_CAMPOS[k] for k in campos_guia(datos) if not str((datos or {}).get(k) or "").strip()]
+
+
+# Datos de la guía que pone el sistema (del ticket), sin los cuales el texto al cliente queda roto.
+DATOS_DEL_TICKET = {"poliza": "la póliza", "ticket": "el n° de ticket", "cliente": "el nombre del cliente"}
+
+
+def faltan_del_ticket(datos: dict) -> list[str]:
+    return [DATOS_DEL_TICKET[k] for k in guia_de(datos)["variables"]
+            if k in DATOS_DEL_TICKET and not _dato(str((datos or {}).get(k) or "").strip())]
+
+
+def completar_del_ticket(datos: dict, ticket: dict) -> dict:
+    """Lo que la guía no tenía al crearse (póliza, ticket, nombre…) y el ticket ya tiene."""
+    nuevos = datos_guia(contexto(ticket, {}))
+    return {k: nuevos[k] for k in ("nombre", *DATOS_DEL_TICKET)
+            if nuevos.get(k) and not _dato((datos or {}).get(k))}
 
 
 def valores_guia(datos: dict) -> dict:

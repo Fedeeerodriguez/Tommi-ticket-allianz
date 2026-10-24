@@ -34,7 +34,8 @@ from pydantic import BaseModel
 
 from app import config
 from app.acciones.mensajes_etapa import (
-    ETIQUETAS, FALTA_COMPLETAR, NOMBRES_CAMPOS, campos_guia, etiqueta, faltan_en_guia,
+    ETIQUETAS, FALTA_COMPLETAR, NOMBRES_CAMPOS, campos_guia, etiqueta, faltan_del_ticket,
+    faltan_en_guia,
 )
 from app.acciones.motor_etapas import RANGO, _parse_ts
 from app.db import get_repo
@@ -177,6 +178,7 @@ def guia_pendiente(repo, ticket_id: int) -> Optional[dict]:
                 "campos": [{"clave": k, "nombre": NOMBRES_CAMPOS[k], "valor": datos.get(k) or ""}
                            for k in campos_guia(datos)],
                 "faltan": faltan_en_guia(datos),
+                "faltan_del_ticket": faltan_del_ticket(datos),  # póliza/ticket/nombre: bloquean la aprobación
                 "falta_completar": FALTA_COMPLETAR in (ap.get("texto") or "")}
     return None
 
@@ -307,6 +309,9 @@ def resolver_aprobacion(aprobacion_id: int, body: AprobacionIn, _=Depends(_auth)
     else:
         raise HTTPException(status_code=400, detail="accion: aprobar | corregir | descartar")
     if not res["ok"]:
+        if res.get("version", 0) > int(ap.get("version") or 1):  # se completó con datos del ticket
+            _avisar_telegram(repo, ap, f"✏️ Completada con datos del ticket (versión {res['version']}): "
+                                       "te llega la nueva abajo.", reenviar=True)
         raise HTTPException(status_code=409, detail=res["motivo"])
     _avisar_telegram(repo, ap, leyenda, reenviar=body.accion == "corregir")
     return {"ok": True, "motivo": res["motivo"], "avisos": [a["rol"] for a in res.get("plan", [])]}

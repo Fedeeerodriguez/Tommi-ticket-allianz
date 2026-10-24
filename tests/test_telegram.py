@@ -155,3 +155,22 @@ def test_update_roto_no_frena_a_los_demas(repo, bot):
     telegram.procesar_updates(repo, bot)
     assert repo.obtener_aprobacion(ap["id"])["estado"] == "descartada"
     assert repo.leer_valor("telegram_offset") == "2"
+
+
+def test_guia_sin_poliza_no_se_aprueba_y_se_completa_cuando_el_ticket_la_tiene(repo, bot):
+    # La guía se creó sin póliza (el C2 no la traía): al cliente le llegaría "Aplicación de fondos / — / …".
+    tk, ap = preparar(repo, bot)
+    repo.actualizar_aprobacion(ap["id"], datos={**ap["datos"], "poliza": "", "monto": "$50,000 MXN"})
+    repo.actualizar_ticket(tk, poliza=None)
+    bot.updates = [boton(1, f"ap:{ap['id']}:1")]
+    r = telegram.procesar_updates(repo, bot)
+    assert r["plan"] == [] and "le falta la póliza" in bot.de("answerCallbackQuery")[-1]["text"]
+    # Llega la póliza al ticket → al apretar Aprobar se arma la versión 2 (Ceci la ve) en vez de mandarla.
+    repo.actualizar_ticket(tk, poliza="SVIP-77001")
+    bot.updates = [boton(2, f"ap:{ap['id']}:1")]
+    r = telegram.procesar_updates(repo, bot)
+    assert r["plan"] == [] and repo.obtener_aprobacion(ap["id"])["version"] == 2
+    nuevo = bot.de("sendMessage")[-1]
+    assert "(versión 2)" in nuevo["text"] and "/ SVIP-77001 /" in nuevo["text"]
+    bot.updates = [boton(3, f"ap:{ap['id']}:2", mid=int(repo.obtener_aprobacion(ap["id"])["telegram_msg_id"]))]
+    assert sorted(a["rol"] for a in telegram.procesar_updates(repo, bot)["plan"]) == ["asesor", "cliente"]

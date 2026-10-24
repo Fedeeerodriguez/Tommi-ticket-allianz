@@ -68,6 +68,9 @@ def texto_mensaje(ap: dict, ticket: dict) -> str:
                f"este mensaje así:\n{como}")
     else:
         pie = f"Para corregirla, responde a este mensaje así (puede ser una sola línea):\n{como}"
+    sin = mensajes_etapa.faltan_del_ticket(datos)
+    if sin:
+        pie = f"⚠️ Al ticket le falta {' y '.join(sin)}: así no se puede aprobar.\n{pie}"
     return f"{cab}\n\n{ap['texto']}\n\n{pie}"
 
 
@@ -161,6 +164,9 @@ def _boton(repo: Repositorio, cq: dict, enviar: Transporte) -> dict:
         leyenda = ("✅ Aprobada: ya salió al cliente y al asesor." if accion == "ap"
                    else "🗑 Descartada: no se mandó nada.")
         cerrar_mensaje(ap, leyenda, enviar)
+    elif ap and res.get("version", 0) > int(ap.get("version") or 1):  # se completó con datos del ticket
+        cerrar_mensaje(ap, f"✏️ Reemplazada por la versión {res['version']} (abajo).", enviar)
+        enviar_aprobacion(repo, repo.obtener_aprobacion(ap["id"]), enviar)
     return res
 
 

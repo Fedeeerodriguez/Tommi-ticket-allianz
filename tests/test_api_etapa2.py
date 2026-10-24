@@ -124,3 +124,17 @@ def test_panel_con_telegram_cierra_el_mensaje_viejo(cli, monkeypatch):
     assert r.status_code == 200
     assert [m for m, _ in llamadas] == ["editMessageReplyMarkup", "sendMessage"]
     assert repo.obtener_aprobacion(aid)["telegram_msg_id"] == ""  # el worker le manda la versión nueva
+
+
+def test_aprobar_desde_el_panel_completa_con_el_ticket_y_pide_revisar(cli):
+    c, repo = cli
+    tk = corto(repo)
+    ap = repo.listar_aprobaciones(tk)[0]
+    repo.actualizar_aprobacion(ap["id"], datos={**ap["datos"], "poliza": ""})
+    repo.actualizar_ticket(tk, poliza="SVIP-77001")
+    r = c.post(f"/api/tickets-allianz/aprobacion/{ap['id']}", json={"accion": "aprobar", "monto": "$50,000 MXN"})
+    assert r.status_code == 409 and "revisa la versión 2" in r.json()["detail"]
+    g = c.get("/api/tickets-allianz").json()["items"][0]["guia_pendiente"]
+    assert "/ SVIP-77001 /" in g["texto"] and g["faltan"] == [] and g["faltan_del_ticket"] == []
+    r = c.post(f"/api/tickets-allianz/aprobacion/{ap['id']}", json={"accion": "aprobar"})
+    assert r.status_code == 200

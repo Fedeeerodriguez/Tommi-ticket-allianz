@@ -194,3 +194,10 @@ def test_cada_producto_sale_por_su_plantilla_de_guia(prod, plantilla, variables)
 ])
 def test_sin_saludo_deja_mayuscula_aunque_empiece_con_exclamacion(entra, sale):
     assert sin_saludo(entra) == sale
+
+
+def test_la_guia_no_guarda_rellenos_como_datos():
+    ctx = M.contexto({"producto": "OPPT"}, {"producto": "OPPT"}, None)
+    d = M.datos_guia(ctx, "OPPT")
+    assert (d["poliza"], d["ticket"], d["cliente"]) == ("", "", "")
+    assert M.faltan_del_ticket(d) == ["la póliza", "el nombre del cliente"]  # Patrimonial no usa el ticket
