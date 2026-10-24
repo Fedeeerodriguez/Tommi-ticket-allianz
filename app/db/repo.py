@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 from datetime import datetime, timezone
 from typing import Any, Iterable, Optional, Protocol
@@ -88,7 +89,17 @@ class Repositorio(Protocol):
 class RepositorioPostgres:
     def __init__(self, dsn: str, schema: str = "tickets_allianz"):
         self.schema = schema
-        self.conn, self.driver = self._connect(dsn)
+        self._dsn = dsn
+        self._conn, self.driver = self._connect(dsn)
+
+    @property
+    def conn(self):
+        """La conexión; si se cayó (reinicio de Supabase, corte de red) se reabre en el próximo uso.
+        Sin esto el worker quedaba fallando en todos los jobs hasta reiniciar el contenedor."""
+        if self._conn.closed:
+            logging.getLogger(__name__).warning("Postgres: la conexión estaba cerrada, reconectando")
+            self._conn, self.driver = self._connect(self._dsn)
+        return self._conn
 
     @staticmethod
     def _connect(dsn: str):

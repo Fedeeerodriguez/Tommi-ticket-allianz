@@ -176,3 +176,19 @@ def test_ya_le_recordamos_al_cliente_solo_si_salio(repo):
     r2 = escanear_recordatorios(repo, utc(28, 16, 30))
     assert any(a["rol"] == "asesor" and a["mensaje"].endswith("Ya le recordamos al cliente.") for a in r2["plan"])
     assert tk and tk2
+
+
+def test_ticket_delicado_el_recordatorio_va_solo_a_ceci(repo):
+    # Rescate/cancelación/siniestro: el motor no le escribe al cliente; el recordatorio tampoco.
+    tk = ticket_con(repo, C1, C3)
+    repo.actualizar_ticket(tk, delicado=True)
+    r = escanear_recordatorios(repo, utc(28, 16))
+    assert [a["rol"] for a in r["plan"]] == ["ceci"]
+    assert "Ticket delicado: no se le recordó al cliente" in r["plan"][0]["mensaje"]
+
+
+def test_horario_de_oficina_en_cdmx():
+    assert en_horario(utc(23, 15))        # viernes 09:00 CDMX
+    assert not en_horario(utc(24, 1))     # viernes 19:00 CDMX (ya es sábado en UTC)
+    assert not en_horario(utc(24, 16))    # sábado 10:00 CDMX
+    assert en_horario(utc(26, 15))        # lunes 09:00 CDMX

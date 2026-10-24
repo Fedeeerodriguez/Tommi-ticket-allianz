@@ -39,7 +39,7 @@ def en_horario(ahora: datetime) -> bool:
     """Lunes a viernes, sin feriados de México, dentro de HORARIO_AVISOS (hora de CDMX)."""
     local = hora_mx(ahora)
     ini, _, fin = config.HORARIO_AVISOS.partition("-")
-    return sla._es_habil(local) and int(ini) <= local.hour < int(fin or 24)
+    return sla._es_habil(ahora) and int(ini) <= local.hour < int(fin or 24)  # _es_habil ya mira CDMX
 
 
 def _ctx(ticket: dict, rec: dict) -> dict:
@@ -64,6 +64,9 @@ def _avisar(repo: Repositorio, ticket: dict, rec: dict, momento: str, roles: lis
     # El cliente primero: el texto del asesor dice "Ya le recordamos al cliente" solo si de verdad salió.
     for rol in sorted(roles, key=lambda r: r != "cliente"):
         if rol == "ceci":
+            continue
+        if ticket.get("delicado"):  # igual que el motor: en un ticket delicado solo se le escribe a Ceci
+            omitidos.append(f"Ticket delicado: no se le recordó al {rol}.")
             continue
         if not identificado:
             omitidos.append(f"No hay cliente/asesor identificado: no se le recordó al {rol}.")
