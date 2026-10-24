@@ -103,16 +103,18 @@ def _guardar_si_critico(repo: Repositorio, accion: dict, ticket: dict, pay: dict
     # Trámite abierto por Ceci desde el panel: ella misma lo armó y lo revisó → no se retiene.
     if accion.get("tipo_accion") == "abrir_tramite":
         return None
+    # Ceci ya aprobó ESTA acción (panel "Enviar" o autorizar el ticket): sale. Antes solo se miraba
+    # en las escalaciones, y un correo crítico aprobado desde el panel se volvía a retener para siempre.
+    res = accion.get("resultado")
+    if isinstance(res, str):
+        try:
+            res = json.loads(res)
+        except Exception:  # noqa: BLE001
+            res = {}
+    if (res or {}).get("aprobado_por"):
+        return None
     # Escalación a Allianz (Etapa 1): se aprueba de a UNA acción (no alcanza con el ticket autorizado).
     if pay.get("requiere_visto_bueno"):
-        res = accion.get("resultado")
-        if isinstance(res, str):
-            try:
-                res = json.loads(res)
-            except Exception:  # noqa: BLE001
-                res = {}
-        if (res or {}).get("aprobado_por"):
-            return None
         retener_para_ceci(repo, accion, ticket, borrador)
         return "pendiente_ceci"
     if not es_accion_critica(ticket, pay):

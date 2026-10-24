@@ -95,10 +95,11 @@ def listar(filtro: Optional[str] = None, _=Depends(_auth)):
     para_ceci = filtro == "para_ceci"
     tickets = []
     for t in repo.listar_tickets(limite=500):
-        t["_para_ceci"] = motivos_para_ceci(repo, t)
-        if para_ceci and not t["_para_ceci"]:
-            continue
         if not para_ceci and (t.get("estado") or "") == "resuelto":
+            continue  # antes de calcular los motivos: son varias consultas por ticket
+        t["_guia"] = guia_pendiente(repo, t["id"])
+        t["_para_ceci"] = motivos_para_ceci(repo, t, guia=t["_guia"])
+        if para_ceci and not t["_para_ceci"]:
             continue
         tickets.append(t)
 
@@ -135,7 +136,7 @@ def listar(filtro: Optional[str] = None, _=Depends(_auth)):
             "proximo_recordatorio": proximo_recordatorio(repo, t["id"]),
             "para_ceci": t["_para_ceci"],
             # Etapa 2 (corto + trámites)
-            "titulo_hilo": t.get("titulo_hilo"), "guia_pendiente": guia_pendiente(repo, t["id"]),
+            "titulo_hilo": t.get("titulo_hilo"), "guia_pendiente": t["_guia"],
             # Etapa 3 (trámites abiertos desde el panel)
             "abierto_por": t.get("abierto_por"),
         })
@@ -183,10 +184,13 @@ def guia_pendiente(repo, ticket_id: int) -> Optional[dict]:
     return None
 
 
-def motivos_para_ceci(repo, t: dict) -> list[str]:
+_SIN_CALCULAR = object()
+
+
+def motivos_para_ceci(repo, t: dict, guia=_SIN_CALCULAR) -> list[str]:
     """Por qué este ticket necesita a Ceci (vacío = no la necesita)."""
     motivos = []
-    if guia_pendiente(repo, t["id"]):
+    if (guia_pendiente(repo, t["id"]) if guia is _SIN_CALCULAR else guia):
         motivos.append("guia_por_aprobar")
     if t.get("etapa") and not t.get("identificado_por") and (t.get("estado") or "") != "resuelto":
         motivos.append("sin_identificar")

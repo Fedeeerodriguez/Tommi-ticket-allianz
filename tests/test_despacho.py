@@ -77,3 +77,19 @@ def test_wati_200_con_result_false_es_fallo(monkeypatch):
     monkeypatch.setattr(httpx, "post", lambda *a, **k: Resp())
     r = wati_cliente.WatiHTTP("https://live.wati.io/1", "t").enviar_plantilla("5511", "tommy_aviso_cliente", {})
     assert r["ok"] is False and r["error"] == "Invalid WhatsApp number"
+
+
+def test_correo_critico_aprobado_desde_el_panel_sale(repo, monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+    from app import api
+    monkeypatch.setattr(api, "_repo", repo)
+    monkeypatch.setattr(config, "API_TOKEN", "")
+    tk = repo.crear_ticket({"nro_ticket": "1", "estado": "abierto"})
+    aid = repo.crear_accion(tk, "instruir_cliente", "email_cliente",
+                            {"destinatario": "ana@x.com", "asunto": "Cancelación de tu póliza",
+                             "mensaje": "Confirmamos la cancelación de tu póliza."})
+    assert despacho.despachar_pendientes(repo)["conteo"] == {"pendiente_ceci": 1}  # crítico → a Ceci
+    r = TestClient(api.app).post(f"/api/tickets-allianz/accion/{aid}/aprobar", json={"decision": "enviar"})
+    assert r.status_code == 200
+    despacho.despachar_pendientes(repo)
+    assert next(a for a in repo.listar_acciones(tk) if a["id"] == aid)["estado"] == "simulada"  # salió (DRY_RUN)
