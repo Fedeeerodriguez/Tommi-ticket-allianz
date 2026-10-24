@@ -9,8 +9,13 @@ lógica de estados/eventos/delicado.
 """
 from __future__ import annotations
 
+from app import config
 from app.acciones import decidir_y_encolar, despachar_pendientes
+from app.acciones.abrir_tramite import enlazar as enlazar_tramite
+from app.acciones.motor_etapas import EMISIONES, decidir_por_etapa, ticket_para_emision, usa_motor_etapas
 from app.clasificador import clasificar_l1, clasificar_l2
+from app.clasificador.allianz import es_correo_allianz
+from app.clasificador.etapas import detectar_etapa
 from app.db import Repositorio
 from app.enriquecimiento import enriquecer
 from app.extraccion import extraer
@@ -57,7 +62,50 @@ def n_persistir(estado: EstadoCorreo, repo: Repositorio) -> dict:
         fin = None
     else:
         fin = "no_ticket"
-    return {"correo_id": correo_id, "es_nuevo": es_nuevo, "fin": fin, "ruta": ["persistir"]}
+    salida = {"correo_id": correo_id, "es_nuevo": es_nuevo, "fin": fin, "ruta": ["persistir"]}
+    if config.MOTOR_ETAPAS and es_nuevo:
+        etapa = _etapa(estado)
+        # Los avisos de emisión no traen n° de ticket (y el clasificador viejo a veces los toma por
+        # respuesta de ticket). Si son de un ticket del proceso largo que ya seguimos, siguen por su
+        # propio camino (n_emision); si no, no crean ticket.
+        if fin in (None, "no_ticket") and etapa and etapa.get("etapa") in EMISIONES:
+            tid = ticket_para_emision(repo, etapa)
+            if tid:
+                salida.update(fin=None, emision_ticket_id=tid)
+            else:
+                salida["fin"] = "emision_sin_ticket"
+        # Avisos automáticos de Allianz que no son de ningún ticket (DAF, cobranzas, recordatorio de
+        # pago…): fuera de alcance, no crean ticket. Los delicados siguen el camino de siempre (Ceci).
+        elif fin is None and etapa is None and _buzon_de_avisos(correo.remitente) and not es_delicado(correo):
+            salida["fin"] = "fuera_de_alcance"
+    return salida
+
+
+def _buzon_de_avisos(remitente: str) -> bool:
+    if not es_correo_allianz(remitente or ""):
+        return False
+    local = (remitente or "").split("<")[-1].strip(" >").lower().split("@")[0]
+    return any(local == b.strip().lower() for b in config.ALLIANZ_BUZONES_AVISOS)
+
+
+def _etapa(estado: EstadoCorreo) -> dict | None:
+    """Etapa del correo (la calcula el clasificador L1; si la L2 la pisó, se recalcula)."""
+    clf = estado.get("clasificacion")
+    etapa = (getattr(clf, "entidades", None) or {}).get("etapa") or (estado.get("entidades") or {}).get("etapa")
+    if etapa:
+        return etapa
+    c = estado["correo"]
+    e = detectar_etapa(c.asunto or "", c.cuerpo_texto or "", c.remitente or "")
+    return e.como_dict() if e.etapa.value != "no_aplica" else None
+
+
+def n_emision(estado: EstadoCorreo, repo: Repositorio) -> dict:
+    """Aviso de emisión / emisión registrada de un ticket del proceso largo → motor por etapa."""
+    tid, correo = estado["emision_ticket_id"], estado["correo"]
+    repo.vincular_correo(estado["correo_id"], tid)
+    repo.agregar_evento(tid, estado["correo_id"], "emision", (correo.asunto or "")[:200])
+    res = decidir_por_etapa(repo, tid, _etapa(estado), correo_id=estado.get("correo_id"))
+    return {"ticket_id": tid, "acciones": res["plan"], "etapa_resultado": res, "ruta": ["emision"]}
 
 
 def n_enriquecer(estado: EstadoCorreo, repo: Repositorio) -> dict:
@@ -90,7 +138,15 @@ def n_upsert_ticket(estado: EstadoCorreo, repo: Repositorio) -> dict:
     hilo = {"gmail_thread_id": correo.hilo_id, "asunto_hilo": correo.asunto}
     # SLA (Fase C): vencimiento según el plazo de Allianz (o 72 h hábiles por default); cierre → None.
     vence_en = sla.vence_en_para(correo, clf)
-    ticket = repo.buscar_ticket(ent.get("nro_ticket"), ent.get("poliza"), ent.get("cliente_correo"))
+    ticket = repo.buscar_ticket(ent.get("nro_ticket"), None, None) if ent.get("nro_ticket") else None
+    if not ticket:
+        # Etapa 3: el acuse de un trámite que abrimos desde el panel ("[EXT] <nuestro asunto>").
+        ticket = enlazar_tramite(repo, _etapa(estado))
+    if not ticket:
+        ticket = repo.buscar_ticket(None, ent.get("poliza"), ent.get("cliente_correo"))
+        # Otro n° de ticket de Allianz es otro ticket, aunque sea de la misma póliza o cliente.
+        if ticket and ent.get("nro_ticket") and ticket.get("nro_ticket") not in (None, "", ent["nro_ticket"]):
+            ticket = None
     if ticket:
         ticket_id = ticket["id"]
         campos = {"estado": estado_tk.value, "ultimo_message_id": correo.message_id, "vence_en": vence_en}
@@ -123,7 +179,12 @@ def n_registrar_notion(estado: EstadoCorreo, repo: Repositorio) -> dict:
 
 
 def n_decidir(estado: EstadoCorreo, repo: Repositorio) -> dict:
-    """Motor de acciones: encola lo que Tommy HARÍA (estado 'sugerida')."""
+    """Motor de acciones: encola lo que Tommy HARÍA (estado 'sugerida').
+    Proceso largo + MOTOR_ETAPAS=1 → motor por etapa; el resto, el motor por tipo de correo."""
+    etapa = _etapa(estado)
+    if etapa and usa_motor_etapas(etapa, repo.obtener_ticket(estado["ticket_id"])):
+        res = decidir_por_etapa(repo, estado["ticket_id"], etapa, correo_id=estado.get("correo_id"))
+        return {"acciones": res["plan"], "etapa_resultado": res, "ruta": ["decidir_etapa"]}
     plan = decidir_y_encolar(repo, estado["ticket_id"], estado["ticket"],
                              estado["clasificacion"], estado["notion"], estado["correo"])
     return {"acciones": plan, "ruta": ["decidir"]}

@@ -30,8 +30,15 @@ def _feriados_mx():
     return _FERIADOS
 
 
+def _local(dt: datetime) -> datetime:
+    """Día y hora en CDMX (los datetimes del sistema son UTC; sin zona se toman como UTC)."""
+    utc = dt.astimezone(timezone.utc) if dt.tzinfo else dt
+    return utc.replace(tzinfo=None) + timedelta(hours=config.UTC_OFFSET_MX)
+
+
 def _es_habil(dt: datetime) -> bool:
-    return dt.weekday() < 5 and dt.date() not in _feriados_mx()
+    d = _local(dt)
+    return d.weekday() < 5 and d.date() not in _feriados_mx()
 
 
 def parsear_plazo(texto: str) -> Optional[tuple[int, str]]:
@@ -64,7 +71,8 @@ def _sumar_horas_habiles(dt: datetime, n: int) -> datetime:
     while restantes > 0 and limite > 0:
         d += timedelta(hours=1)
         limite -= 1
-        if _es_habil(d) and HORA_INI <= d.hour < HORA_FIN:
+        inicio = d - timedelta(hours=1)  # la hora que acaba de pasar, en horario de oficina de CDMX
+        if _es_habil(inicio) and HORA_INI <= _local(inicio).hour < HORA_FIN:
             restantes -= 1
     return d
 

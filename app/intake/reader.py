@@ -166,8 +166,9 @@ class LectorIMAP:
                     continue
                 crudo = msg_datos[0][1]
                 if isinstance(crudo, bytes):
-                    yield normalizar_desde_bytes(crudo, origen=f"imap:{num.decode()}")
-                    if self.marcar_leidos:
+                    correo = normalizar_desde_bytes(crudo, origen=f"imap:{num.decode()}")
+                    yield correo
+                    if self.marcar_leidos and not correo.fallo:
                         conn.store(num, "+FLAGS", "\\Seen")
         finally:
             try:

@@ -90,7 +90,53 @@ alter table tickets_allianz.acciones add column if not exists veredicto        t
 alter table tickets_allianz.acciones add column if not exists nota_revision    text;
 alter table tickets_allianz.acciones add column if not exists borrador_editado text;
 
+-- Etapa 1 (proceso largo, 19/10) — etapa del ticket + avisos únicos + recordatorios.
+-- Versión con respaldo y vuelta atrás: docs/migracion_etapa1_2026-10-19.sql
+alter table tickets_allianz.tickets add column if not exists proceso       text;
+alter table tickets_allianz.tickets add column if not exists producto      text;
+alter table tickets_allianz.tickets add column if not exists etapa         text;
+alter table tickets_allianz.tickets add column if not exists etapa_desde   timestamptz;
+alter table tickets_allianz.tickets add column if not exists etapa_ronda   integer default 1;
+alter table tickets_allianz.tickets add column if not exists nro_solicitud text;
+alter table tickets_allianz.tickets add column if not exists identificado_por text;
+
+create table if not exists tickets_allianz.avisos (
+  id            bigint generated always as identity primary key,
+  ticket_id     bigint not null,
+  etapa         text   not null,
+  ronda         integer not null default 1,
+  destinatario  text   not null,
+  canal         text,
+  texto         text,
+  accion_id     bigint,
+  correo_id     bigint,
+  created_at    timestamptz not null default now(),
+  constraint uq_avisos_unico unique (ticket_id, etapa, ronda, destinatario)
+);
+
+create table if not exists tickets_allianz.recordatorios (
+  id             bigint generated always as identity primary key,
+  ticket_id      bigint not null,
+  motivo         text   not null,
+  destinatarios  text[] not null default '{}',
+  vence_en       timestamptz not null,
+  escala_en      timestamptz,
+  estado         text   not null default 'activo',
+  correo_id      bigint,
+  recordado_en   timestamptz,
+  escalado_en    timestamptz,
+  cerrado_en     timestamptz,
+  nota           text,
+  created_at     timestamptz not null default now()
+);
+
 -- ─────────────────────────── índices ───────────────────────────
+create index if not exists ix_tickets_etapa         on tickets_allianz.tickets (etapa);
+create index if not exists ix_tickets_solicitud     on tickets_allianz.tickets (nro_solicitud);
+create index if not exists ix_avisos_ticket         on tickets_allianz.avisos (ticket_id);
+create index if not exists ix_recordatorios_vence   on tickets_allianz.recordatorios (estado, vence_en);
+create unique index if not exists uq_recordatorio_vivo
+  on tickets_allianz.recordatorios (ticket_id, motivo) where estado in ('activo', 'escalado');
 create index if not exists ix_correos_ticket   on tickets_allianz.correos     (ticket_id);
 create index if not exists ix_eventos_ticket    on tickets_allianz.ticket_eventos (ticket_id);
 create index if not exists ix_acciones_ticket   on tickets_allianz.acciones    (ticket_id);
@@ -98,3 +144,36 @@ create index if not exists ix_acciones_estado   on tickets_allianz.acciones    (
 create index if not exists ix_tickets_poliza    on tickets_allianz.tickets     (poliza);
 create index if not exists ix_tickets_cliente   on tickets_allianz.tickets     (cliente_correo);
 create index if not exists ix_tickets_vence     on tickets_allianz.tickets     (vence_en);
+
+-- Etapa 2 (proceso corto + trámites, 20/10) — aprobaciones de Ceci + valores del worker.
+alter table tickets_allianz.tickets add column if not exists titulo_hilo text;
+
+-- aprobaciones: lo que Ceci tiene que aprobar antes de que salga (hoy: la guía de aportación
+-- del proceso corto). Una por (ticket, tipo, ronda): no se le pide dos veces lo mismo.
+create table if not exists tickets_allianz.aprobaciones (
+  id                bigint generated always as identity primary key,
+  ticket_id         bigint  not null,
+  tipo              text    not null,                -- guia_aportacion
+  ronda             integer not null default 1,
+  texto             text    not null,                -- lo que va a salir (Ceci lo puede corregir)
+  version           integer not null default 1,      -- sube cada vez que Ceci lo corrige
+  estado            text    not null default 'pendiente',  -- pendiente / aprobada / descartada
+  telegram_chat_id  text,
+  telegram_msg_id   text,                            -- el mensaje con los botones
+  resuelto_por      text,                            -- telegram:<usuario> / panel:<usuario>
+  resuelto_en       timestamptz,
+  correo_id         bigint,                          -- el correo de Allianz que la disparó
+  datos             jsonb   not null default '{}',   -- guía: nombre, producto, póliza + monto y datos de depósito (Ceci)
+  created_at        timestamptz not null default now(),
+  actualizado_en    timestamptz not null default now(),
+  constraint uq_aprobaciones_unica unique (ticket_id, tipo, ronda)
+);
+create index if not exists ix_aprobaciones_estado on tickets_allianz.aprobaciones (estado);
+
+-- valores: datos chicos del worker (hoy: hasta qué mensaje de Telegram ya se leyó).
+create table if not exists tickets_allianz.valores (
+  clave           text primary key,
+  valor           text,
+  actualizado_en  timestamptz not null default now()
+);
+

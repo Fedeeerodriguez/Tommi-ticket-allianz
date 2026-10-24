@@ -6,6 +6,7 @@ para poder correr el dry-run sin credenciales.
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 try:
@@ -52,17 +53,32 @@ ALLIANZ_DEST = os.getenv("ALLIANZ_DEST", "")
 
 # Dominios/correos de Allianz para las reglas L1 (ajustar con los reales).
 ALLIANZ_DOMINIOS = _csv("ALLIANZ_DOMINIOS", "allianz.com,allianz.com.mx")
+# Ejecutivas comerciales de Allianz que trabajan de NUESTRO lado (reenvían tickets, suben documentos).
+# Tal como aparecen en el asunto "<NOMBRE> escribió un mensaje" (se compara sin mayúsculas).
+EJECUTIVAS_ALLIANZ = _csv("EJECUTIVAS_ALLIANZ", "PENNY YAMILI ORTIZ,BLANCA ISABEL XULUC")
 # Directorio Allianz por tipo de trámite (JSON: {"cambio_conducto_cobro": "cliente.optimax@..."}).
 # Pendiente la página de Allianz "trámite-por-trámite". Si un trámite no está acá, cae a ALLIANZ_DEST.
 ALLIANZ_DIRECTORIO = os.getenv("ALLIANZ_DIRECTORIO", "")
 
 # --- WATI (WhatsApp) — Fase D. Real solo con credenciales y DRY_RUN=false; si no, laboratorio. ---
 WATI_API_URL = os.getenv("WATI_API_URL", "").rstrip("/")
-WATI_API_TOKEN = os.getenv("WATI_API_TOKEN", "")
+# Se acepta pegado con o sin "Bearer " (así viene en n8n como WATI_TOKEN); el cliente HTTP lo agrega.
+WATI_API_TOKEN = re.sub(r"^\s*bearer\s+", "", os.getenv("WATI_API_TOKEN", ""), flags=re.I).strip()
 WATI_PLANTILLA_ASESOR = os.getenv("WATI_PLANTILLA_ASESOR", "avances")     # plantilla de avances (asesores)
 WATI_PLANTILLA_CLIENTE = os.getenv("WATI_PLANTILLA_CLIENTE", "")          # solo cuando se le pide algo
 WATI_PLANTILLA_CECI = os.getenv("WATI_PLANTILLA_CECI", "")               # intervención/visto bueno de Ceci
 CECI_WHATSAPP = os.getenv("CECI_WHATSAPP", "")                           # número fijo de Ceci (pendiente)
+# Avisos del motor por etapa (Etapas 1 y 2): una plantilla por destinatario, creadas en WATI el
+# 20/10 (docs/TEXTOS_ETAPA2.md). Variables por NOMBRE (el despacho las arma):
+#   equipo  (asesor y Ceci): {{ticket}} {{cliente}} {{tramite}} {{mensaje}}
+#   cliente:                 {{nombre}} {{mensaje}}
+#   guía de aportación:      {{nombre}} {{producto}} {{poliza}} {{monto}} {{datos_deposito}}
+WATI_PLANTILLA_AVISO_EQUIPO = os.getenv("WATI_PLANTILLA_AVISO_EQUIPO", "tommy_aviso_equipo")
+WATI_PLANTILLA_AVISO_CLIENTE = os.getenv("WATI_PLANTILLA_AVISO_CLIENTE", "tommy_actualizacion_cliente")
+WATI_PLANTILLA_GUIA = os.getenv("WATI_PLANTILLA_GUIA", "tommy_guia_aportacion")
+# Guías por producto (los pasos de Ceci): Patrimonial y Elite tienen la suya; el resto usa la general.
+WATI_PLANTILLA_GUIA_PATRIMONIAL = os.getenv("WATI_PLANTILLA_GUIA_PATRIMONIAL", "tommy_guia_patrimonial")
+WATI_PLANTILLA_GUIA_ELITE = os.getenv("WATI_PLANTILLA_GUIA_ELITE", "tommy_guia_elite")
 
 # Base de datos: misma Supabase de Tommy, esquema aislado.
 DATABASE_URL = os.getenv("DATABASE_URL", "")
@@ -140,6 +156,46 @@ RETENCION_DIAS = int(os.getenv("RETENCION_DIAS", "180"))
 SLA_DEFAULT_HORAS = int(os.getenv("SLA_DEFAULT_HORAS", "72"))
 SLA_AVISO_HORAS = int(os.getenv("SLA_AVISO_HORAS", "24"))
 
+# Etapa 1 — motor por etapa del proceso largo (docs/PLAN_ETAPA1_PROCESO_LARGO.md). Apagado por
+# default: con MOTOR_ETAPAS=1 el proceso largo deja de usar el motor viejo por tipo de correo.
+MOTOR_ETAPAS = _bool("MOTOR_ETAPAS", "false")
+# Encendido gradual (paso 8): a quién le salen avisos y recordatorios ("ceci,asesor" primero, después
+# sumar "cliente"), y si la escalación arma el correo a Allianz con copia a la ejecutiva.
+MOTOR_ETAPAS_ROLES = _csv("MOTOR_ETAPAS_ROLES", "ceci,asesor,cliente")
+ESCALAR_A_ALLIANZ = _bool("ESCALAR_A_ALLIANZ", "false")
+# Recordatorio: se vence a las N h hábiles (o antes, si el correo de Allianz da un plazo menor)
+# y se escala (correo con copia a la ejecutiva + aviso a Ceci) M h hábiles después.
+RECORDATORIO_HORAS_HABILES = int(os.getenv("RECORDATORIO_HORAS_HABILES", "72"))
+ESCALA_HORAS_HABILES = int(os.getenv("ESCALA_HORAS_HABILES", "24"))
+# Copia del correo de escalación a Allianz (cuando Allianz no responde). ⚠️ por confirmar con Fede.
+ESCALA_CC = _csv("ESCALA_CC", "penny.ortiz@allianz.com.mx")
+# Los recordatorios por WhatsApp solo salen en horario de oficina de CDMX (UTC-6, sin horario de
+# verano desde 2022), de lunes a viernes. Fuera de horario esperan al siguiente escaneo.
+HORARIO_AVISOS = os.getenv("HORARIO_AVISOS", "9-19")
+UTC_OFFSET_MX = int(os.getenv("UTC_OFFSET_MX", "-6"))
+# Buzones automáticos de Allianz (DAF, cobranzas, recordatorio de pago, emisiones). Con el motor
+# por etapa, lo que mandan sin ser de un ticket NO crea ticket (fuera de alcance).
+ALLIANZ_BUZONES_AVISOS = _csv("ALLIANZ_BUZONES_AVISOS",
+                              "aviso.electronico,notificaciones.optimaxx,comunicados.agentes")
+# Link al panel de tickets que va en los avisos a Ceci (opcional).
+PANEL_URL = os.getenv("PANEL_URL", "")
+
+# Etapa 2 — proceso corto y trámites (docs/PLAN_ETAPA2_CORTO_TRAMITES.md). Qué procesos maneja el
+# motor por etapa: "largo" (Etapa 1) → sumar "corto" y "tramite". Los que no están siguen con el
+# motor viejo.
+MOTOR_ETAPAS_PROCESOS = _csv("MOTOR_ETAPAS_PROCESOS", "largo")
+# Recordatorio de pago del proceso corto (desde que Ceci aprueba la guía de aportación).
+# Productos del proceso corto que llevan recordatorio de pago. Patrimonial y Elite no: el cliente
+# manda el comprobante por su cuenta (a cliente.inversion@ o al ticket), según la guía de Ceci.
+RECORDATORIO_PAGO_PRODUCTOS = _csv("RECORDATORIO_PAGO_PRODUCTOS", "PLU3")
+RECORDATORIO_PAGO_HORAS_HABILES = int(os.getenv("RECORDATORIO_PAGO_HORAS_HABILES",
+                                                str(RECORDATORIO_HORAS_HABILES)))
+# Aprobación de la guía de aportación por Telegram. Sin token/chat (o apagado) se aprueba desde el
+# panel. Es un canal interno (solo Ceci): no depende de DRY_RUN; lo que sale al cliente sí.
+TELEGRAM_APROBACIONES = _bool("TELEGRAM_APROBACIONES", "false")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CECI_CHAT_ID = os.getenv("TELEGRAM_CECI_CHAT_ID", "")
+
 # Intervalo de polling IMAP (segundos).
 POLL_SEGUNDOS = int(os.getenv("POLL_SEGUNDOS", "90"))
 
@@ -171,6 +227,11 @@ def hay_notion() -> bool:
 
 def hay_wati() -> bool:
     return bool(WATI_API_URL and WATI_API_TOKEN)
+
+
+def hay_telegram() -> bool:
+    """Aprobaciones por Telegram encendidas y configuradas."""
+    return bool(TELEGRAM_APROBACIONES and TELEGRAM_BOT_TOKEN and TELEGRAM_CECI_CHAT_ID)
 
 
 def directorio_allianz(clave: str) -> str:

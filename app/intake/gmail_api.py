@@ -80,7 +80,7 @@ class LectorGmail:
             correo.hilo_id = meta.get("threadId")  # para responder en el mismo hilo (Fase B)
             yield correo
             # Marcar leído DESPUÉS de procesar → el próximo poll no re-baja este correo.
-            if self.marcar_leidos:
+            if self.marcar_leidos and not correo.fallo:  # si falló queda sin leer → se reintenta
                 try:
                     _ejecutar(service.users().messages().modify(
                         userId="me", id=meta["id"], body={"removeLabelIds": ["UNREAD"]}))

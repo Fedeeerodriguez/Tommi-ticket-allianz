@@ -196,13 +196,71 @@ CAMPOS_EMISION = {
 }
 
 
-def _query(db_id: str, filt: dict, page_size: int = 1) -> list[dict]:
+def _query_completo(db_id: str, filt: dict, page_size: int = 1) -> tuple[list[dict], bool]:
+    """(resultados, hay_mas). Los más nuevos primero."""
     if not (config.NOTION_TOKEN and db_id):
-        return []
-    body: dict = {"page_size": page_size}
+        return [], False
+    body: dict = {"page_size": page_size,
+                  "sorts": [{"timestamp": "created_time", "direction": "descending"}]}
     if filt:
         body["filter"] = filt
-    return _post(f"{_API}/databases/{db_id}/query", body).get("results", []) or []
+    data = _post(f"{_API}/databases/{db_id}/query", body)
+    return data.get("results", []) or [], bool(data.get("has_more"))
+
+
+def _query(db_id: str, filt: dict, page_size: int = 1) -> list[dict]:
+    return _query_completo(db_id, filt, page_size)[0]
+
+
+def norm_poliza(p) -> str:
+    """'PLU3/429083' · 'plu3-429083-0' · 'GMLI_1131_0' → 'PLU3429083' / 'GMLI1131' (para comparar exacto)."""
+    import re
+    s = re.sub(r"[^A-Z0-9]", " ", str(p or "").upper()).split()
+    if len(s) >= 3 and len(s[-1]) == 1:  # sufijo de renovación "-0"
+        s = s[:-1]
+    return "".join(s)
+
+
+def numero_poliza(p) -> str:
+    """Solo el número (para buscar con 'contains' sin depender del separador: '/', '_' o '-')."""
+    n = norm_poliza(p)
+    return n if n.isdigit() else n[4:]
+
+
+def misma_poliza(a, b) -> bool:
+    """Igualdad exacta de póliza; si una viene solo con el número, compara contra el número de la otra."""
+    na, nb = norm_poliza(a), norm_poliza(b)
+    if not na or not nb:
+        return False
+    if na == nb:
+        return True
+    if na.isdigit() != nb.isdigit():
+        con_pref = nb if na.isdigit() else na
+        return con_pref[4:] == (na if na.isdigit() else nb)  # prefijos de 4 (PLU3, GMMI, OP3D…)
+    return False
+
+
+def buscar_emisiones(campo: str, op: str, valor_buscado, page_size: int = 20) -> tuple[list[dict], bool]:
+    """Filas de Emisiones (ya extraídas) donde `campo` (lógico) cumple `op`. → (filas, hay_mas).
+    Solo lectura. Si el campo no mapea o no hay Notion → ([], False)."""
+    db = descubrir_db("emisiones")
+    if not db:
+        return [], False
+    mapa = mapear_campos(db, CAMPOS_EMISION)
+    real = mapa.get(campo)
+    if not real:
+        return [], False
+    tipo = esquema(db).get(real, {}).get("type", "rich_text")
+    if tipo == "number":
+        try:
+            filt = {"property": real, "number": {"equals": int(str(valor_buscado).strip())}}
+        except (TypeError, ValueError):
+            return [], False
+    else:
+        clave = tipo if tipo in ("title", "rich_text") else "rich_text"
+        filt = {"property": real, clave: {op: str(valor_buscado)}}
+    res, mas = _query_completo(db, filt, page_size)
+    return [_extraer(p, mapa) for p in res], mas
 
 
 def _extraer(page: dict, mapa: dict) -> dict:
@@ -233,9 +291,14 @@ def resolver_emision(poliza: str | None = None, nro_solicitud=None,
         return {}
     mapa = mapear_campos(db, CAMPOS_EMISION)
 
-    intentos = []
+    # Póliza: "contains" trae falsos positivos ('1131' → PLU3-421131), así que se verifica exacta.
     if poliza and mapa.get("poliza"):
-        intentos.append({"property": mapa["poliza"], "rich_text": {"contains": str(poliza)}})
+        for p in _query(db, {"property": mapa["poliza"], "rich_text": {"contains": numero_poliza(poliza)}},
+                        page_size=10):
+            if misma_poliza(valor(p.get("properties", {}).get(mapa["poliza"])), poliza):
+                return _extraer(p, mapa)
+
+    intentos = []
     if nro_solicitud not in (None, "") and mapa.get("nro_solicitud"):
         try:
             intentos.append({"property": mapa["nro_solicitud"],

@@ -51,6 +51,7 @@ class Correo:
     adjuntos: list[str] = field(default_factory=list)
     origen: Optional[str] = None  # ruta del .eml o id del mensaje en el buzón
     hilo_id: Optional[str] = None  # threadId de Gmail → para responder EN EL MISMO HILO (Fase B)
+    fallo: bool = False  # el intake no lo pudo procesar → el lector NO lo marca leído (se reintenta)
 
 
 @dataclass

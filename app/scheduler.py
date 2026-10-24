@@ -51,6 +51,7 @@ def job_intake(repo, grafo, emisor, lector=None, fuente=None) -> dict:
             grafo.invoke({"correo": correo, "despachar": False})
             nuevos += 1
         except Exception:  # noqa: BLE001
+            correo.fallo = True  # el lector lo deja sin leer: se reintenta en el próximo ciclo
             log.exception("intake: falló procesando un correo (%s)", getattr(correo, "message_id", "?"))
     desp = despachar_pendientes(repo, emisor)
     log.info("intake[%s]: %d correos · despacho=%s", fuente, nuevos, desp.get("conteo"))
@@ -71,6 +72,29 @@ def job_sla(repo, emisor) -> dict:
     desp = despachar_pendientes(repo, emisor)
     log.info("sla: %d recordatorios por vencimiento · despacho=%s", len(encoladas), desp.get("conteo"))
     return {"encoladas": len(encoladas), "despacho": desp}
+
+
+def job_recordatorios(repo, emisor) -> dict:
+    """Etapa 1: recordatorios y escalamiento del proceso largo (solo con MOTOR_ETAPAS)."""
+    from app.acciones.recordatorios import escanear_recordatorios
+    res = escanear_recordatorios(repo)
+    desp = despachar_pendientes(repo, emisor) if res["plan"] else {"conteo": {}}
+    log.info("recordatorios: %s recordados · %s escalados · %s cortados%s · despacho=%s",
+             len(res["recordados"]), len(res["escalados"]), len(res["cortados"]),
+             " (fuera de horario)" if res["fuera_de_horario"] else "", desp.get("conteo"))
+    return {**res, "despacho": desp}
+
+
+def job_telegram(repo, emisor) -> dict:
+    """Etapa 2: guías de aportación a Ceci por Telegram + sus botones/correcciones."""
+    from app.rieles import telegram
+    enviadas = telegram.enviar_pendientes(repo)
+    res = telegram.procesar_updates(repo)
+    desp = despachar_pendientes(repo, emisor) if res["plan"] else {"conteo": {}}
+    if enviadas or res["botones"] or res["correcciones"]:
+        log.info("telegram: %d guías enviadas · %d botones · %d correcciones · despacho=%s",
+                 enviadas, len(res["botones"]), len(res["correcciones"]), desp.get("conteo"))
+    return {**res, "enviadas": enviadas, "despacho": desp}
 
 
 def job_retencion(repo) -> dict:
@@ -112,6 +136,11 @@ def construir_scheduler():
     sched.add_job(lambda: job_inactividad(repo, emisor), "cron", hour=8, minute=0, id="inactividad")
     sched.add_job(lambda: job_sla(repo, emisor), "interval", minutes=60, id="sla")
     sched.add_job(lambda: job_retencion(repo), "cron", hour=3, minute=30, id="retencion")
+    if config.MOTOR_ETAPAS:
+        sched.add_job(lambda: job_recordatorios(repo, emisor), "interval", minutes=30, id="recordatorios")
+        if config.hay_telegram():  # Etapa 2: aprobación de la guía de aportación
+            sched.add_job(lambda: job_telegram(repo, emisor), "interval", seconds=15, id="telegram",
+                          max_instances=1, coalesce=True)
     # Modo copiloto: resumen interno al equipo (solo si RESUMEN_EQUIPO_EMAIL está configurado).
     if config.RESUMEN_EQUIPO_EMAIL:
         sched.add_job(lambda: job_resumen_equipo(repo), "interval",

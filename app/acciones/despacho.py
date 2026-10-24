@@ -19,8 +19,13 @@ Nada de esto envía nada salvo que haya SMTP y `DRY_RUN=false` (lo decide `emiso
 """
 from __future__ import annotations
 
+import base64
 import json
 import logging
+import os
+import tempfile
+import threading
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -95,12 +100,96 @@ def _guardar_si_critico(repo: Repositorio, accion: dict, ticket: dict, pay: dict
     """Fase E: si la acción es crítica y el ticket NO está autorizado, retiene el borrador para
     el visto bueno de Ceci y devuelve 'pendiente_ceci'. Si no es crítica o Ceci ya autorizó,
     devuelve None (sigue el envío normal)."""
+    # Trámite abierto por Ceci desde el panel: ella misma lo armó y lo revisó → no se retiene.
+    if accion.get("tipo_accion") == "abrir_tramite":
+        return None
+    # Ceci ya aprobó ESTA acción (panel "Enviar" o autorizar el ticket): sale. Antes solo se miraba
+    # en las escalaciones, y un correo crítico aprobado desde el panel se volvía a retener para siempre.
+    res = accion.get("resultado")
+    if isinstance(res, str):
+        try:
+            res = json.loads(res)
+        except Exception:  # noqa: BLE001
+            res = {}
+    if (res or {}).get("aprobado_por"):
+        return None
+    # Escalación a Allianz (Etapa 1): se aprueba de a UNA acción (no alcanza con el ticket autorizado).
+    if pay.get("requiere_visto_bueno"):
+        retener_para_ceci(repo, accion, ticket, borrador)
+        return "pendiente_ceci"
     if not es_accion_critica(ticket, pay):
         return None
     if ticket.get("autorizado"):
         return None  # Ceci ya dio el visto bueno → se ejecuta
     retener_para_ceci(repo, accion, ticket, borrador)
     return "pendiente_ceci"
+
+
+@contextmanager
+def _archivos(adjuntos: Optional[list]):
+    """Adjuntos guardados en el payload ({nombre, base64}) → archivos temporales para el emisor."""
+    if not adjuntos:
+        yield []
+        return
+    with tempfile.TemporaryDirectory(prefix="adjuntos_") as carpeta:
+        rutas = []
+        for a in adjuntos:
+            ruta = os.path.join(carpeta, os.path.basename(a.get("nombre") or "adjunto"))
+            with open(ruta, "wb") as f:
+                f.write(base64.b64decode(a.get("base64") or ""))
+            rutas.append(ruta)
+        yield rutas
+
+
+_MAX_VARIABLE = 900  # WhatsApp: el cuerpo entero no puede pasar de 1024 caracteres
+
+
+def una_linea(v) -> str:
+    """WhatsApp rechaza variables con saltos de línea, tabs o más de 4 espacios seguidos.
+    Vacío también lo rechaza → '—'."""
+    import re
+    t = re.sub(r"\s*\n\s*", " · ", str(v or "")).replace("\t", " ")
+    t = re.sub(r" {2,}", " ", t).strip(" ·")
+    if len(t) > _MAX_VARIABLE:
+        t = t[:_MAX_VARIABLE - 1].rsplit(" ", 1)[0] + "…"
+    return t or "—"
+
+
+def sin_saludo(texto: str) -> str:
+    """La plantilla del cliente ya dice 'Hola {{nombre}} 👋': 'Hola Ana, tu solicitud…' → 'Tu solicitud…'."""
+    import re
+    t = re.sub(r"^\s*hola(?:\s+[^,.!¡]{1,40})?\s*[,!.]\s*", "", texto or "", count=1, flags=re.I)
+    # Mayúscula en la primera letra, aunque arranque con '¡' o '¿' ("¡tu póliza…" → "¡Tu póliza…").
+    return re.sub(r"^([¡¿\s]*)(\w)", lambda m: m.group(1) + m.group(2).upper(), t, count=1)
+
+
+def sin_encabezado(texto: str) -> str:
+    """La plantilla del equipo ya muestra Ticket / Cliente / Trámite arriba:
+    'Ticket 2576612 · Ana: Allianz pide → …' → 'Allianz pide → …'."""
+    import re
+    t = re.sub(r"^\s*Ticket\s[^:\n]{1,200}:\s*", "", texto or "", count=1)
+    return t[:1].upper() + t[1:] if t else t
+
+
+def plantilla_etapas(pay: dict) -> tuple[str, dict]:
+    """Avisos del motor por etapa → (plantilla WATI, variables por nombre). Una plantilla por
+    destinatario: equipo (asesor/Ceci), cliente, y la guía de aportación."""
+    p = pay.get("params") or {}
+    rol = (pay.get("rol") or "").lower()
+    if rol == "cliente" and p.get("guia"):
+        from app.acciones.mensajes_etapa import guia_de, valores_guia
+        g, guia = p["guia"], guia_de(p["guia"])
+        plantilla = {"patrimonial": config.WATI_PLANTILLA_GUIA_PATRIMONIAL,
+                     "elite": config.WATI_PLANTILLA_GUIA_ELITE}.get(guia["plantilla"], config.WATI_PLANTILLA_GUIA)
+        valores = valores_guia(g)
+        return plantilla, {k: una_linea(valores[k]) for k in guia["variables"]}
+    if rol == "cliente":
+        return config.WATI_PLANTILLA_AVISO_CLIENTE, {
+            "nombre": una_linea(p.get("nombre") or "de nuevo"),
+            "mensaje": una_linea(sin_saludo(pay.get("mensaje", "")))}
+    return config.WATI_PLANTILLA_AVISO_EQUIPO, {
+        "ticket": una_linea(p.get("ticket")), "cliente": una_linea(p.get("cliente")),
+        "tramite": una_linea(p.get("tramite")), "mensaje": una_linea(sin_encabezado(pay.get("mensaje", "")))}
 
 
 def _despachar_una(repo: Repositorio, accion: dict, emisor: Emisor, ahora: datetime) -> str:
@@ -138,7 +227,11 @@ def _despachar_una(repo: Repositorio, accion: dict, emisor: Emisor, ahora: datet
             return "pendiente_wati"
         from app.wati import wati_desde_config
         wati = wati_desde_config()
-        res = wati.enviar_plantilla(numero, plantilla, {"mensaje": pay.get("mensaje", "")})
+        params = {"mensaje": pay.get("mensaje", "")}
+        # Avisos del motor por etapa → la plantilla de su destinatario (equipo / cliente / guía).
+        if pay.get("etapa"):
+            plantilla, params = plantilla_etapas(pay)
+        res = wati.enviar_plantilla(numero, plantilla, params)
         if res.get("simulado"):
             repo.actualizar_accion(aid, "simulada", res)
             return "simulada"
@@ -156,7 +249,7 @@ def _despachar_una(repo: Repositorio, accion: dict, emisor: Emisor, ahora: datet
             repo.actualizar_accion(aid, "bloqueada", {"motivo": "sin destinatario para responder"})
             return "bloqueada"
         asunto = pay.get("asunto") or "Sobre tu trámite"
-        cuerpo = pay.get("mensaje") or ""
+        cuerpo = accion.get("borrador_editado") or pay.get("mensaje") or ""  # lo editado en el panel manda
         # Guardarraíl crítico (Fase E): confirmaciones al cliente en temas críticos (cancelación,
         # suspensión de aportaciones, período de descanso…) pasan primero por Ceci.
         ticket = repo.obtener_ticket(accion["ticket_id"]) or {}
@@ -179,7 +272,8 @@ def _despachar_una(repo: Repositorio, accion: dict, emisor: Emisor, ahora: datet
     if canal == "email":
         ticket = repo.obtener_ticket(accion["ticket_id"]) or {}
         # Guardarraíl 1: sin Directorio Allianz no hay a quién mandarle.
-        destino = config.ALLIANZ_DEST
+        # Directorio por trámite (lo resuelve quien encola, p. ej. abrir_tramite); si no, ALLIANZ_DEST.
+        destino = pay.get("destinatario") or config.ALLIANZ_DEST
         if not destino:
             repo.actualizar_accion(aid, "bloqueada",
                                    {"motivo": "falta ALLIANZ_DEST (Directorio Allianz sin confirmar)"})
@@ -189,17 +283,20 @@ def _despachar_una(repo: Repositorio, accion: dict, emisor: Emisor, ahora: datet
         # encadenamos con el último Message-ID; si es un ticket nuevo, sale sin hilo.
         asunto = ticket.get("asunto_hilo") or _asunto_allianz(ticket)
         # Cuerpo: si el ORQUESTADOR (LLM) ya lo redactó (asertivo), lo usamos; si no, plantilla.
-        cuerpo = pay.get("cuerpo") or _cuerpo_allianz(ticket, pay)
+        # Lo que Ceci editó en el panel tiene prioridad sobre el borrador original.
+        cuerpo = accion.get("borrador_editado") or pay.get("cuerpo") or _cuerpo_allianz(ticket, pay)
         # Guardarraíl 2 crítico (Fase E): si es delicado/crítico y Ceci no lo autorizó, se
         # compone el borrador pero NO se manda: espera el visto bueno de Ceci.
+        cc = [c for c in (pay.get("cc") or []) if c] or None
         hold = _guardar_si_critico(repo, accion, ticket, pay,
                                    {"destino": destino, "asunto": asunto, "cuerpo": cuerpo,
-                                    "canal": "email"})
+                                    "canal": "email", "cc": cc})
         if hold:
             return hold
-        res = emisor.enviar([destino], asunto, cuerpo,
-                            hilo_id=ticket.get("gmail_thread_id"),
-                            in_reply_to=ticket.get("ultimo_message_id"))
+        with _archivos(pay.get("adjuntos")) as adjuntos:
+            res = emisor.enviar([destino], asunto, cuerpo, cc=cc, adjuntos=adjuntos or None,
+                                hilo_id=ticket.get("gmail_thread_id"),
+                                in_reply_to=ticket.get("ultimo_message_id"))
         if res.get("simulado"):
             repo.actualizar_accion(aid, "simulada", res)
             return "simulada"
@@ -214,15 +311,31 @@ def _despachar_una(repo: Repositorio, accion: dict, emisor: Emisor, ahora: datet
     return "omitida"
 
 
+# Los jobs del worker (intake, Telegram, recordatorios…) corren en hilos y todos despachan: sin
+# esto, dos a la vez leían la misma acción 'sugerida' y el mensaje salía dos veces.
+_UNO_A_LA_VEZ = threading.Lock()
+
+
 def despachar_pendientes(repo: Repositorio, emisor: Optional[Emisor] = None,
                          ahora: Optional[datetime] = None, limite: int = 500) -> dict:
     """Procesa todas las acciones en estado 'sugerida'. Devuelve el conteo por resultado."""
+    with _UNO_A_LA_VEZ:
+        return _despachar_pendientes(repo, emisor, ahora, limite)
+
+
+def _despachar_pendientes(repo: Repositorio, emisor: Optional[Emisor], ahora: Optional[datetime],
+                          limite: int) -> dict:
     emisor = emisor or emisor_desde_config()
     ahora = ahora or _ahora()
     conteo: dict[str, int] = {}
     detalle: list[dict] = []
     for accion in repo.listar_acciones(estado="sugerida")[:limite]:
-        r = _despachar_una(repo, accion, emisor, ahora)
+        try:
+            r = _despachar_una(repo, accion, emisor, ahora)
+        except Exception as ex:  # noqa: BLE001 — una acción rota no frena al resto de la cola
+            log.exception("despacho: falló la acción %s", accion.get("id"))
+            repo.actualizar_accion(accion["id"], "fallida", {"error": f"{type(ex).__name__}: {ex}"[:300]})
+            r = "fallida"
         conteo[r] = conteo.get(r, 0) + 1
         detalle.append({"accion_id": accion["id"], "ticket_id": accion.get("ticket_id"),
                         "tipo_accion": accion.get("tipo_accion"), "canal": accion.get("canal"),

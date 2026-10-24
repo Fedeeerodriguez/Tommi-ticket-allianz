@@ -34,7 +34,9 @@ def _tras_l1(estado: EstadoCorreo) -> str:
 
 
 def _tras_persistir(estado: EstadoCorreo) -> str:
-    return END if estado.get("fin") else "enriquecer"
+    if estado.get("fin"):
+        return END
+    return "emision" if estado.get("emision_ticket_id") else "enriquecer"
 
 
 def construir_grafo(repo: Repositorio, emisor: Optional[Emisor] = None):
@@ -49,12 +51,15 @@ def construir_grafo(repo: Repositorio, emisor: Optional[Emisor] = None):
     g.add_node("registrar_notion", partial(nodos.n_registrar_notion, repo=repo))
     g.add_node("decidir", partial(nodos.n_decidir, repo=repo))
     g.add_node("despachar", partial(nodos.n_despachar, repo=repo, emisor=emisor))
+    g.add_node("emision", partial(nodos.n_emision, repo=repo))
 
     g.add_edge(START, "clasificar_l1")
     g.add_conditional_edges("clasificar_l1", _tras_l1, {"clasificar_l2": "clasificar_l2", "extraer": "extraer"})
     g.add_edge("clasificar_l2", "extraer")
     g.add_edge("extraer", "persistir")
-    g.add_conditional_edges("persistir", _tras_persistir, {"enriquecer": "enriquecer", END: END})
+    g.add_conditional_edges("persistir", _tras_persistir,
+                            {"enriquecer": "enriquecer", "emision": "emision", END: END})
+    g.add_edge("emision", "despachar")
     g.add_edge("enriquecer", "upsert_ticket")
     g.add_edge("upsert_ticket", "registrar_notion")
     g.add_edge("registrar_notion", "decidir")

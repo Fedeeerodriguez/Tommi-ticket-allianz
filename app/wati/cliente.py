@@ -43,10 +43,15 @@ class WatiHTTP:
                                     "Content-Type": "application/json"},
                            json={"template_name": plantilla, "broadcast_name": plantilla,
                                  "parameters": parametros}, timeout=30)
-            ok = r.status_code < 300
-            return {"ok": ok, "modo": self.modo, "status": r.status_code,
-                    "numero": numero, "plantilla": plantilla,
-                    "respuesta": (r.json() if "application/json" in r.headers.get("content-type", "") else r.text)}
+            respuesta = r.json() if "application/json" in r.headers.get("content-type", "") else r.text
+            # WATI contesta 200 aunque no lo mande (número inválido, plantilla sin aprobar…): lo dice
+            # `result: false` + `info`. Sin esto quedaba como 'enviada' algo que nunca salió.
+            ok = r.status_code < 300 and not (isinstance(respuesta, dict) and respuesta.get("result") is False)
+            salida = {"ok": ok, "modo": self.modo, "status": r.status_code,
+                      "numero": numero, "plantilla": plantilla, "respuesta": respuesta}
+            if not ok and isinstance(respuesta, dict) and respuesta.get("info"):
+                salida["error"] = str(respuesta["info"])
+            return salida
         except Exception as ex:  # noqa: BLE001
             log.warning("WATI falló: %s", ex)
             return {"ok": False, "modo": self.modo, "error": str(ex),

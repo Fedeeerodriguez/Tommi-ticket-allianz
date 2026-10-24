@@ -283,6 +283,12 @@ def _persistir(repo: Repositorio, ticket_id: int, plan: list[Optional[dict]]) ->
     return plan
 
 
+def _lo_maneja_motor_etapas(t: dict) -> bool:
+    """Con MOTOR_ETAPAS, los tickets que ya tienen etapa los recuerda/escala `recordatorios.py`:
+    la reactivación diaria y el SLA viejo no los tocan (ensuciaban el panel con duplicados)."""
+    return bool(config.MOTOR_ETAPAS and t.get("etapa"))
+
+
 def escanear_inactividad(repo: Repositorio, dias: int = 3) -> list[dict]:
     """M7: tickets sin actividad hace > `dias` y no resueltos → encola un recordatorio de
     reactivación al responsable. Devuelve las acciones encoladas. (No envía nada.)"""
@@ -290,7 +296,7 @@ def escanear_inactividad(repo: Repositorio, dias: int = 3) -> list[dict]:
     umbral = datetime.now(timezone.utc) - timedelta(days=dias)
     for t in repo.listar_tickets(limite=500):
         estado = (t.get("estado") or "")
-        if estado in ("resuelto",):
+        if estado in ("resuelto",) or _lo_maneja_motor_etapas(t):
             continue
         ult = t.get("ultima_actividad")
         # ult puede venir como datetime (PG) o str (SQLite); normalizamos a comparación simple.
@@ -324,7 +330,7 @@ def escanear_vencimientos(repo: Repositorio, ahora: datetime | None = None,
     umbral = timedelta(hours=umbral_horas if umbral_horas is not None else config.SLA_AVISO_HORAS)
     encoladas = []
     for t in repo.listar_tickets(limite=500):
-        if (t.get("estado") or "") in ("resuelto",):
+        if (t.get("estado") or "") in ("resuelto",) or _lo_maneja_motor_etapas(t):
             continue
         v = t.get("vence_en")
         if not v:
