@@ -18,14 +18,19 @@ Endpoints (todos bajo /api/tickets-allianz):
   POST /api/tickets-allianz/tramites                   -> abre el trámite: ticket + correo a Allianz
   GET  /api/health                                     -> ping
 
-Seguridad: si `API_TOKEN` está seteado, exige `Authorization: Bearer <token>`. CORS por
+Seguridad: `Authorization: Bearer <sesión de Tomi>` de un admin (firmada con TOMI_JWT_SECRET) o,
+mientras dura la transición, el `API_TOKEN` fijo. Sin ninguno configurado no atiende. CORS por
 `CORS_ORIGINS`. NO envía nada al cliente/Allianz: solo lee/edita el estado de revisión.
 
 Correr:  uvicorn app.api:app --host 0.0.0.0 --port 8090
 """
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
 import json
+import time
 from typing import Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException
@@ -63,9 +68,49 @@ def _get_repo():
     return _repo
 
 
-def _auth(authorization: str = Header(default="")):
-    if config.API_TOKEN and authorization != f"Bearer {config.API_TOKEN}":
-        raise HTTPException(status_code=401, detail="token inválido")
+_ROLES_PANEL = {"admin", "super_admin"}
+
+
+def _b64(s: str) -> bytes:
+    return base64.urlsafe_b64decode(s + "=" * (-len(s) % 4))
+
+
+def sesion_tomi(token: str) -> Optional[dict]:
+    """La sesión de Tomi (JWT HS256 firmado con su SECRET_KEY) si es auténtica y no venció; si no, None."""
+    if not (config.TOMI_JWT_SECRET and token):
+        return None
+    try:
+        cab, cuerpo, firma = token.split(".")
+        if json.loads(_b64(cab)).get("alg") != "HS256":
+            return None  # nunca "none" ni otro algoritmo
+        esperada = hmac.new(config.TOMI_JWT_SECRET.encode(), f"{cab}.{cuerpo}".encode(), hashlib.sha256).digest()
+        if not hmac.compare_digest(esperada, _b64(firma)):
+            return None
+        datos = json.loads(_b64(cuerpo))
+    except (ValueError, AttributeError):  # mal armado (base64/JSON/partes)
+        return None
+    exp = datos.get("exp") if isinstance(datos, dict) else None
+    if not isinstance(exp, (int, float)) or exp <= time.time():
+        return None
+    return datos
+
+
+def _auth(authorization: str = Header(default="")) -> dict:
+    """Quién llama: un admin de Tomi con su sesión, o (transición) el API_TOKEN fijo. Sin ninguno
+    configurado la API no atiende: nunca queda abierta por olvido (API_SIN_AUTH=true solo en desarrollo)."""
+    token = authorization[7:].strip() if authorization[:7].lower() == "bearer " else ""
+    s = sesion_tomi(token)
+    if s is not None:
+        if s.get("role") not in _ROLES_PANEL:
+            raise HTTPException(status_code=403, detail="el gestor de tickets es solo para administradores")
+        return {"via": "sesion", "usuario_id": s.get("sub"), "rol": s.get("role")}
+    if config.API_TOKEN and token and hmac.compare_digest(token.encode(), config.API_TOKEN.encode()):
+        return {"via": "token"}
+    if not (config.TOMI_JWT_SECRET or config.API_TOKEN):
+        if config.API_SIN_AUTH:
+            return {"via": "abierta"}
+        raise HTTPException(status_code=503, detail="la API no tiene autenticación configurada (TOMI_JWT_SECRET)")
+    raise HTTPException(status_code=401, detail="sesión inválida o vencida")
 
 
 def _json(v) -> dict:
