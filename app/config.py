@@ -137,9 +137,13 @@ RESUMEN_EQUIPO_EMAIL = os.getenv("RESUMEN_EQUIPO_EMAIL", "")
 RESUMEN_CADA_HORAS = int(os.getenv("RESUMEN_CADA_HORAS", "4"))  # cada cuánto manda el digest
 
 # API del panel de seguimiento (la consume el frontend de Tomi; vive ACÁ, fuera de Tomi prod).
-# API_TOKEN: si está seteado, exige `Authorization: Bearer <token>`. CORS_ORIGINS: orígenes del
-# frontend permitidos (CSV). Vacío = permite todos (solo para dev).
+# TOMI_JWT_SECRET: el SECRET_KEY con que Tomi firma la sesión → la API acepta la sesión de un admin
+# de Tomi (el panel ya no lleva un token fijo adentro). API_TOKEN: token fijo viejo, solo mientras
+# dura la transición. Sin ninguno de los dos la API no atiende, salvo API_SIN_AUTH=true (desarrollo).
+# CORS_ORIGINS: orígenes del frontend permitidos (CSV). Vacío = permite todos (solo para dev).
+TOMI_JWT_SECRET = os.getenv("TOMI_JWT_SECRET", "")
 API_TOKEN = os.getenv("API_TOKEN", "")
+API_SIN_AUTH = _bool("API_SIN_AUTH", "false")
 CORS_ORIGINS = _csv("CORS_ORIGINS", "")
 
 # Modo seguro: en dry-run NO se envía nada a nadie.

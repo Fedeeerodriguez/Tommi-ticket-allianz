@@ -105,7 +105,9 @@ services:
     command: ["uvicorn", "app.api:app", "--host", "0.0.0.0", "--port", "8090"]
     environment:
       <<: *common-env
-      # API del panel: token opcional (si se setea, el frontend debe mandarlo) + CORS del front.
+      # API del panel: acepta la sesión de un admin de Tomi (TOMI_JWT_SECRET = el SECRET_KEY de Tomi).
+      # API_TOKEN: token fijo viejo, solo durante la transición. Sin ninguno, la API no atiende.
+      TOMI_JWT_SECRET: ${TOMI_JWT_SECRET:-}
       API_TOKEN: ${API_TOKEN:-}
       CORS_ORIGINS: ${CORS_ORIGINS:-}
     # Sin `ports:` a propósito: en EasyPanel el dominio enruta al contenedor por el puerto
