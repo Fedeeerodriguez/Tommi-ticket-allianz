@@ -74,7 +74,12 @@ def test_cliente_sin_nombre_no_dice_hola_vacio():
 def test_link_al_panel_en_el_aviso_a_ceci(monkeypatch):
     monkeypatch.setattr(config, "PANEL_URL", "https://panel.babilonia.ai/")
     ctx = {**M.contexto({}, ETAPA_EJEMPLO), "ticket_id": 7}
-    assert M.texto("ceci", "apertura", ctx).endswith("Panel: https://panel.babilonia.ai/tickets/7")
+    # La página de tickets de Tomi es /tickets-allianz (no existe /tickets/<id>); el panel abre ese ticket.
+    assert M.texto("ceci", "apertura", ctx).endswith("Panel: https://panel.babilonia.ai/tickets-allianz?ticket=7")
+    monkeypatch.setattr(config, "PANEL_URL", "https://panel.babilonia.ai/tickets-allianz")  # también sirve
+    assert M.link_panel(7) == "https://panel.babilonia.ai/tickets-allianz?ticket=7"
+    monkeypatch.setattr(config, "PANEL_URL", "")
+    assert M.link_panel(7) == "" and "Panel:" not in M.texto("ceci", "apertura", ctx)
 
 
 _P = {"ticket": "2576612", "tramite": "Gastos médicos · Allianz pide documentos",
