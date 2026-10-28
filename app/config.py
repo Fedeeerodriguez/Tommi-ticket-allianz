@@ -181,7 +181,8 @@ UTC_OFFSET_MX = int(os.getenv("UTC_OFFSET_MX", "-6"))
 # por etapa, lo que mandan sin ser de un ticket NO crea ticket (fuera de alcance).
 ALLIANZ_BUZONES_AVISOS = _csv("ALLIANZ_BUZONES_AVISOS",
                               "aviso.electronico,notificaciones.optimaxx,comunicados.agentes")
-# Link al panel de tickets que va en los avisos a Ceci (opcional).
+# Dirección del panel de Tomi (ej. https://…-babilonia-frontend…easypanel.host): los avisos a Ceci llevan
+# el link directo al ticket (<PANEL_URL>/tickets-allianz?ticket=<id>). Vacío = sin link.
 PANEL_URL = os.getenv("PANEL_URL", "")
 
 # Etapa 2 — proceso corto y trámites (docs/PLAN_ETAPA2_CORTO_TRAMITES.md). Qué procesos maneja el

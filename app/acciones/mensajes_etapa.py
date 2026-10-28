@@ -283,6 +283,17 @@ CORREO_ESCALACION = (
 )
 
 
+def link_panel(ticket_id) -> str:
+    """Link directo al ticket en el panel de Tomi (página Ticket Allianz Seguimiento). PANEL_URL es la
+    dirección de Tomi; si ya trae /tickets-allianz al final, también sirve. Sin PANEL_URL, sin link."""
+    base = (config.PANEL_URL or "").strip().rstrip("/")
+    if not (base and ticket_id):
+        return ""
+    if base.endswith("/tickets-allianz"):
+        base = base[: -len("/tickets-allianz")]
+    return f"{base}/tickets-allianz?ticket={ticket_id}"
+
+
 def texto_recordatorio(rol: str, motivo: str, momento: str, ctx: dict,
                        avisos_omitidos: Optional[list[str]] = None) -> Optional[str]:
     t = TEXTOS_RECORDATORIO.get((motivo, momento), {}).get(rol)
@@ -295,8 +306,8 @@ def texto_recordatorio(rol: str, motivo: str, momento: str, ctx: dict,
     lineas = [_puntuacion(t.format(**ctx))]
     if rol == "ceci":
         lineas += [f"⚠️ {a}" for a in (avisos_omitidos or [])]
-        if config.PANEL_URL and ctx.get("ticket_id"):
-            lineas.append(f"Panel: {config.PANEL_URL.rstrip('/')}/tickets/{ctx['ticket_id']}")
+        if link_panel(ctx.get("ticket_id")):
+            lineas.append(f"Panel: {link_panel(ctx['ticket_id'])}")
     return "\n".join(lineas)
 
 
@@ -462,8 +473,8 @@ def texto(rol: str, etapa: str, ctx: dict, avisos_omitidos: Optional[list[str]] 
         base = t.get("ceci") or t.get("asesor") or f"Ticket {{tk}} · {{cliente}}: {etapa.replace('_', ' ')}."
         lineas = [_puntuacion(base.format(**ctx))]
         lineas += [f"⚠️ {a}" for a in (avisos_omitidos or [])]
-        if config.PANEL_URL and ctx.get("ticket_id"):
-            lineas.append(f"Panel: {config.PANEL_URL.rstrip('/')}/tickets/{ctx['ticket_id']}")
+        if link_panel(ctx.get("ticket_id")):
+            lineas.append(f"Panel: {link_panel(ctx['ticket_id'])}")
         return "\n".join(lineas)
     plantilla = t.get(rol)
     if not plantilla:
