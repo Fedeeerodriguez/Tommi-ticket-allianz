@@ -16,6 +16,7 @@ Endpoints (todos bajo /api/tickets-allianz):
   GET  /api/tickets-allianz/tramites/catalogo          -> trámites para el selector (Etapa 3)
   POST /api/tickets-allianz/tramites/vista-previa      -> identifica la póliza y arma el correo (no guarda)
   POST /api/tickets-allianz/tramites                   -> abre el trámite: ticket + correo a Allianz
+  POST /api/tickets-allianz/tramites/archivos-whatsapp -> lo que mandó el cliente por WhatsApp (Etapa 3B)
   GET  /api/health                                     -> ping
 
 Seguridad: `Authorization: Bearer <sesión de Tomi>` de un admin (firmada con TOMI_JWT_SECRET) o,
@@ -523,3 +524,16 @@ def abrir_tramite_panel(body: TramiteIn, _=Depends(_auth)):
     if not r["ok"]:
         raise HTTPException(status_code=409 if r.get("duplicado") else 422, detail=r["motivo"])
     return _publico(r)
+
+
+class ArchivosWhatsappIn(BaseModel):
+    poliza: str
+    dias: int = 14
+
+
+@app.post("/api/tickets-allianz/tramites/archivos-whatsapp")
+def archivos_whatsapp(body: ArchivosWhatsappIn, _=Depends(_auth)):
+    """Etapa 3B: las fotos y documentos que el cliente de la póliza mandó por WhatsApp en los
+    últimos días, ya bajados de WATI, para elegir cuáles adjuntar al trámite. Solo lee."""
+    from app.acciones import abrir_tramite
+    return abrir_tramite.archivos_whatsapp(body.poliza, body.dias)

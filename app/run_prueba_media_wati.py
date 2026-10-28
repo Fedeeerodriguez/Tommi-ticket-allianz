@@ -17,55 +17,7 @@ import os
 from pathlib import Path
 
 from app import config
-
-TIPOS_ARCHIVO = {"image", "document", "video", "audio", "sticker"}
-
-FIRMAS = (
-    (b"%PDF", "pdf"),
-    (b"\xff\xd8\xff", "jpg"),
-    (b"\x89PNG", "png"),
-    (b"RIFF", "webp"),
-    (b"OggS", "ogg"),
-    (b"PK\x03\x04", "zip/office"),
-)
-
-
-def tipo_por_firma(contenido: bytes) -> str:
-    """El tipo real del archivo por sus primeros bytes ('?' si no se reconoce)."""
-    for firma, tipo in FIRMAS:
-        if contenido.startswith(firma):
-            return tipo
-    if contenido[4:8] == b"ftyp":
-        return "mp4"
-    return "?"
-
-
-def mensajes_con_archivo(respuesta) -> list[dict]:
-    """Los mensajes que traen archivo, de la respuesta de getMessages (tolera las dos formas de WATI)."""
-    if not isinstance(respuesta, dict):
-        return []
-    items = respuesta.get("messages")
-    if isinstance(items, dict):
-        items = items.get("items")
-    salida = []
-    for it in items or []:
-        if not isinstance(it, dict):
-            continue
-        tipo = str(it.get("type") or "").lower()
-        archivo = it.get("data") or it.get("fileName") or ""
-        if tipo in TIPOS_ARCHIVO and archivo:
-            salida.append({"tipo": tipo, "archivo": str(archivo), "fecha": it.get("created") or "",
-                           "nuestro": bool(it.get("owner"))})
-    return salida
-
-
-def bajar(http, url: str, token: str, archivo: str):
-    """Baja un archivo de WATI: por getMedia, o directo si WATI ya da la URL completa."""
-    headers = {"Authorization": f"Bearer {token}"}
-    if archivo.startswith("http"):
-        return http.get(archivo, headers=headers, timeout=60, follow_redirects=True)
-    return http.get(f"{url}/api/v1/getMedia", params={"fileName": archivo}, headers=headers,
-                    timeout=60, follow_redirects=True)
+from app.wati.archivos import bajar, mensajes_con_archivo, tipo_por_firma
 
 
 def main() -> int:

@@ -145,6 +145,24 @@ def preparar(tramite: str, poliza: str, nota: Optional[str] = None,
     }
 
 
+def archivos_whatsapp(poliza: str, dias: int = 14, buscar: Optional[Buscador] = None, http=None) -> dict:
+    """Etapa 3B: las fotos y documentos que el cliente de esta póliza mandó por WhatsApp en los
+    últimos `dias` (transferencia, estado de cuenta), para que Ceci elija cuáles adjuntar."""
+    from app.wati.archivos import archivos_del_cliente
+    poliza = (poliza or "").strip()
+    if not poliza:
+        return {"ok": False, "motivo": "falta la póliza", "archivos": []}
+    ident = identificar(poliza=poliza, buscar=buscar)
+    if not ident.ok:
+        return {"ok": False, "motivo": f"No se pudo identificar la póliza {poliza.upper()} en Notion "
+                                       f"Emisiones ({ident.motivo}).", "archivos": []}
+    tel = ident.datos.get("telefono_cliente")
+    r = archivos_del_cliente(tel, dias=max(1, min(int(dias or 14), 60)), http=http)
+    digitos = "".join(ch for ch in str(tel or "") if ch.isdigit())
+    return {**r, "cliente": ident.datos.get("cliente_nombre"),
+            "telefono": f"…{digitos[-4:]}" if digitos else None}
+
+
 def _abierto_igual(repo: Repositorio, asunto_nuevo: str) -> Optional[dict]:
     for t in repo.listar_tramites_abiertos():
         if t.get("estado") not in _CERRADOS and mismo_asunto(t.get("asunto_hilo"), asunto_nuevo):

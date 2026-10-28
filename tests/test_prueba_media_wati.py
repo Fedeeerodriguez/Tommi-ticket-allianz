@@ -1,5 +1,5 @@
 """Prueba F5 de WATI: reconoce los mensajes con archivo y el tipo real de lo bajado."""
-from app.run_prueba_media_wati import mensajes_con_archivo, tipo_por_firma
+from app.wati.archivos import mensajes_con_archivo, tipo_por_firma
 
 
 def test_toma_solo_los_mensajes_con_archivo_en_las_dos_formas_de_wati():
