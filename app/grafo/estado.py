@@ -33,6 +33,7 @@ class EstadoCorreo(TypedDict, total=False):
 
     # Motor por etapa (Etapa 1): ticket al que pertenece un aviso de emisión + lo que decidió.
     emision_ticket_id: Optional[int]
+    cobranza: dict[str, Any]        # aviso de cargo rechazado (app/acciones/cobranza.py)
     etapa_resultado: dict[str, Any]
 
     # Salidas

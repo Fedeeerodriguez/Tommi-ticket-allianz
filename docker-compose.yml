@@ -53,6 +53,7 @@ x-common-env: &common-env
   # --- Allianz: ejecutivas y buzones automáticos ---
   EJECUTIVAS_ALLIANZ: ${EJECUTIVAS_ALLIANZ:-PENNY YAMILI ORTIZ,BLANCA ISABEL XULUC}
   ALLIANZ_BUZONES_AVISOS: ${ALLIANZ_BUZONES_AVISOS:-aviso.electronico,notificaciones.optimaxx,comunicados.agentes}
+  COBRANZA_AVISOS: ${COBRANZA_AVISOS:-true}
   # --- Motor por etapa (Etapas 1 y 2; apagado por default) ---
   MOTOR_ETAPAS: ${MOTOR_ETAPAS:-false}
   MOTOR_ETAPAS_PROCESOS: ${MOTOR_ETAPAS_PROCESOS:-largo}

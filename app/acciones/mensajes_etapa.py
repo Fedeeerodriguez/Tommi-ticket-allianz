@@ -356,6 +356,7 @@ ETIQUETAS = {
     "guia_aportacion": "Guía de aportación",
     "recordatorio_pago": "Recordatorio: falta el pago",
     "escalado_pago": "Urgente: falta el pago",
+    "cargo_rechazado": "Cargo rechazado (cobranza)",
 }
 
 
