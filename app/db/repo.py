@@ -86,6 +86,10 @@ class Repositorio(Protocol):
     def listar_tramites_abiertos(self, sin_ticket: bool = False) -> list[dict]: ...
 
 
+# Trámites que abrimos nosotros: desde el panel (Ceci) o a pedido del cliente por WhatsApp (Tommy).
+ABIERTOS_POR_NOSOTROS = ("babilonia", "tommy")
+
+
 # ------------------------------------------------------------------ Postgres
 class RepositorioPostgres:
     def __init__(self, dsn: str, schema: str = "tickets_allianz"):
@@ -238,8 +242,8 @@ class RepositorioPostgres:
     def listar_tramites_abiertos(self, sin_ticket: bool = False) -> list[dict]:
         extra = " and nro_ticket is null" if sin_ticket else ""
         with self.conn.cursor() as cur:
-            cur.execute(f"select * from {self._t('tickets')} where proceso='tramite' and abierto_por=%s{extra} "
-                        f"order by created_at desc limit 200", ("babilonia",))
+            cur.execute(f"select * from {self._t('tickets')} where proceso='tramite' and abierto_por = any(%s){extra} "
+                        f"order by created_at desc limit 200", (list(ABIERTOS_POR_NOSOTROS),))
             return self._rows(cur)
 
     def obtener_ticket(self, ticket_id: int) -> Optional[dict]:
@@ -603,8 +607,8 @@ class RepositorioSQLite:
 
     def listar_tramites_abiertos(self, sin_ticket: bool = False) -> list[dict]:
         extra = " and nro_ticket is null" if sin_ticket else ""
-        cur = self.conn.execute(f"select * from tickets where proceso='tramite' and abierto_por=?{extra} "
-                                f"order by created_at desc limit 200", ("babilonia",))
+        cur = self.conn.execute(f"select * from tickets where proceso='tramite' and abierto_por in (?, ?){extra} "
+                                f"order by created_at desc limit 200", ABIERTOS_POR_NOSOTROS)
         return [dict(r) for r in cur.fetchall()]
 
     def obtener_ticket(self, ticket_id: int) -> Optional[dict]:

@@ -17,6 +17,8 @@ Endpoints (todos bajo /api/tickets-allianz):
   POST /api/tickets-allianz/tramites/vista-previa      -> identifica la póliza y arma el correo (no guarda)
   POST /api/tickets-allianz/tramites                   -> abre el trámite: ticket + correo a Allianz
   POST /api/tickets-allianz/tramites/archivos-whatsapp -> lo que mandó el cliente por WhatsApp (Etapa 3B)
+  POST /api/tickets-allianz/tramites/solicitud         -> Tommy deja la solicitud del cliente (X-Tomi-Key)
+  POST /api/tickets-allianz/tramites/solicitud/{id}/descartar -> Ceci la descarta
   GET  /api/health                                     -> ping
 
 Seguridad: `Authorization: Bearer <sesión de Tomi>` de un admin (firmada con TOMI_JWT_SECRET) o,
@@ -114,6 +116,14 @@ def _auth(authorization: str = Header(default="")) -> dict:
     raise HTTPException(status_code=401, detail="sesión inválida o vencida")
 
 
+def _auth_tommy(x_tomi_key: str = Header(default=""), authorization: str = Header(default="")) -> dict:
+    """Tommy (n8n) llama con la misma X-Tomi-Key que usa con el backend de Tomi; un admin, con su sesión."""
+    if config.TOMI_INTERNAL_KEY and x_tomi_key and hmac.compare_digest(
+            x_tomi_key.encode(), config.TOMI_INTERNAL_KEY.encode()):
+        return {"via": "tommy"}
+    return _auth(authorization)
+
+
 def _json(v) -> dict:
     if isinstance(v, str):
         try:
@@ -183,8 +193,9 @@ def listar(filtro: Optional[str] = None, _=Depends(_auth)):
             "para_ceci": t["_para_ceci"],
             # Etapa 2 (corto + trámites)
             "titulo_hilo": t.get("titulo_hilo"), "guia_pendiente": t["_guia"],
-            # Etapa 3 (trámites abiertos desde el panel)
+            # Etapa 3 (trámites abiertos desde el panel; 3B: la solicitud que dejó Tommy)
             "abierto_por": t.get("abierto_por"),
+            "solicitud": _solicitud(repo, t),
         })
     resumen = {"tickets": len(items), "acciones": sum(len(i["acciones"]) for i in items),
                "pendientes": sum(i["pendientes"] for i in items),
@@ -230,6 +241,14 @@ def guia_pendiente(repo, ticket_id: int) -> Optional[dict]:
     return None
 
 
+def _solicitud(repo, t: dict) -> Optional[dict]:
+    if (t.get("estado") or "") != "solicitud":
+        return None
+    from app.acciones import abrir_tramite, solicitud_tramite
+    s = solicitud_tramite.leer(repo, t["id"]) or {}
+    return {**s, "tramite_nombre": abrir_tramite.nombre_tramite(s.get("tramite") or "")}
+
+
 _SIN_CALCULAR = object()
 
 
@@ -249,6 +268,8 @@ def motivos_para_ceci(repo, t: dict, guia=_SIN_CALCULAR) -> list[str]:
            for a in repo.listar_acciones(ticket_id=t["id"], estado="bloqueada")):
         motivos.append("escalacion_bloqueada")
     eventos = repo.listar_eventos(t["id"])
+    if (t.get("estado") or "") == "solicitud":
+        motivos.append("solicitud_tommy")
     if eventos and eventos[-1].get("tipo_evento") == "revisar":
         motivos.append("revisar")
     desde = _parse_ts(t.get("etapa_desde"))
@@ -492,6 +513,7 @@ class TramiteIn(BaseModel):
     nota: Optional[str] = None
     adjuntos: list[AdjuntoIn] = []
     usuario: Optional[str] = None
+    solicitud_id: Optional[int] = None    # la solicitud de Tommy que se está abriendo (Etapa 3B)
 
 
 @app.get("/api/tickets-allianz/tramites/catalogo")
@@ -520,7 +542,7 @@ def abrir_tramite_panel(body: TramiteIn, _=Depends(_auth)):
     from app.acciones import abrir_tramite
     r = abrir_tramite.abrir(_get_repo(), body.tramite, body.poliza, body.nota,
                             [a.model_dump() for a in body.adjuntos],
-                            usuario=(body.usuario or "ceci").strip()[:40])
+                            usuario=(body.usuario or "ceci").strip()[:40], solicitud_id=body.solicitud_id)
     if not r["ok"]:
         raise HTTPException(status_code=409 if r.get("duplicado") else 422, detail=r["motivo"])
     return _publico(r)
@@ -537,3 +559,32 @@ def archivos_whatsapp(body: ArchivosWhatsappIn, _=Depends(_auth)):
     últimos días, ya bajados de WATI, para elegir cuáles adjuntar al trámite. Solo lee."""
     from app.acciones import abrir_tramite
     return abrir_tramite.archivos_whatsapp(body.poliza, body.dias)
+
+
+class SolicitudIn(BaseModel):
+    tramite: str                          # clave del catálogo (cambio_conducto_cobro, …)
+    poliza: str
+    wa_id: str                            # el WhatsApp desde el que escribe el cliente
+    nota: Optional[str] = None
+
+
+@app.post("/api/tickets-allianz/tramites/solicitud")
+def solicitud_tommy(body: SolicitudIn, _=Depends(_auth_tommy)):
+    """Etapa 3B: Tommy deja la solicitud del cliente para que Ceci la abra. No manda nada a Allianz.
+    Siempre 200: `ok` + `para_cliente` (lo que Tommy le contesta al cliente)."""
+    from app.acciones import solicitud_tramite
+    return solicitud_tramite.solicitar(_get_repo(), body.tramite, body.poliza, body.wa_id, body.nota)
+
+
+class DescartarIn(BaseModel):
+    usuario: Optional[str] = None
+    motivo: Optional[str] = None
+
+
+@app.post("/api/tickets-allianz/tramites/solicitud/{ticket_id}/descartar")
+def descartar_solicitud(ticket_id: int, body: DescartarIn, _=Depends(_auth)):
+    from app.acciones import solicitud_tramite
+    r = solicitud_tramite.descartar(_get_repo(), ticket_id, (body.usuario or "ceci").strip()[:40], body.motivo)
+    if not r["ok"]:
+        raise HTTPException(status_code=409, detail=r["motivo"])
+    return r
