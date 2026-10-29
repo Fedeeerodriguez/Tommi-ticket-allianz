@@ -18,7 +18,8 @@ MAX_QUE_PIDEN = 300
 
 TEXTOS: dict[str, dict[str, str]] = {
     "apertura": {
-        "asesor": "Ticket {tk} · {cliente}{con_producto}: Allianz abrió la solicitud{con_sol}.",
+        "asesor": "Ticket {tk} · {cliente}{con_producto}: Allianz abrió la solicitud{con_sol}, está en proceso "
+                  "de autorización.",
         "cliente": "Hola {nombre}, tu solicitud{de_producto} ya está en Allianz y está en proceso "
                    "de autorización. Te avisamos cada avance.",
     },
@@ -40,11 +41,16 @@ TEXTOS: dict[str, dict[str, str]] = {
         "cliente": "Hola {nombre}, ¡listo! Tu solicitud quedó atendida y cobrada.",
     },
     "rechazado": {
-        "asesor": "Ticket {tk} · {cliente}: Allianz rechazó el ticket (venció el plazo). Contacta al cliente; "
-                  "para seguir hay que cotizar de nuevo.",
+        "asesor": "Ticket {tk} · {cliente}: Allianz rechazó el ticket (venció el plazo). Antes de contactar al "
+                  "cliente, comunícate con Ceci para revisarlo; para seguir hay que cotizar de nuevo.",
+        "ceci": "Ticket {tk} · {cliente}: Allianz rechazó el ticket (venció el plazo). Le pedimos al asesor que "
+                "lo revise contigo antes de contactar al cliente.",
     },
     "declinado": {
-        "asesor": "Ticket {tk} · {cliente}: Selección de riesgos declinó el riesgo. Contacta al cliente.",
+        "asesor": "Ticket {tk} · {cliente}: Selección de riesgos declinó el riesgo. Antes de contactar al "
+                  "cliente, comunícate con Ceci para revisarlo.",
+        "ceci": "Ticket {tk} · {cliente}: Selección de riesgos declinó el riesgo. Le pedimos al asesor que lo "
+                "revise contigo antes de contactar al cliente.",
     },
     "cerrado_inactividad": {
         "asesor": "Ticket {tk} · {cliente}: Allianz cerró el ticket por inactividad. Contacta al cliente para retomarlo.",
@@ -94,12 +100,15 @@ TEXTOS_PROCESO: dict[tuple[str, str], dict[str, str]] = {
                    "a contactar para retomarlo.",
     },
     ("tramite", "rechazado"): {
-        "asesor": "Ticket {tk} · {cliente}{con_asunto}: Allianz rechazó el trámite. Contacta al cliente.",
+        "asesor": "Ticket {tk} · {cliente}{con_asunto}: Allianz rechazó el trámite. Antes de contactar al "
+                  "cliente, comunícate con Ceci para revisarlo.",
+        "ceci": "Ticket {tk} · {cliente}{con_asunto}: Allianz rechazó el trámite. Le pedimos al asesor que lo "
+                "revise contigo antes de contactar al cliente.",
     },
     # --- Proceso corto (Elite / Patrimonial / OptiMaxx Plus).
     ("corto", "confirmacion_datos"): {
-        "ceci": "Ticket {tk} · {cliente}{con_producto}: Allianz confirmó los datos{con_poliza}. La guía de "
-                "aportación está lista para que la apruebes.",
+        "ceci": "Ticket {tk} · {cliente}{con_producto}: Allianz confirmó los datos{con_poliza}{con_solicitud}. "
+                "La guía de aportación está lista para que confirmes el número de solicitud y el monto, y la apruebes.",
     },
     ("corto", "documentos_enviados"): {
         # En Elite y Patrimonial el comprobante lo manda el cliente (al ticket o a cliente.inversion@).
@@ -442,6 +451,7 @@ def contexto(ticket: dict, etapa: dict, datos: Optional[dict] = None,
         "con_producto": f" · {ramo}" if ramo else "",
         "de_producto": f" de {ramo_cliente}" if ramo else "",
         "con_sol": f" {sol}" if sol else "",
+        "con_solicitud": f", solicitud {sol}" if sol else "",
         "ya_cliente": "",
         "sol": sol or "—",
         "poliza": poliza or "—",

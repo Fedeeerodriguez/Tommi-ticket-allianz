@@ -206,3 +206,12 @@ def test_la_guia_no_guarda_rellenos_como_datos():
     d = M.datos_guia(ctx, "OPPT")
     assert (d["poliza"], d["ticket"], d["cliente"]) == ("", "", "")
     assert M.faltan_del_ticket(d) == ["la póliza", "el nombre del cliente"]  # Patrimonial no usa el ticket
+
+
+def test_aviso_a_ceci_de_la_guia_trae_el_numero_de_solicitud():
+    # Ceci (29/10): el n° de solicitud tiene que venir en el aviso: es el que ella confirma.
+    ctx = M.contexto({"nro_ticket": "2567479", "producto": "SVIP", "poliza": "SVIP-21799",
+                      "nro_solicitud": "25287681"}, {}, {"cliente_nombre": "Guillermo Prueba Castro"})
+    t = M.texto("ceci", "confirmacion_datos", ctx, proceso="corto")
+    assert "Allianz confirmó los datos (póliza SVIP-21799), solicitud 25287681." in t
+    assert "confirmes el número de solicitud y el monto" in t

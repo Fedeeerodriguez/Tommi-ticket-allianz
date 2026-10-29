@@ -60,7 +60,8 @@ def test_la_guia_le_llega_a_ceci_con_botones(repo, bot):
     assert msg["chat_id"] == CECI
     assert msg["text"].startswith("Guía de aportación · Ticket 2567479 · Guillermo Prueba Castro · Elite")
     # Elite: el n° de solicitud ya viene; falta el monto (Ceci lo completa respondiendo).
-    assert "⚠️ Falta completar monto. Responde a este mensaje así:\nMonto: $50,000 MXN\nSolicitud: 25290001" in msg["text"]
+    # El ejemplo para responder usa el n° de solicitud de ESTA guía (Ceci, 29/10: tienen que coincidir).
+    assert "⚠️ Falta completar monto. Responde a este mensaje así:\nMonto: $50,000 MXN\nSolicitud: 25287681" in msg["text"]
     botones = msg["reply_markup"]["inline_keyboard"][0]
     assert [b["callback_data"] for b in botones] == [f"ap:{ap['id']}:1", f"de:{ap['id']}:1"]
     assert ap["telegram_msg_id"] == "101"

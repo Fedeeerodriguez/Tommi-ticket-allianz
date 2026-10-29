@@ -190,12 +190,19 @@ def _pedido_vigente_igual(repo: Repositorio, ticket_id: int, que_piden: Optional
 
 
 def _vencimiento(motivo: str, etapa: dict, desde: datetime) -> tuple[datetime, datetime]:
-    """Vence: plazo del correo o 72 h hábiles, el que llegue antes. Escala 24 h hábiles después."""
+    """Vence a las 72 h hábiles (3 días hábiles), no al vencer el plazo del correo (pedido de Ceci,
+    29/10). Escala 24 h hábiles después."""
     vence = mas_horas_habiles(desde, config.RECORDATORIO_HORAS_HABILES)
-    plazo = etapa.get("plazo") if motivo == REC_REQUERIMIENTO else None
-    if plazo:
-        vence = min(vence, sla.calcular_vencimiento(desde, int(plazo[0]), plazo[1]))
     return vence, mas_horas_habiles(vence, config.ESCALA_HORAS_HABILES)
+
+
+def limite_cliente(etapa: dict, desde: datetime) -> datetime:
+    """La fecha que ve el cliente ("Tienes hasta el …"): el plazo que da Allianz en el correo; si no
+    trae, 72 h hábiles. No es el recordatorio nuestro."""
+    plazo = etapa.get("plazo")
+    if plazo:
+        return sla.calcular_vencimiento(desde, int(plazo[0]), plazo[1])
+    return mas_horas_habiles(desde, config.RECORDATORIO_HORAS_HABILES)
 
 
 def _cancelar_escalaciones(repo: Repositorio, ticket_id: int, motivo: str) -> int:
@@ -358,7 +365,8 @@ def decidir_por_etapa(repo: Repositorio, ticket_id: int, etapa: dict, correo_id:
         res["identificacion"] = {"estado": ident.estado, "via": ident.via, "motivo": ident.motivo}
         if ident.ok:
             ticket = repo.obtener_ticket(ticket_id) or ticket
-    ctx = {**mensajes_etapa.contexto(ticket, etapa, ident.datos if ident and ident.ok else None, vence),
+    limite = limite_cliente(etapa, ahora) if e == Etapa.REQUERIMIENTO else vence
+    ctx = {**mensajes_etapa.contexto(ticket, etapa, ident.datos if ident and ident.ok else None, limite),
            "ticket_id": ticket_id}
     tel_cliente = (ident.datos.get("telefono_cliente") if ident and ident.ok else None)
     params = mensajes_etapa.params_wati(ctx, e.value, tel_cliente, proceso)

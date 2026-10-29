@@ -35,8 +35,15 @@ _CERRADOS = ("resuelto", "cerrado")
 
 def catalogo() -> list[dict]:
     """Trámites para el selector del panel. Los que hacemos nosotros por correo van primero."""
-    return [{"clave": t.clave, "nombre": t.nombre, "nosotros": t.ruta.value == "nosotros_mail"}
+    return [{"clave": t.clave, "nombre": t.nombre, "nosotros": t.ruta.value == "nosotros_mail",
+             "requisitos": list(t.requisitos)}
             for t in sorted(CATALOGO, key=lambda t: t.ruta.value != "nosotros_mail")]
+
+
+def requisitos_de(tramite: str) -> tuple[str, ...]:
+    """Lo que tiene que ir adjunto (cambio de conducto: formato + INE vigente). Texto libre: nada."""
+    t = por_clave((tramite or "").strip())
+    return t.requisitos if t else ()
 
 
 def nombre_tramite(tramite: str) -> str:
@@ -130,6 +137,10 @@ def preparar(tramite: str, poliza: str, nota: Optional[str] = None,
         return {"ok": False, "motivo": f"No se pudo identificar la póliza {poliza.upper()} en Notion "
                                        f"Emisiones ({ident.motivo}). Revisala o abrí el trámite a mano.",
                 "identificacion": ident.estado}
+    requisitos = requisitos_de(tramite)
+    if len(limpios) < len(requisitos):
+        return {"ok": False, "motivo": f"Este trámite lleva adjuntos {' y '.join(requisitos)}. "
+                                       f"Adjúntalos para poder abrirlo."}
     d = ident.datos
     cliente = d.get("cliente_nombre")
     poliza_ok = (d.get("poliza") or poliza).strip().upper()
