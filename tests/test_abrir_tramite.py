@@ -29,6 +29,10 @@ def adjunto(nombre="formato.pdf", datos=b"%PDF-1.4 prueba"):
     return {"nombre": nombre, "tipo": "application/pdf", "base64": base64.b64encode(datos).decode()}
 
 
+# Cambio de conducto de cobro lleva el formato y la INE vigente del cliente (Ceci, 29/10).
+FORMATO_E_INE = [adjunto("formato.pdf"), adjunto("ine.pdf")]
+
+
 class EmisorQueLee:
     """Como el de laboratorio, pero lee los adjuntos mientras existen (son temporales)."""
     modo = "prueba"
@@ -57,12 +61,22 @@ def repo(tmp_path, monkeypatch):
 
 # ---------------------------------------------------------------- armar
 def test_vista_previa_identifica_la_poliza_y_arma_el_correo(repo):
-    p = abrir_tramite.preparar("cambio_conducto_cobro", "plu3-408444", "El cliente cambia a la tarjeta terminación 1234.")
+    p = abrir_tramite.preparar("cambio_conducto_cobro", "plu3-408444", "El cliente cambia a la tarjeta terminación 1234.",
+                               FORMATO_E_INE)
     assert p["ok"] and p["cliente"] == "ANA PRUEBA LOPEZ" and p["asesor"] == "Asesor Uno"
     assert p["asunto"] == "Cambio de conducto de cobro - Póliza PLU3-408444 - Ana Prueba Lopez"
     assert p["destino"] == "cobranza@allianz.com.mx"   # directorio por trámite
     assert "trámite de cambio de conducto de cobro para la póliza PLU3-408444, contratante Ana Prueba Lopez." in p["cuerpo"]
     assert "terminación 1234" in p["cuerpo"] and p["cuerpo"].endswith("Quedamos atentos.\nBabilonia")
+    assert "Adjuntamos: formato.pdf, ine.pdf." in p["cuerpo"]
+
+
+def test_cambio_de_conducto_sin_formato_e_ine_no_abre(repo):
+    for adj in ([], [adjunto()]):
+        p = abrir_tramite.preparar("cambio_conducto_cobro", POLIZA, adjuntos=adj)
+        assert not p["ok"] and "el formato de cambio de conducto de cobro y la INE vigente del cliente" in p["motivo"]
+    assert abrir_tramite.catalogo()[0]["requisitos"] == ["el formato de cambio de conducto de cobro",
+                                                          "la INE vigente del cliente"]
 
 
 def test_tramite_libre_va_al_destino_general(repo):
@@ -86,7 +100,7 @@ def test_no_abre_sin_datos_o_sin_identificar(repo, tramite, poliza, adj, motivo)
 
 # ---------------------------------------------------------------- abrir + enviar
 def test_abrir_crea_el_ticket_y_encola_el_correo(repo):
-    r = abrir_tramite.abrir(repo, "cambio_conducto_cobro", POLIZA, "Nota.", [adjunto()], usuario="Ceci")
+    r = abrir_tramite.abrir(repo, "cambio_conducto_cobro", POLIZA, "Nota.", FORMATO_E_INE, usuario="Ceci")
     assert r["ok"] and not r["sin_destino"]
     t = repo.obtener_ticket(r["ticket_id"])
     assert (t["proceso"], t["abierto_por"], t["identificado_por"], t["nro_ticket"]) == ("tramite", "babilonia", "poliza", None)
@@ -98,8 +112,8 @@ def test_abrir_crea_el_ticket_y_encola_el_correo(repo):
 
 
 def test_mismo_tramite_abierto_no_se_duplica(repo):
-    assert abrir_tramite.abrir(repo, "cambio_conducto_cobro", POLIZA)["ok"]
-    r = abrir_tramite.abrir(repo, "cambio_conducto_cobro", POLIZA.lower())
+    assert abrir_tramite.abrir(repo, "cambio_conducto_cobro", POLIZA, adjuntos=FORMATO_E_INE)["ok"]
+    r = abrir_tramite.abrir(repo, "cambio_conducto_cobro", POLIZA.lower(), adjuntos=FORMATO_E_INE)
     assert not r["ok"] and r["duplicado"] and len(repo.listar_tickets()) == 1
 
 
@@ -131,7 +145,7 @@ def acuse(mid, asunto_nuestro, ticket="2601301", actor="Sistema", msg=None):
 
 
 def test_el_acuse_se_engancha_al_tramite_que_abrimos(repo):
-    r = abrir_tramite.abrir(repo, "cambio_conducto_cobro", POLIZA)
+    r = abrir_tramite.abrir(repo, "cambio_conducto_cobro", POLIZA, adjuntos=FORMATO_E_INE)
     g = construir_grafo(repo)
     # Allianz a veces le saca los acentos al título: igual lo reconoce.
     out = g.invoke({"correo": acuse("m1", "Cambio de conducto de cobro - Poliza PLU3-408444 - Ana Prueba Lopez"),
@@ -151,7 +165,7 @@ def test_el_acuse_se_engancha_al_tramite_que_abrimos(repo):
 
 
 def test_un_tramite_ajeno_no_se_engancha(repo):
-    r = abrir_tramite.abrir(repo, "cambio_conducto_cobro", POLIZA)
+    r = abrir_tramite.abrir(repo, "cambio_conducto_cobro", POLIZA, adjuntos=FORMATO_E_INE)
     out = construir_grafo(repo).invoke({"correo": acuse("m1", "Aplicaciónes de mensualidad"), "despachar": False})
     assert out["ticket_id"] != r["ticket_id"]
     assert repo.obtener_ticket(r["ticket_id"])["nro_ticket"] is None
@@ -189,10 +203,11 @@ def cli(repo, monkeypatch):
 
 def test_api_catalogo_vista_previa_y_abrir(cli, repo):
     cat = cli.get("/api/tickets-allianz/tramites/catalogo").json()["tramites"]
-    assert cat[0] == {"clave": "cambio_conducto_cobro", "nombre": "Cambio de conducto de cobro", "nosotros": True}
-    body = {"tramite": "cambio_conducto_cobro", "poliza": POLIZA, "adjuntos": [adjunto()], "usuario": "Ceci"}
+    assert cat[0] == {"clave": "cambio_conducto_cobro", "nombre": "Cambio de conducto de cobro", "nosotros": True,
+                      "requisitos": ["el formato de cambio de conducto de cobro", "la INE vigente del cliente"]}
+    body = {"tramite": "cambio_conducto_cobro", "poliza": POLIZA, "adjuntos": FORMATO_E_INE, "usuario": "Ceci"}
     vp = cli.post("/api/tickets-allianz/tramites/vista-previa", json=body).json()
-    assert vp["ok"] and vp["adjuntos"] == ["formato.pdf"] and "_adjuntos" not in vp and repo.listar_tickets() == []
+    assert vp["ok"] and vp["adjuntos"] == ["formato.pdf", "ine.pdf"] and "_adjuntos" not in vp and repo.listar_tickets() == []
     r = cli.post("/api/tickets-allianz/tramites", json=body)
     assert r.status_code == 200 and r.json()["ticket_id"]
     assert cli.post("/api/tickets-allianz/tramites", json=body).status_code == 409

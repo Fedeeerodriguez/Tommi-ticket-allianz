@@ -31,13 +31,15 @@ class Tramite:
     aliases: tuple[str, ...]           # palabras clave para detectarlo (en minúsculas)
     pasos: tuple[str, ...] = ()        # instrucciones específicas (portal); vacío = flujo genérico
     nota: str = ""                     # aclaraciones/condiciones adicionales
+    requisitos: tuple[str, ...] = ()   # lo que tiene que ir adjunto al correo a Allianz (nosotros)
 
 
 # --- Trámites que gestionamos nosotros por correo (requieren apoyo, no son self-service) ---
 _NOSOTROS = [
     Tramite("cambio_conducto_cobro", "Cambio de conducto de cobro", Ruta.NOSOTROS_MAIL,
             ("conducto de cobro", "cambio de conducto", "medio de cobro", "forma de cobro",
-             "cuenta de cobro", "cambio de tarjeta", "cambiar la tarjeta", "domiciliaci")),
+             "cuenta de cobro", "cambio de tarjeta", "cambiar la tarjeta", "domiciliaci"),
+            requisitos=("el formato de cambio de conducto de cobro", "la INE vigente del cliente")),  # Ceci, 29/10
 ]
 
 # --- Período de descanso (año de descanso): portal, pero con instrucciones detalladas ---

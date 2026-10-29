@@ -159,11 +159,14 @@ def test_dos_requerimientos_seguidos_reemplazan_el_recordatorio(repo, tk):
     assert len(vivos(repo, tk)) == 1 and repo.listar_recordatorios(tk, estados=["cancelado"])
 
 
-def test_plazo_del_correo_mas_corto_que_72h(repo, tk):
+def test_el_recordatorio_va_a_los_3_dias_habiles_aunque_el_plazo_sea_otro(repo, tk):
+    # Ceci (29/10): se recuerda a los 3 días hábiles, no al vencer el plazo del correo. Al cliente se le
+    # dice el plazo que da Allianz.
     correr(repo, tk, C1, 1)
     corto = (C3[0], mail("RAUL MARIN", "Favor de enviar el RFC. Cuenta con 1 día para responder."))
-    correr(repo, tk, corto, 2)
-    assert vivos(repo, tk)["requerimiento"]["vence_en"].startswith("2026-10-20T15:00")
+    r = correr(repo, tk, corto, 2)
+    assert vivos(repo, tk)["requerimiento"]["vence_en"].startswith("2026-10-22T15:00")
+    assert "Tienes hasta el 20/10/2026" in next(a for a in r["plan"] if a["rol"] == "cliente")["mensaje"]
 
 
 def test_rechazo_avisa_ceci_y_asesor_nunca_al_cliente(repo, tk):
@@ -171,7 +174,9 @@ def test_rechazo_avisa_ceci_y_asesor_nunca_al_cliente(repo, tk):
     correr(repo, tk, C3, 2)
     r = correr(repo, tk, RECHAZO, 3)
     assert roles(r) == ["asesor", "ceci"]
-    assert "Contacta al cliente" in next(a for a in r["plan"] if a["rol"] == "asesor")["mensaje"]
+    plan = {a["rol"]: a["mensaje"] for a in r["plan"]}
+    assert "Antes de contactar al cliente, comunícate con Ceci para revisarlo" in plan["asesor"]
+    assert "que lo revise contigo antes de contactar al cliente" in plan["ceci"]
     assert repo.obtener_ticket(tk)["estado"] == "resuelto" and vivos(repo, tk) == {}
     assert repo.listar_recordatorios(tk, estados=["cancelado"])
     assert not correr(repo, tk, C4, 4)["aplicada"]  # terminado: no acepta nada más
@@ -282,5 +287,6 @@ def test_apertura_sin_producto_ni_solicitud_no_dice_tu_seguro(repo, tk):
     c1 = (C1[0], C1[1].replace(" TIPO DE SOLICITUD: GMMI", "").replace("NÚMERO DE SOLICITUD: 1950110\n", ""))
     r = correr(repo, tk, c1, 1, buscar=notion(fila(sol=None)))
     textos = {a["rol"]: a["mensaje"] for a in r["plan"]}
-    assert textos["asesor"] == "Ticket 2576612 · Hortencia Prueba Gama: Allianz abrió la solicitud."
+    assert textos["asesor"] == ("Ticket 2576612 · Hortencia Prueba Gama: Allianz abrió la solicitud, está en proceso "
+                                "de autorización.")
     assert textos["cliente"].startswith("Hola Hortencia, tu solicitud ya está en Allianz")
