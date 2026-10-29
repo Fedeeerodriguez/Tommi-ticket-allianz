@@ -122,14 +122,19 @@ GOOGLE_TOKEN_JSON = os.getenv("GOOGLE_TOKEN_JSON", str(DATA_DIR / "google_token.
 # En servidores headless (EasyPanel) no se puede abrir el navegador: se genera el token una
 # vez en local y su CONTENIDO se pega en esta env var. Tiene prioridad sobre el archivo.
 GOOGLE_TOKEN = os.getenv("GOOGLE_TOKEN", "")
-GMAIL_QUERY = os.getenv("GMAIL_QUERY", "is:unread")
+# Qué correos busca en hola@: los de los últimos días, LEÍDOS O NO y en cualquier carpeta (29/10: los
+# tickets de Allianz se abren a mano en hola@ y el filtro los reenvía a integraciones@; con "is:unread"
+# en INBOX el sistema casi no los veía). Los que ya procesó se saltean por su id de Gmail.
+GMAIL_QUERY = os.getenv("GMAIL_QUERY", "newer_than:2d -in:sent -in:drafts -in:chats")
+GMAIL_CARPETA = os.getenv("GMAIL_CARPETA", "")  # vacío = toda la casilla (sin spam ni papelera)
 # Anti rate-limit de Gmail: cuántos correos baja por ciclo, pausa entre requests (ms), y si
 # marca leídos los ya procesados (para drenar el backlog y NO re-bajarlos cada poll).
 # Por seguridad, el default de marcar-leídos sigue a DRY_RUN: en DRY_RUN NO toca la casilla
 # (así quien hoy maneja hola@ a mano sigue viendo los correos sin leer); en vivo sí los marca.
 GMAIL_MAX_POR_CICLO = int(os.getenv("GMAIL_MAX_POR_CICLO", "40"))
 GMAIL_PAUSA_MS = int(os.getenv("GMAIL_PAUSA_MS", "250"))
-GMAIL_MARCAR_LEIDOS = _bool("GMAIL_MARCAR_LEIDOS", "false" if _bool("DRY_RUN", "true") else "true")
+# Ya no hace falta marcar leídos (se saltean por id): por defecto no toca la casilla del equipo.
+GMAIL_MARCAR_LEIDOS = _bool("GMAIL_MARCAR_LEIDOS", "false")
 
 # Modo copiloto (primera parte en vivo): correo interno del equipo al que se manda el resumen
 # de tickets + borradores propuestos. Vacío = desactivado. Es interno (envía SOLO a esta

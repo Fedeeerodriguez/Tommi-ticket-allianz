@@ -10,8 +10,9 @@ __all__ = ["LectorBuzon", "LectorEmlLocal", "LectorIMAP", "normalizar_desde_byte
            "lector_desde_config"]
 
 
-def lector_desde_config(carpeta=None):
-    """Devuelve (lector, descripcion_fuente). `carpeta` fuerza el lector local de .eml."""
+def lector_desde_config(carpeta=None, repo=None):
+    """Devuelve (lector, descripcion_fuente). `carpeta` fuerza el lector local de .eml. Con `repo`, el
+    lector Gmail saltea los correos que ya están en la base (no depende de leídos/no leídos)."""
     from app import config
 
     if carpeta is not None:
@@ -19,10 +20,11 @@ def lector_desde_config(carpeta=None):
     if config.hay_gmail_api():
         from .gmail_api import LectorGmail
 
-        return LectorGmail(query=config.GMAIL_QUERY, carpeta=config.IMAP_CARPETA,
+        return LectorGmail(query=config.GMAIL_QUERY, carpeta=config.GMAIL_CARPETA,
                            marcar_leidos=config.GMAIL_MARCAR_LEIDOS,
                            limite=config.GMAIL_MAX_POR_CICLO,
-                           pausa_ms=config.GMAIL_PAUSA_MS), "Gmail API"
+                           pausa_ms=config.GMAIL_PAUSA_MS,
+                           ya_procesados=repo.origenes_conocidos if repo is not None else None), "Gmail API"
     if config.hay_imap():
         return (LectorIMAP(config.IMAP_HOST, config.IMAP_USER, config.IMAP_PASSWORD,
                            config.IMAP_CARPETA, config.IMAP_PORT),

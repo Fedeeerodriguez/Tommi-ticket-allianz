@@ -1,8 +1,9 @@
 """Lector de buzón por Gmail API (OAuth) — alternativa a IMAP para Google Workspace.
 
 Cumple la MISMA interfaz que `LectorEmlLocal`/`LectorIMAP` (`.leer()`), así el resto del
-sistema (grafo, scheduler) no cambia. Trae los correos que matchean `query` (por defecto los
-no leídos del INBOX) y los normaliza con `normalizar_desde_bytes` (mismo parseo que IMAP/EML).
+sistema (grafo, scheduler) no cambia. Trae los correos que matchean `query` (por defecto los de
+los últimos 2 días, leídos o no, en toda la casilla) y los normaliza con `normalizar_desde_bytes`.
+Los que ya se procesaron (`ya_procesados`, por su id de Gmail) no se vuelven a bajar.
 
 Anti rate-limit (Gmail limita "Units per minute per user"): baja como mucho `limite` correos
 por ciclo, con **backoff** ante 403/429 (`rateLimitExceeded`) y una **pausa** entre requests.
@@ -16,7 +17,7 @@ import base64
 import logging
 import random
 import time
-from typing import Iterator
+from typing import Callable, Iterator, Optional
 
 from app import config
 from app.google_auth import construir_servicio
@@ -48,12 +49,14 @@ def _ejecutar(req, intentos: int = 5):
 
 class LectorGmail:
     def __init__(self, query: str = "is:unread", carpeta: str = "INBOX",
-                 marcar_leidos: bool = True, limite: int = 40, pausa_ms: int = 250):
+                 marcar_leidos: bool = True, limite: int = 40, pausa_ms: int = 250,
+                 ya_procesados: Optional[Callable[[list[str]], set[str]]] = None):
         self.query = query
         self.carpeta = carpeta
         self.marcar_leidos = marcar_leidos
         self.limite = limite
         self.pausa_ms = pausa_ms
+        self.ya_procesados = ya_procesados  # origenes ('gmail:<id>') → los que ya están en la base
 
     def leer(self) -> Iterator[Correo]:
         service = construir_servicio()
@@ -64,11 +67,16 @@ class LectorGmail:
         try:
             resp = _ejecutar(service.users().messages().list(
                 userId="me", q=self.query, labelIds=labels,
-                maxResults=min(self.limite, 100)))
+                maxResults=100 if self.ya_procesados else min(self.limite, 100)))
         except Exception as ex:  # noqa: BLE001
             log.warning("Gmail API list falló: %s", ex)
             return
-        for meta in resp.get("messages", []):
+        metas = resp.get("messages", [])
+        if self.ya_procesados and metas:
+            conocidos = self.ya_procesados([f"gmail:{m['id']}" for m in metas])
+            # Los más viejos primero: así un ticket se procesa en el orden en que pasó.
+            metas = [m for m in metas if f"gmail:{m['id']}" not in conocidos][::-1][: self.limite]
+        for meta in metas:
             try:
                 msg = _ejecutar(service.users().messages().get(
                     userId="me", id=meta["id"], format="raw"))

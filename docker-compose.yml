@@ -13,7 +13,8 @@
 x-common-env: &common-env
   # --- Gmail API (OAuth headless) ---
   GOOGLE_TOKEN: ${GOOGLE_TOKEN:-}
-  GMAIL_QUERY: ${GMAIL_QUERY:-is:unread}
+  GMAIL_QUERY: ${GMAIL_QUERY:-newer_than:2d -in:sent -in:drafts -in:chats}
+  GMAIL_CARPETA: ${GMAIL_CARPETA:-}
   GMAIL_MAX_POR_CICLO: ${GMAIL_MAX_POR_CICLO:-40}
   GMAIL_PAUSA_MS: ${GMAIL_PAUSA_MS:-250}
   GMAIL_MARCAR_LEIDOS: ${GMAIL_MARCAR_LEIDOS:-}
