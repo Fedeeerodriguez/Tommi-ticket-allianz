@@ -79,6 +79,7 @@ WATI_PLANTILLA_GUIA = os.getenv("WATI_PLANTILLA_GUIA", "tommy_guia_aportacion")
 # Guías por producto (los pasos de Ceci): Patrimonial y Elite tienen la suya; el resto usa la general.
 WATI_PLANTILLA_GUIA_PATRIMONIAL = os.getenv("WATI_PLANTILLA_GUIA_PATRIMONIAL", "tommy_guia_patrimonial")
 WATI_PLANTILLA_GUIA_ELITE = os.getenv("WATI_PLANTILLA_GUIA_ELITE", "tommy_guia_elite")
+WATI_PLANTILLA_GUIA_OPTIMAXX = os.getenv("WATI_PLANTILLA_GUIA_OPTIMAXX", "tommy_guia_optimaxx")
 
 # Base de datos: misma Supabase de Tommy, esquema aislado.
 DATABASE_URL = os.getenv("DATABASE_URL", "")
@@ -192,7 +193,8 @@ MOTOR_ETAPAS_PROCESOS = _csv("MOTOR_ETAPAS_PROCESOS", "largo")
 # Recordatorio de pago del proceso corto (desde que Ceci aprueba la guía de aportación).
 # Productos del proceso corto que llevan recordatorio de pago. Patrimonial y Elite no: el cliente
 # manda el comprobante por su cuenta (a cliente.inversion@ o al ticket), según la guía de Ceci.
-RECORDATORIO_PAGO_PRODUCTOS = _csv("RECORDATORIO_PAGO_PRODUCTOS", "PLU3")
+# Ninguno por defecto: OptiMaxx Plus se cobra en automático (Ceci, 29/10); el atraso lo avisa Allianz.
+RECORDATORIO_PAGO_PRODUCTOS = _csv("RECORDATORIO_PAGO_PRODUCTOS", "")
 RECORDATORIO_PAGO_HORAS_HABILES = int(os.getenv("RECORDATORIO_PAGO_HORAS_HABILES",
                                                 str(RECORDATORIO_HORAS_HABILES)))
 # Aprobación de la guía de aportación por Telegram. Sin token/chat (o apagado) se aprueba desde el

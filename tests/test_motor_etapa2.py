@@ -92,6 +92,16 @@ def aislado(monkeypatch):
 
 
 @pytest.fixture
+def guia_general(monkeypatch):
+    """La guía general (monto + datos para depositar) y el recordatorio de pago, con OptiMaxx Plus como
+    ejemplo. Desde el 29/10 OptiMaxx Plus tiene su guía (cargo automático) y no lleva recordatorio de
+    pago; el mecanismo queda para los productos que se agreguen."""
+    from app.acciones import mensajes_etapa
+    monkeypatch.delitem(mensajes_etapa.GUIAS, "PLU3")
+    monkeypatch.setattr(config, "RECORDATORIO_PAGO_PRODUCTOS", ["plu3"])
+
+
+@pytest.fixture
 def repo(tmp_path):
     return RepositorioSQLite(str(tmp_path / "t.sqlite"))
 
@@ -209,7 +219,7 @@ def test_elite_no_se_aprueba_sin_monto(repo):
     assert aprobaciones.aprobar(repo, ap["id"], "panel:ceci", monto="$50,000 MXN", ahora=LUNES)["ok"]
 
 
-def test_la_guia_general_es_la_plantilla_de_wati(repo):
+def test_la_guia_general_es_la_plantilla_de_wati(repo, guia_general):
     tk = plu3(repo)
     aid, texto = guia_general_lista(repo, tk)
     assert texto == ("Hola Luisa 👋 Allianz ya confirmó tu solicitud de OptiMaxx Plus (póliza PLU3-408444). Para "
@@ -228,7 +238,7 @@ def test_la_guia_general_es_la_plantilla_de_wati(repo):
     assert not aprobaciones.corregir(repo, aid, "panel:ceci", monto="  ")["ok"]
 
 
-def test_no_se_aprueba_con_datos_sin_completar(repo):
+def test_no_se_aprueba_con_datos_sin_completar(repo, guia_general):
     tk = plu3(repo)
     correr(repo, tk, C2_PLU3, 1)
     ap = repo.listar_aprobaciones(tk)[0]
@@ -258,7 +268,26 @@ def test_aprobar_elite_manda_la_guia_sin_recordatorio_de_pago(repo):
     assert not r2["ok"] and r2["plan"] == []
 
 
-def test_aprobar_general_arranca_el_recordatorio_de_pago(repo):
+def test_optimaxx_plus_cargo_automatico_sin_recordatorio_de_pago(repo):
+    # Ceci (29/10): en OptiMaxx Plus el cargo es automático. Ceci completa solo el monto y aprueba;
+    # al cliente se le recuerda tener el monto disponible, y no hay recordatorio de pago.
+    tk = plu3(repo)
+    correr(repo, tk, C2_PLU3, 1)
+    ap = repo.listar_aprobaciones(tk)[0]
+    r = aprobaciones.aprobar(repo, ap["id"], "panel:ceci", ahora=LUNES)
+    assert not r["ok"] and r["motivo"] == "Falta completar: monto."
+    r = aprobaciones.aprobar(repo, ap["id"], "panel:ceci", monto="$2,000 MXN", ahora=LUNES)
+    assert r["ok"] and roles(r) == ["asesor", "cliente"]
+    cli = next(a for a in r["plan"] if a["rol"] == "cliente")
+    assert cli["mensaje"].startswith("Hola Luisa 👋 Allianz ya confirmó tu solicitud de OptiMaxx Plus (póliza "
+                                     "PLU3-408444). Tu aportación de $2,000 MXN se cobra en automático")
+    from app.acciones.despacho import plantilla_etapas
+    assert plantilla_etapas(cli) == ("tommy_guia_optimaxx", {"nombre": "Luisa", "monto": "$2,000 MXN",
+                                                             "poliza": "PLU3-408444"})
+    assert vivos(repo, tk) == {}
+
+
+def test_aprobar_general_arranca_el_recordatorio_de_pago(repo, guia_general):
     tk = plu3(repo)
     aid, _ = guia_general_lista(repo, tk)
     r = aprobaciones.aprobar(repo, aid, "panel:ceci", ahora=LUNES)
@@ -269,7 +298,7 @@ def test_aprobar_general_arranca_el_recordatorio_de_pago(repo):
     assert pago["vence_en"].startswith("2026-10-22")  # 72 h hábiles = 3 días hábiles
 
 
-def test_aprobar_completando_en_el_momento(repo):
+def test_aprobar_completando_en_el_momento(repo, guia_general):
     tk = plu3(repo)
     correr(repo, tk, C2_PLU3, 1)
     ap = repo.listar_aprobaciones(tk)[0]
@@ -308,7 +337,7 @@ def test_pago_elite_en_el_hilo_avisa_y_espera_a_allianz(repo):
     assert set(vivos(repo, tk)) == {"esperando_allianz"}
 
 
-def test_pago_general_corta_el_recordatorio_de_pago(repo):
+def test_pago_general_corta_el_recordatorio_de_pago(repo, guia_general):
     tk = plu3(repo)
     aid, _ = guia_general_lista(repo, tk)
     aprobaciones.aprobar(repo, aid, "panel:ceci", ahora=LUNES)
@@ -337,7 +366,7 @@ def test_emision_corto_no_engancha_si_el_corto_esta_apagado(repo, monkeypatch):
     assert ticket_para_emision(repo, et(EMITIDA_CORTO, "notificaciones.optimaxx@allianz.com.mx")) is None
 
 
-def test_recordatorio_y_escalado_del_pago(repo):
+def test_recordatorio_y_escalado_del_pago(repo, guia_general):
     tk = plu3(repo)
     aid, _ = guia_general_lista(repo, tk)
     aprobaciones.aprobar(repo, aid, "panel:ceci", ahora=LUNES)

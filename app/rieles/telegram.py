@@ -79,6 +79,8 @@ def como_responder(datos: dict) -> str:
         # El número del ejemplo es el de ESTA guía: tiene que coincidir con el de arriba (Ceci, 29/10).
         sol = str((datos or {}).get("solicitud") or "").strip() or "25290001"
         return f"Monto: $50,000 MXN\nSolicitud: {sol}"
+    if "datos_deposito" not in mensajes_etapa.campos_guia(datos):
+        return "Monto: $50,000 MXN"
     return "Monto: $50,000 MXN\nDatos: CLABE 012345678901234567 a nombre de …"
 
 

@@ -163,9 +163,19 @@ GUIA_ELITE = (
     "{poliza} / {cliente}\n\n"
     "Tu aportación se refleja en el portal 48 horas hábiles después de que Allianz confirme el pago."
 )
+# OptiMaxx Plus: el cargo es automático a la cuenta del cliente (Ceci, 29/10). No se deposita: se le
+# recuerda tener el monto disponible. Ceci completa el monto y aprueba, como en las otras dos.
+GUIA_OPTIMAXX = (
+    "Hola {nombre} 👋 Allianz ya confirmó tu solicitud de OptiMaxx Plus (póliza {poliza}). Tu aportación de "
+    "{monto} se cobra en automático a la cuenta que registraste: te recomendamos tener ese monto disponible "
+    "para que el cargo pase sin problema.\n\n"
+    "Si tienes cualquier duda, responde a este mensaje y con gusto te ayudo."
+)
 # Una guía por producto: texto, lo que completa/confirma Ceci y las variables de su plantilla de WATI.
-# Los productos que no están acá (OptiMaxx Plus) usan la guía general (monto + datos para depositar).
+# Los productos que no están acá usan la guía general (monto + datos para depositar).
 GUIAS = {
+    "PLU3": {"plantilla": "optimaxx", "texto": GUIA_OPTIMAXX, "campos": ("monto",),
+             "variables": ("nombre", "monto", "poliza")},
     "OPPT": {"plantilla": "patrimonial", "texto": GUIA_PATRIMONIAL, "campos": ("monto", "solicitud"),
              "variables": ("nombre", "monto", "solicitud", "poliza", "cliente")},
     "SVIP": {"plantilla": "elite", "texto": GUIA_ELITE, "campos": ("monto", "solicitud"),

@@ -4,7 +4,7 @@ import pytest
 from app import config
 from app.rieles import telegram
 
-from test_motor_etapa2 import C2_CORTO, C2_PLU3, aislado, correr, repo  # noqa: F401  (fixtures)
+from test_motor_etapa2 import C2_CORTO, C2_PLU3, aislado, correr, guia_general, repo  # noqa: F401  (fixtures)
 
 CECI = "777"
 
@@ -80,7 +80,7 @@ def test_elite_corrige_la_solicitud_y_aprueba(repo, bot):
     assert "Haz el pago por $50,000 MXN" in cli["mensaje"] and "número de solicitud: 25287682." in cli["mensaje"]
 
 
-def test_corregir_respondiendo_y_aprobar(repo, bot):
+def test_corregir_respondiendo_y_aprobar(repo, bot, guia_general):
     # OptiMaxx Plus: guía general, Ceci completa monto y datos para depositar.
     tk, ap = preparar(repo, bot, C2_PLU3, "2590002")
     assert "⚠️ Falta completar monto y datos para depositar" in bot.de("sendMessage")[0]["text"]
