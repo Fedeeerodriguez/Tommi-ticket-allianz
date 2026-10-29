@@ -37,6 +37,7 @@ def _cols_ticket(datos: dict) -> list[str]:
 
 class Repositorio(Protocol):
     def guardar_correo(self, correo: Correo, clf: Clasificacion, entidades: dict) -> tuple[int, bool]: ...
+    def origenes_conocidos(self, origenes: list[str]) -> set[str]: ...
     def buscar_ticket(self, nro_ticket: Optional[str], poliza: Optional[str],
                       cliente_correo: Optional[str]) -> Optional[dict]: ...
     def crear_ticket(self, datos: dict) -> int: ...
@@ -117,6 +118,14 @@ class RepositorioPostgres:
 
     def _t(self, nombre: str) -> str:
         return f"{self.schema}.{nombre}"
+
+    def origenes_conocidos(self, origenes: list[str]) -> set[str]:
+        """De estos orígenes ('gmail:<id>'), cuáles ya están guardados (para no volver a bajarlos)."""
+        if not origenes:
+            return set()
+        with self.conn.cursor() as cur:
+            cur.execute(f"select origen from {self._t('correos')} where origen = any(%s)", (list(origenes),))
+            return {r[0] for r in cur.fetchall()}
 
     def guardar_correo(self, correo: Correo, clf: Clasificacion, entidades: dict) -> tuple[int, bool]:
         with self.conn.cursor() as cur:
@@ -491,6 +500,12 @@ class RepositorioSQLite:
         d = dict(r)
         d["destinatarios"] = json.loads(d.get("destinatarios") or "[]")
         return d
+
+    def origenes_conocidos(self, origenes: list[str]) -> set[str]:
+        if not origenes:
+            return set()
+        ph = ",".join("?" * len(origenes))
+        return {r[0] for r in self.conn.execute(f"select origen from correos where origen in ({ph})", list(origenes))}
 
     def guardar_correo(self, correo: Correo, clf: Clasificacion, entidades: dict) -> tuple[int, bool]:
         cur = self.conn.cursor()

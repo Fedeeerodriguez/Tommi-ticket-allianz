@@ -53,3 +53,46 @@ def test_el_correo_que_falla_no_se_marca_leido(monkeypatch):
     r = scheduler.job_intake(None, _Grafo(), None, lector=lector, fuente="test")
     assert r["correos"] == 1
     assert gmail.marcados == ["2"]  # el 1 falló → queda sin leer y entra en el próximo ciclo
+
+
+class _GmailConLeidos(_Gmail):
+    """Tres correos en la casilla: el 1 ya está en la base; el 2 y el 3 no (leídos o no, da igual)."""
+
+    def __init__(self):
+        super().__init__()
+        self.pedidos_list, self.bajados = [], []
+
+    def list(self, **kw):
+        self.pedidos_list.append(kw)
+        return _Req({"messages": [{"id": "3", "threadId": "t3"}, {"id": "2", "threadId": "t2"},
+                                  {"id": "1", "threadId": "t1"}]})
+
+    def get(self, id, **kw):  # noqa: A002
+        self.bajados.append(id)
+        return super().get(id, **kw)
+
+
+def test_saltea_los_ya_procesados_y_no_depende_de_leidos(monkeypatch):
+    # 29/10: los tickets se abren a mano en hola@ (quedan leídos) y el filtro los reenvía: con
+    # "is:unread" en INBOX el sistema casi no los veía. Ahora busca por fecha y saltea por id.
+    gmail = _GmailConLeidos()
+    monkeypatch.setattr(gmail_api, "construir_servicio", lambda: gmail)
+    vistos = []
+    lector = gmail_api.LectorGmail(query="newer_than:2d", carpeta="", marcar_leidos=False, pausa_ms=0,
+                                   ya_procesados=lambda origenes: vistos.append(origenes) or {"gmail:1"})
+    correos = list(lector.leer())
+    assert gmail.pedidos_list[0]["labelIds"] is None and gmail.pedidos_list[0]["q"] == "newer_than:2d"
+    assert vistos == [["gmail:3", "gmail:2", "gmail:1"]]
+    assert gmail.bajados == ["2", "3"]            # el 1 ni se baja; los nuevos, del más viejo al más nuevo
+    assert [c.origen for c in correos] == ["gmail:2", "gmail:3"] and gmail.marcados == []
+
+
+def test_origenes_conocidos(tmp_path):
+    from app.db.repo import RepositorioSQLite
+    from app.models import Clasificacion, Correo, TipoCorreo
+    repo = RepositorioSQLite(str(tmp_path / "t.sqlite"))
+    c = Correo("<a@x>", "a@allianz.com.mx", "allianz.com.mx", [], [], "hola", "cuerpo")
+    c.origen = "gmail:abc"
+    repo.guardar_correo(c, Clasificacion(TipoCorreo.G_SISTEMA, 0.9, "x"), {})
+    assert repo.origenes_conocidos(["gmail:abc", "gmail:zzz"]) == {"gmail:abc"}
+    assert repo.origenes_conocidos([]) == set()

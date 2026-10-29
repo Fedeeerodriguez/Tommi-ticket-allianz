@@ -33,9 +33,9 @@ log = logging.getLogger("scheduler")
 _INACTIVIDAD_DIAS = 3
 
 
-def _lector():
+def _lector(repo=None):
     """Gmail API / IMAP / carpeta de muestras, según la config."""
-    return lector_desde_config()
+    return lector_desde_config(repo=repo)
 
 
 def job_intake(repo, grafo, emisor, lector=None, fuente=None) -> dict:
@@ -44,7 +44,7 @@ def job_intake(repo, grafo, emisor, lector=None, fuente=None) -> dict:
     `lector`/`fuente` se pueden inyectar (tests herméticos con correos de muestra); por
     defecto usa el lector real de la config (Gmail API / IMAP / carpeta de muestras)."""
     if lector is None:
-        lector, fuente = _lector()
+        lector, fuente = _lector(repo)
     nuevos = 0
     for correo in lector.leer():
         try:

@@ -21,9 +21,8 @@ from app.intake import lector_desde_config
 
 
 def main(carpeta: Path | None = None, despachar: bool = False) -> int:
-    lector, fuente = lector_desde_config(carpeta)
-
     repo = get_repo()
+    lector, fuente = lector_desde_config(carpeta, repo=repo)
     emisor = emisor_desde_config()
     grafo = construir_grafo(repo, emisor)
     backend = "Supabase/Postgres" if isinstance(repo, RepositorioPostgres) else "SQLite (dev)"
