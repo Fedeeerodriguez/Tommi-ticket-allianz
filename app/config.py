@@ -185,6 +185,9 @@ ALLIANZ_BUZONES_AVISOS = _csv("ALLIANZ_BUZONES_AVISOS",
 # Dirección del panel de Tomi (ej. https://…-babilonia-frontend…easypanel.host): los avisos a Ceci llevan
 # el link directo al ticket (<PANEL_URL>/tickets-allianz?ticket=<id>). Vacío = sin link.
 PANEL_URL = os.getenv("PANEL_URL", "")
+# "Notificación de Cobranza (PLU3 / N)" (cargo rechazado) → aviso al asesor y a Ceci (no al cliente: le
+# escribe el equipo de cobranza). Solo con MOTOR_ETAPAS. false = como antes (fuera de alcance).
+COBRANZA_AVISOS = os.getenv("COBRANZA_AVISOS", "true").strip().lower() in ("1", "true", "yes", "si", "sí")
 
 # Etapa 2 — proceso corto y trámites (docs/PLAN_ETAPA2_CORTO_TRAMITES.md). Qué procesos maneja el
 # motor por etapa: "largo" (Etapa 1) → sumar "corto" y "tramite". Los que no están siguen con el

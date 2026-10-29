@@ -10,7 +10,7 @@ lógica de estados/eventos/delicado.
 from __future__ import annotations
 
 from app import config
-from app.acciones import decidir_y_encolar, despachar_pendientes
+from app.acciones import cobranza, decidir_y_encolar, despachar_pendientes
 from app.acciones.abrir_tramite import enlazar as enlazar_tramite
 from app.acciones.motor_etapas import EMISIONES, decidir_por_etapa, ticket_para_emision, usa_motor_etapas
 from app.clasificador import clasificar_l1, clasificar_l2
@@ -63,6 +63,10 @@ def n_persistir(estado: EstadoCorreo, repo: Repositorio) -> dict:
     else:
         fin = "no_ticket"
     salida = {"correo_id": correo_id, "es_nuevo": es_nuevo, "fin": fin, "ruta": ["persistir"]}
+    if config.MOTOR_ETAPAS and es_nuevo and cobranza.activo() and es_correo_allianz(correo.remitente or ""):
+        cob = cobranza.detectar(correo.asunto, correo.cuerpo_texto)
+        if cob:  # cargo rechazado: aviso al asesor y a Ceci (n_cobranza), no un ticket de Allianz
+            return {**salida, "fin": None, "cobranza": cob}
     if config.MOTOR_ETAPAS and es_nuevo:
         etapa = _etapa(estado)
         # Los avisos de emisión no traen n° de ticket (y el clasificador viejo a veces los toma por
@@ -106,6 +110,12 @@ def n_emision(estado: EstadoCorreo, repo: Repositorio) -> dict:
     repo.agregar_evento(tid, estado["correo_id"], "emision", (correo.asunto or "")[:200])
     res = decidir_por_etapa(repo, tid, _etapa(estado), correo_id=estado.get("correo_id"))
     return {"ticket_id": tid, "acciones": res["plan"], "etapa_resultado": res, "ruta": ["emision"]}
+
+
+def n_cobranza(estado: EstadoCorreo, repo: Repositorio) -> dict:
+    """Notificación de cobranza (cargo rechazado) → aviso al asesor y a Ceci."""
+    res = cobranza.procesar(repo, estado.get("correo_id"), estado["correo"].asunto or "", estado["cobranza"])
+    return {"ticket_id": res["ticket_id"], "acciones": res["plan"], "etapa_resultado": res, "ruta": ["cobranza"]}
 
 
 def n_enriquecer(estado: EstadoCorreo, repo: Repositorio) -> dict:
