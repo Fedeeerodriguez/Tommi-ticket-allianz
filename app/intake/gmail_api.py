@@ -16,7 +16,9 @@ from __future__ import annotations
 import base64
 import logging
 import random
+import re
 import time
+from datetime import datetime, timezone
 from typing import Callable, Iterator, Optional
 
 from app import config
@@ -33,12 +35,34 @@ def _es_rate_limit(ex: Exception) -> bool:
     return "rateLimitExceeded" in s or "Quota exceeded" in s or "429" in s or "userRateLimitExceeded" in s
 
 
+# Hasta cuándo Gmail nos pidió no volver a llamar ("Retry after <fecha>"). Cada llamada antes de
+# esa hora la corre más para adelante (29/10: los reintentos cada 90 s la tuvieron bloqueada).
+_pausa_hasta = 0.0
+_RE_RETRY_AFTER = re.compile(r"Retry after (\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z)")
+
+
+def _retry_after(ex: Exception) -> float:
+    m = _RE_RETRY_AFTER.search(str(ex))
+    if not m:
+        return 0.0
+    try:
+        return datetime.fromisoformat(m.group(1).replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return 0.0
+
+
 def _ejecutar(req, intentos: int = 5):
-    """Ejecuta un request de la Gmail API con backoff exponencial ante rate-limit."""
+    """Ejecuta un request de la Gmail API con backoff exponencial ante rate-limit. Si Gmail dice
+    hasta cuándo esperar, no reintenta: anota la hora y el lector no llama hasta entonces."""
+    global _pausa_hasta
     for i in range(intentos):
         try:
             return req.execute()
         except Exception as ex:  # noqa: BLE001
+            hasta = _retry_after(ex) if _es_rate_limit(ex) else 0.0
+            if hasta:
+                _pausa_hasta = max(_pausa_hasta, hasta + 5)
+                raise
             if _es_rate_limit(ex) and i < intentos - 1:
                 espera = min(2 ** i + random.uniform(0, 0.5), 20)
                 log.warning("Gmail rate-limit; reintento %d en %.1fs", i + 1, espera)
@@ -63,6 +87,10 @@ class LectorGmail:
         if service is None:
             log.warning("Gmail API sin credenciales/token; no se leyó nada")
             return
+        if time.time() < _pausa_hasta:
+            log.info("Gmail pidió esperar hasta %s UTC; no se lee en este ciclo",
+                     datetime.fromtimestamp(_pausa_hasta, timezone.utc).strftime("%H:%M:%S"))
+            return
         labels = [self.carpeta] if self.carpeta else None
         try:
             resp = _ejecutar(service.users().messages().list(
@@ -83,6 +111,8 @@ class LectorGmail:
                 crudo = base64.urlsafe_b64decode(msg["raw"].encode("utf-8"))
             except Exception as ex:  # noqa: BLE001
                 log.warning("Gmail API get %s falló: %s", meta.get("id"), ex)
+                if time.time() < _pausa_hasta:
+                    return
                 continue
             correo = normalizar_desde_bytes(crudo, origen=f"gmail:{meta['id']}")
             correo.hilo_id = meta.get("threadId")  # para responder en el mismo hilo (Fase B)

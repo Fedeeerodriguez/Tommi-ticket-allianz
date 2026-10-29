@@ -87,6 +87,46 @@ def test_saltea_los_ya_procesados_y_no_depende_de_leidos(monkeypatch):
     assert [c.origen for c in correos] == ["gmail:2", "gmail:3"] and gmail.marcados == []
 
 
+class _Gmail429(_Gmail):
+    """Gmail con la cuota agotada: contesta 429 con la hora hasta la que hay que esperar."""
+
+    def __init__(self):
+        super().__init__()
+        self.llamadas = 0
+
+    def list(self, **_):
+        gm = self
+
+        class _R:
+            def execute(self):
+                gm.llamadas += 1
+                raise RuntimeError("<HttpError 429 ... User-rate limit exceeded.  Retry after 2099-01-01T00:00:00.000Z"
+                                   " ... 'reason': 'rateLimitExceeded'>")
+        return _R()
+
+
+def test_rate_limit_espera_lo_que_pide_gmail(monkeypatch):
+    # 29/10: con la cuota agotada reintentaba 4 veces cada 90 s y cada llamada le corría la espera.
+    gmail = _Gmail429()
+    monkeypatch.setattr(gmail_api, "construir_servicio", lambda: gmail)
+    monkeypatch.setattr(gmail_api, "_pausa_hasta", 0.0)
+    lector = gmail_api.LectorGmail(pausa_ms=0)
+    assert list(lector.leer()) == [] and gmail.llamadas == 1   # no reintenta
+    assert list(lector.leer()) == [] and gmail.llamadas == 1   # el ciclo siguiente ni llama
+
+
+def test_query_vieja_del_servidor_se_ignora(monkeypatch):
+    import importlib
+
+    from app import config
+    monkeypatch.setenv("GMAIL_QUERY", "is:unread")
+    try:
+        assert importlib.reload(config).GMAIL_QUERY == "newer_than:2d -in:sent -in:drafts -in:chats"
+    finally:
+        monkeypatch.delenv("GMAIL_QUERY")
+        importlib.reload(config)
+
+
 def test_origenes_conocidos(tmp_path):
     from app.db.repo import RepositorioSQLite
     from app.models import Clasificacion, Correo, TipoCorreo
