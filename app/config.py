@@ -126,6 +126,8 @@ GOOGLE_TOKEN = os.getenv("GOOGLE_TOKEN", "")
 # tickets de Allianz se abren a mano en hola@ y el filtro los reenvía a integraciones@; con "is:unread"
 # en INBOX el sistema casi no los veía). Los que ya procesó se saltean por su id de Gmail.
 GMAIL_QUERY = os.getenv("GMAIL_QUERY", "newer_than:2d -in:sent -in:drafts -in:chats")
+if GMAIL_QUERY.strip() == "is:unread":  # valor viejo que quedó cargado en el servidor: se ignora
+    GMAIL_QUERY = "newer_than:2d -in:sent -in:drafts -in:chats"
 GMAIL_CARPETA = os.getenv("GMAIL_CARPETA", "")  # vacío = toda la casilla (sin spam ni papelera)
 # Anti rate-limit de Gmail: cuántos correos baja por ciclo, pausa entre requests (ms), y si
 # marca leídos los ya procesados (para drenar el backlog y NO re-bajarlos cada poll).
