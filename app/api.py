@@ -32,6 +32,7 @@ import hashlib
 import hmac
 import json
 import time
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException
@@ -141,7 +142,7 @@ def listar(filtro: Optional[str] = None, _=Depends(_auth)):
     para_ceci = filtro == "para_ceci"
     tickets = []
     for t in repo.listar_tickets(limite=500):
-        if not para_ceci and (t.get("estado") or "") == "resuelto":
+        if not para_ceci and (t.get("estado") or "") == "resuelto" and not cobranza_reciente(t):
             continue  # antes de calcular los motivos: son varias consultas por ticket
         t["_guia"] = guia_pendiente(repo, t["id"])
         t["_para_ceci"] = motivos_para_ceci(repo, t, guia=t["_guia"])
@@ -228,6 +229,18 @@ def guia_pendiente(repo, ticket_id: int) -> Optional[dict]:
                 "faltan_del_ticket": faltan_del_ticket(datos),  # póliza/ticket/nombre: bloquean la aprobación
                 "falta_completar": FALTA_COMPLETAR in (ap.get("texto") or "")}
     return None
+
+
+COBRANZA_DIAS_PANEL = 14
+
+
+def cobranza_reciente(t: dict, ahora: Optional[datetime] = None) -> bool:
+    """Los avisos de cargo rechazado quedan en un ticket ya resuelto (no espera a nadie): se muestran
+    igual en el panel durante 14 días, para poder revisar los avisos (simulados o enviados)."""
+    if (t.get("proceso") or "") != "cobranza":
+        return False
+    creado = _parse_ts(t.get("created_at"))
+    return creado is None or creado >= (ahora or datetime.now(timezone.utc)) - timedelta(days=COBRANZA_DIAS_PANEL)
 
 
 _SIN_CALCULAR = object()
