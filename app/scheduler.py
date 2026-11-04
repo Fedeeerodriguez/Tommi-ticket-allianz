@@ -105,7 +105,7 @@ def job_retencion(repo) -> dict:
 
 
 def job_resumen_equipo(repo) -> dict:
-    """Modo copiloto: manda el resumen interno de tickets + borradores al equipo (opt-in)."""
+    """Resumen diario para Ceci con lo que la espera en el panel (opt-in)."""
     from app.resumen_equipo import enviar_resumen_equipo
     res = enviar_resumen_equipo(repo)
     log.info("resumen_equipo: %s", res.get("motivo") or ("enviado a " + str(res.get("destino"))))
@@ -141,11 +141,11 @@ def construir_scheduler():
         if config.hay_telegram():  # Etapa 2: aprobación de la guía de aportación
             sched.add_job(lambda: job_telegram(repo, emisor), "interval", seconds=15, id="telegram",
                           max_instances=1, coalesce=True)
-    # Modo copiloto: resumen interno al equipo (solo si RESUMEN_EQUIPO_EMAIL está configurado).
+    # Resumen para Ceci: una vez por día hábil a RESUMEN_HORA_MX (México = UTC-6), solo si cambió algo.
+    # No corre al arrancar: antes cada deploy le mandaba uno más.
     if config.RESUMEN_EQUIPO_EMAIL:
-        sched.add_job(lambda: job_resumen_equipo(repo), "interval",
-                      hours=max(1, config.RESUMEN_CADA_HORAS), id="resumen_equipo",
-                      next_run_time=__import__("datetime").datetime.now())
+        sched.add_job(lambda: job_resumen_equipo(repo), "cron", day_of_week="mon-fri",
+                      hour=(config.RESUMEN_HORA_MX + 6) % 24, minute=0, id="resumen_equipo")
     # Sandbox: panel de revisión en Notion (solo si NOTION_DB_SEGUIMIENTO está configurado).
     if config.NOTION_DB_SEGUIMIENTO:
         sched.add_job(lambda: job_seguimiento_notion(repo), "interval", minutes=15,
