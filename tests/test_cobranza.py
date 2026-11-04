@@ -102,3 +102,26 @@ def test_apagado_sigue_fuera_de_alcance(repo, monkeypatch, cambio):
 def test_si_no_lo_manda_allianz_no_cuenta(repo):
     out = construir_grafo(repo).invoke({"correo": correo(remitente="alguien <x@gmail.com>"), "despachar": False})
     assert "cobranza" not in out.get("ruta", [])
+
+
+def test_el_panel_muestra_la_cobranza_reciente_con_sus_avisos(repo, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from app import api
+    monkeypatch.setattr(api, "_repo", repo)
+    monkeypatch.setattr(config, "API_TOKEN", "")
+    construir_grafo(repo).invoke({"correo": correo(), "despachar": False})
+    item, = [i for i in TestClient(api.app).get("/api/tickets-allianz").json()["items"] if i["proceso"] == "cobranza"]
+    assert item["estado"] == "resuelto" and item["etapa_nombre"]
+    assert sorted(a["tipo_accion"] for a in item["acciones"]) == ["avisar_asesor", "avisar_ceci"]
+    assert "Allianz no pudo cobrar" in item["acciones"][0]["borrador"]
+
+
+def test_la_cobranza_vieja_ya_no_se_muestra():
+    from datetime import datetime, timedelta, timezone
+
+    from app.api import cobranza_reciente
+    hace = lambda d: (datetime.now(timezone.utc) - timedelta(days=d)).isoformat()  # noqa: E731
+    assert cobranza_reciente({"proceso": "cobranza", "created_at": hace(3)})
+    assert not cobranza_reciente({"proceso": "cobranza", "created_at": hace(20)})
+    assert not cobranza_reciente({"proceso": "largo", "created_at": hace(1)})
