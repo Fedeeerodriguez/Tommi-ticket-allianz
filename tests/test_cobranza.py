@@ -111,7 +111,13 @@ def test_el_panel_muestra_la_cobranza_reciente_con_sus_avisos(repo, monkeypatch)
     monkeypatch.setattr(api, "_repo", repo)
     monkeypatch.setattr(config, "API_TOKEN", "")
     construir_grafo(repo).invoke({"correo": correo(), "despachar": False})
-    item, = [i for i in TestClient(api.app).get("/api/tickets-allianz").json()["items"] if i["proceso"] == "cobranza"]
+    repo.crear_ticket({"estado": "abierto", "proceso": "largo", "nro_ticket": "2576612"})
+    cli = TestClient(api.app)
+    # Los tickets y las cobranzas van en secciones separadas del panel.
+    todos = cli.get("/api/tickets-allianz").json()
+    assert [i["proceso"] for i in todos["items"]] == ["largo"] and todos["resumen"]["cobranzas"] == 1
+    assert all(i["proceso"] != "cobranza" for i in cli.get("/api/tickets-allianz?filtro=para_ceci").json()["items"])
+    item, = cli.get("/api/tickets-allianz?filtro=cobranza").json()["items"]
     assert item["estado"] == "resuelto" and item["etapa_nombre"]
     assert sorted(a["tipo_accion"] for a in item["acciones"]) == ["avisar_asesor", "avisar_ceci"]
     assert "Allianz no pudo cobrar" in item["acciones"][0]["borrador"]
