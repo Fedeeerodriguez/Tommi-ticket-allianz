@@ -151,6 +151,8 @@ RESUMEN_HORA_MX = int(os.getenv("RESUMEN_HORA_MX", "9"))  # hora de México del 
 # CORS_ORIGINS: orígenes del frontend permitidos (CSV). Vacío = permite todos (solo para dev).
 TOMI_JWT_SECRET = os.getenv("TOMI_JWT_SECRET", "")
 API_TOKEN = os.getenv("API_TOKEN", "")
+# Tommy (n8n) deja las solicitudes de trámite con la misma X-Tomi-Key que usa con el backend de Tomi.
+TOMI_INTERNAL_KEY = os.getenv("TOMI_INTERNAL_KEY", "")
 API_SIN_AUTH = _bool("API_SIN_AUTH", "false")
 CORS_ORIGINS = _csv("CORS_ORIGINS", "")
 

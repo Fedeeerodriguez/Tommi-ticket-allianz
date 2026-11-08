@@ -13,6 +13,7 @@
 x-common-env: &common-env
   # --- Gmail API (OAuth headless) ---
   GOOGLE_TOKEN: ${GOOGLE_TOKEN:-}
+  TOMI_INTERNAL_KEY: ${TOMI_INTERNAL_KEY:-}
   GMAIL_QUERY: ${GMAIL_QUERY:-newer_than:2d -in:sent -in:drafts -in:chats}
   GMAIL_CARPETA: ${GMAIL_CARPETA:-}
   GMAIL_MAX_POR_CICLO: ${GMAIL_MAX_POR_CICLO:-40}

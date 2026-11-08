@@ -183,24 +183,35 @@ def _abierto_igual(repo: Repositorio, asunto_nuevo: str) -> Optional[dict]:
 
 def abrir(repo: Repositorio, tramite: str, poliza: str, nota: Optional[str] = None,
           adjuntos: Optional[list[dict]] = None, usuario: str = "ceci",
-          buscar: Optional[Buscador] = None) -> dict:
-    """Crea el ticket del trámite y encola el correo a Allianz. Devuelve {ok, motivo, ticket_id, …}."""
+          buscar: Optional[Buscador] = None, solicitud_id: Optional[int] = None) -> dict:
+    """Crea el ticket del trámite y encola el correo a Allianz. Devuelve {ok, motivo, ticket_id, …}.
+    Con `solicitud_id` (la que dejó Tommy, Etapa 3B), usa ese ticket en vez de crear otro."""
     p = preparar(tramite, poliza, nota, adjuntos, buscar)
     if not p["ok"]:
         return p
+    if solicitud_id is not None:
+        sol = repo.obtener_ticket(solicitud_id)
+        if not sol or sol.get("estado") != "solicitud":
+            return {"ok": False, "motivo": "Esa solicitud ya no está pendiente."}
     previo = _abierto_igual(repo, p["asunto"])
-    if previo:
+    if previo and previo["id"] != solicitud_id:
         return {"ok": False, "motivo": f"Ya hay un trámite abierto igual (ticket interno {previo['id']}).",
                 "ticket_id": previo["id"], "duplicado": True}
     d = p["_datos"]
-    ticket_id = repo.crear_ticket({
+    datos_ticket = {
         "poliza": p["poliza"], "cliente_nombre": d.get("cliente_nombre"),
         "cliente_correo": d.get("cliente_correo"), "asesor_correo": d.get("asesor_correo"),
         "telefono_cliente": d.get("telefono_cliente"), "telefono_asesor": d.get("telefono_asesor"),
         "daf": d.get("daf_nombre"), "estado": "abierto", "delicado": False,
         "abierto_por": ABIERTO_POR, "asunto_hilo": p["asunto"], "titulo_hilo": f"[EXT] {p['asunto']}",
         "proceso": "tramite", "identificado_por": "poliza",
-    })
+    }
+    if solicitud_id is not None:
+        ticket_id = solicitud_id
+        datos_ticket["abierto_por"] = "tommy"
+        repo.actualizar_ticket(ticket_id, **datos_ticket)
+    else:
+        ticket_id = repo.crear_ticket(datos_ticket)
     repo.agregar_evento(ticket_id, None, "tramite_abierto",
                         f"Trámite abierto desde el panel por {usuario}: {p['asunto']}"[:200])
     accion_id = repo.crear_accion(ticket_id, TIPO_ACCION, "email", {
@@ -222,7 +233,8 @@ def enlazar(repo: Repositorio, etapa: Optional[dict]) -> Optional[dict]:
         candidatos = repo.listar_tramites_abiertos(sin_ticket=True)
     except Exception:  # noqa: BLE001 — base sin la migración de etapas: no hay trámites nuestros
         return None
-    abiertos = [t for t in candidatos if t.get("estado") not in _CERRADOS]
+    # Una solicitud de Tommy que Ceci todavía no abrió no se mandó: no puede tener acuse.
+    abiertos = [t for t in candidatos if t.get("estado") not in (*_CERRADOS, "solicitud")]
     exactos = [t for t in abiertos if _norm(t.get("asunto_hilo")) == _norm(etapa["titulo_hilo"])]
     if exactos:
         return exactos[0]
