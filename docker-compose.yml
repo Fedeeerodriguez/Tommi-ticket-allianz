@@ -51,7 +51,7 @@ x-common-env: &common-env
   SLA_AVISO_HORAS: ${SLA_AVISO_HORAS:-24}
   # --- Copiloto / resumen interno ---
   RESUMEN_EQUIPO_EMAIL: ${RESUMEN_EQUIPO_EMAIL:-}
-  RESUMEN_CADA_HORAS: ${RESUMEN_CADA_HORAS:-4}
+  RESUMEN_HORA_MX: ${RESUMEN_HORA_MX:-9}
   # --- Allianz: ejecutivas y buzones automáticos ---
   EJECUTIVAS_ALLIANZ: ${EJECUTIVAS_ALLIANZ:-PENNY YAMILI ORTIZ,BLANCA ISABEL XULUC}
   ALLIANZ_BUZONES_AVISOS: ${ALLIANZ_BUZONES_AVISOS:-aviso.electronico,notificaciones.optimaxx,comunicados.agentes}

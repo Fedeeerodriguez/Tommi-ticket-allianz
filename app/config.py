@@ -142,7 +142,7 @@ GMAIL_MARCAR_LEIDOS = _bool("GMAIL_MARCAR_LEIDOS", "false")
 # de tickets + borradores propuestos. Vacío = desactivado. Es interno (envía SOLO a esta
 # dirección), por eso funciona aunque DRY_RUN=true.
 RESUMEN_EQUIPO_EMAIL = os.getenv("RESUMEN_EQUIPO_EMAIL", "")
-RESUMEN_CADA_HORAS = int(os.getenv("RESUMEN_CADA_HORAS", "4"))  # cada cuánto manda el digest
+RESUMEN_HORA_MX = int(os.getenv("RESUMEN_HORA_MX", "9"))  # hora de México del resumen diario (lun-vie)
 
 # API del panel de seguimiento (la consume el frontend de Tomi; vive ACÁ, fuera de Tomi prod).
 # TOMI_JWT_SECRET: el SECRET_KEY con que Tomi firma la sesión → la API acepta la sesión de un admin

@@ -1,108 +1,75 @@
-"""Modo copiloto (primera parte en vivo): resumen interno por correo.
+"""Resumen diario por correo para Ceci: lo que la está esperando en el panel.
 
-En vez de responderle a Allianz o al cliente, el bot le manda a un **correo interno del equipo**
-(`RESUMEN_EQUIPO_EMAIL`) un digest con los tickets que necesitan acción y **el borrador que
-propondría** el orquestador. Así el equipo ve el valor y usa los borradores a mano, sin ningún
-envío autónomo a terceros.
+Antes (modo copiloto) salía cada 4 horas, las 24 horas, con todos los tickets abiertos y los borradores
+del orquestador viejo: el mismo correo 6 veces por día, con ruido y datos de salud (04/11). Ahora:
 
-Es opt-in: si `RESUMEN_EQUIPO_EMAIL` está vacío, no hace nada. Y es interno: envía SOLO a esa
-dirección, por eso puede mandarse aunque el resto del sistema esté en DRY_RUN (no le escribe a
-Allianz/clientes/WATI). El envío sale desde la casilla del token (hola@babilonia.ai).
+  - sale una vez por día hábil, a la hora RESUMEN_HORA_MX (hora de México, default 9);
+  - solo lista los tickets que necesitan a Ceci, con el mismo criterio que la sección "Para Ceci" del
+    panel (`api.motivos_para_ceci`), una línea por ticket y el link al panel. Sin borradores ni detalle;
+  - si no hay nada, o la lista es igual a la del último envío, no manda nada.
+
+Es opt-in (RESUMEN_EQUIPO_EMAIL) e interno: sale desde hola@ solo a esa dirección, aun en DRY_RUN.
 """
 from __future__ import annotations
 
-import json
+import hashlib
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from app import config
 from app.db import Repositorio
 
 log = logging.getLogger(__name__)
 
-# Estados de ticket que ameritan aparecer en el resumen (no resueltos).
-_ESTADOS_ACCIONABLES = {"por_cerrar", "escalado_ceci", "esperando_cliente",
-                        "esperando_asesor", "abierto", "esperando_allianz"}
-# Estados de acción que representan "algo propuesto/pendiente" (no ya despachado a terceros).
-_ACCIONES_VIVAS = {"sugerida", "pendiente_ceci", "pendiente_wati", "simulada"}
+CLAVE_ULTIMO = "resumen_equipo:ultimo"
+MEXICO = timezone(timedelta(hours=-6))  # México centro no tiene horario de verano desde 2022
+
+MOTIVOS = {
+    "sin_identificar": "cliente/asesor sin identificar",
+    "escalado": "escalado",
+    "para_aprobar": "correo para aprobar",
+    "escalacion_bloqueada": "correo a Allianz bloqueado",
+    "revisar": "revisar a mano",
+    "rebote": "respuesta rebotada",
+    "guia_por_aprobar": "guía de aportación por aprobar",
+    "solicitud_tommy": "el cliente pidió un trámite",
+}
 
 
-def _pay(a: dict) -> dict:
-    p = a.get("payload")
-    if isinstance(p, str):
-        try:
-            return json.loads(p)
-        except Exception:  # noqa: BLE001
-            return {}
-    return p or {}
+def pendientes_ceci(repo: Repositorio) -> list[dict]:
+    """Tickets que necesitan a Ceci (mismo criterio que el panel)."""
+    from app.api import motivos_para_ceci
+    salida = []
+    for t in repo.listar_tickets(limite=500):
+        motivos = motivos_para_ceci(repo, t)
+        if motivos:
+            salida.append({**t, "_motivos": motivos})
+    return salida
 
 
-def _res(a: dict) -> dict:
-    r = a.get("resultado")
-    if isinstance(r, str):
-        try:
-            return json.loads(r)
-        except Exception:  # noqa: BLE001
-            return {}
-    return r or {}
-
-
-def _borrador_de(a: dict) -> str | None:
-    """Texto del borrador que propone la acción (cuerpo a Allianz o mensaje)."""
-    pay, res = _pay(a), _res(a)
-    return pay.get("cuerpo") or res.get("cuerpo") or pay.get("mensaje")
-
-
-def construir_digest(repo: Repositorio, limite: int = 50) -> tuple[str, str] | None:
-    """Arma (asunto, cuerpo) del resumen. Devuelve None si no hay nada accionable."""
-    tickets = repo.listar_tickets(limite=500)
-    bloques: list[str] = []
-    n = 0
-    for t in tickets:
-        estado = (t.get("estado") or "")
-        if estado in ("resuelto",):
-            continue
-        acciones = [a for a in repo.listar_acciones(ticket_id=t["id"])
-                    if a.get("estado") in _ACCIONES_VIVAS]
-        if not acciones and estado not in _ESTADOS_ACCIONABLES:
-            continue
-        n += 1
-        if n > limite:
-            break
-        cab = f"• Ticket {t.get('nro_ticket') or '—'}"
-        if t.get("cliente_nombre"):
-            cab += f" · {t['cliente_nombre']}"
-        cab += f" · estado: {estado}"
-        if t.get("vence_en"):
-            cab += f" · vence: {str(t['vence_en'])[:16]}"
-        lineas = [cab]
-        if t.get("asunto_hilo"):
-            lineas.append(f"    asunto: {t['asunto_hilo']}")
-        for a in acciones:
-            etiqueta = {"escalar_ceci": "⚠️ REQUIERE CECI", "enviar_a_allianz": "→ responder a Allianz",
-                        "gestionar_tramite": "→ gestionar con Allianz", "instruir_tramite": "→ instruir al cliente",
-                        "avisar_cliente": "→ avisar al cliente", "avisar_asesor": "→ avisar al asesor",
-                        "recordatorio_sla": "⏰ SLA por vencer"}.get(a.get("tipo_accion"), a.get("tipo_accion"))
-            lineas.append(f"    {etiqueta}  [{a.get('estado')}]")
-            borrador = _borrador_de(a)
-            if borrador and a.get("tipo_accion") in ("enviar_a_allianz", "gestionar_tramite",
-                                                     "instruir_tramite", "avisar_cliente"):
-                texto = borrador.strip().replace("\n", "\n      ")
-                lineas.append(f"      BORRADOR PROPUESTO:\n      {texto}")
-        bloques.append("\n".join(lineas))
-
-    if not bloques:
+def construir_digest(repo: Repositorio) -> tuple[str, str, str] | None:
+    """(asunto, cuerpo, huella) o None si no hay nada que Ceci tenga que ver."""
+    from app.acciones.mensajes_etapa import link_panel
+    tickets = pendientes_ceci(repo)
+    if not tickets:
         return None
-    hoy = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    cuerpo = (
-        f"Resumen de tickets Allianz — {hoy}\n"
-        f"(Modo copiloto: el bot NO envió nada a Allianz ni a clientes; esto es solo para el equipo.)\n\n"
-        + f"{n} ticket(s) con algo para revisar:\n\n"
-        + "\n\n".join(bloques)
-        + "\n\n— Tommi (seguimiento de tickets Allianz)"
-    )
-    asunto = f"[Tommi] {n} ticket(s) Allianz para revisar — {hoy}"
-    return asunto, cuerpo
+    lineas, claves = [], []
+    for t in tickets:
+        quien = " · ".join(x for x in (t.get("cliente_nombre"), t.get("poliza")) if x) or (t.get("asunto_hilo") or "")[:60]
+        nro = f"Ticket {t['nro_ticket']}" if t.get("nro_ticket") else f"Interno {t['id']}"
+        linea = f"• {nro} — {quien}: {', '.join(MOTIVOS.get(m, m) for m in t['_motivos'])}"
+        if link_panel(t["id"]):
+            linea += f"\n  {link_panel(t['id'])}"
+        lineas.append(linea)
+        claves.append(f"{t['id']}:{','.join(sorted(t['_motivos']))}")
+    huella = hashlib.sha256("|".join(sorted(claves)).encode()).hexdigest()[:16]
+    n = len(tickets)
+    hoy = datetime.now(MEXICO).strftime("%d/%m")
+    asunto = f"[Tommi] {n} ticket{'s' if n != 1 else ''} Allianz te esperan en el panel — {hoy}"
+    cuerpo = (f"Hola Ceci, esto es lo que hoy necesita tu revisión en el panel de tickets Allianz:\n\n"
+              + "\n".join(lineas)
+              + "\n\nTe llega una vez por día hábil y solo si cambió algo desde el anterior.\n— Tommi")
+    return asunto, cuerpo, huella
 
 
 def _emisor_real():
@@ -111,17 +78,22 @@ def _emisor_real():
     return EmisorGmail(config.SMTP_REMITENTE, config.SMTP_NOMBRE)
 
 
-def enviar_resumen_equipo(repo: Repositorio, emisor=None) -> dict:
-    """Manda el digest al correo interno del equipo. Opt-in por RESUMEN_EQUIPO_EMAIL."""
+def enviar_resumen_equipo(repo: Repositorio, emisor=None, ahora: datetime | None = None) -> dict:
     destino = config.RESUMEN_EQUIPO_EMAIL
     if not destino:
         return {"enviado": False, "motivo": "sin RESUMEN_EQUIPO_EMAIL configurado"}
+    if (ahora or datetime.now(MEXICO)).astimezone(MEXICO).weekday() >= 5:
+        return {"enviado": False, "motivo": "fin de semana"}
     dig = construir_digest(repo)
     if not dig:
-        return {"enviado": False, "motivo": "nada accionable que reportar"}
-    asunto, cuerpo = dig
+        return {"enviado": False, "motivo": "nada que revisar"}
+    asunto, cuerpo, huella = dig
+    if repo.leer_valor(CLAVE_ULTIMO) == huella:
+        return {"enviado": False, "motivo": "igual al último resumen"}
     emisor = emisor or _emisor_real()
     res = emisor.enviar([destino], asunto, cuerpo)
     ok = bool(res.get("ok") or res.get("simulado"))
+    if ok:
+        repo.guardar_valor(CLAVE_ULTIMO, huella)
     log.info("resumen_equipo → %s: %s", destino, "ok" if ok else res.get("error"))
     return {"enviado": ok, "destino": destino, "asunto": asunto, "res": res}
