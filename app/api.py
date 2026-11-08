@@ -137,12 +137,20 @@ def health():
 @app.get("/api/tickets-allianz")
 def listar(filtro: Optional[str] = None, _=Depends(_auth)):
     """`filtro=para_ceci` → solo lo que necesita a Ceci (aunque el ticket esté cerrado): revisar,
-    cliente/asesor sin identificar, escalados, correos para aprobar y rebotes."""
+    cliente/asesor sin identificar, escalados, correos para aprobar y rebotes.
+    `filtro=cobranza` → solo los cargos rechazados de los últimos 14 días. Los tickets y las
+    cobranzas van en secciones separadas del panel: sin ese filtro, la cobranza no aparece."""
     repo = _get_repo()
     para_ceci = filtro == "para_ceci"
-    tickets = []
+    cobranza = filtro == "cobranza"
+    tickets, n_cobranzas = [], 0
     for t in repo.listar_tickets(limite=500):
-        if not para_ceci and (t.get("estado") or "") == "resuelto" and not cobranza_reciente(t):
+        es_cobranza = (t.get("proceso") or "") == "cobranza"
+        if es_cobranza and cobranza_reciente(t):
+            n_cobranzas += 1
+        if es_cobranza != cobranza or (cobranza and not cobranza_reciente(t)):
+            continue
+        if not (para_ceci or cobranza) and (t.get("estado") or "") == "resuelto":
             continue  # antes de calcular los motivos: son varias consultas por ticket
         t["_guia"] = guia_pendiente(repo, t["id"])
         t["_para_ceci"] = motivos_para_ceci(repo, t, guia=t["_guia"])
@@ -189,7 +197,7 @@ def listar(filtro: Optional[str] = None, _=Depends(_auth)):
         })
     resumen = {"tickets": len(items), "acciones": sum(len(i["acciones"]) for i in items),
                "pendientes": sum(i["pendientes"] for i in items),
-               "para_ceci": sum(1 for i in items if i["para_ceci"])}
+               "para_ceci": sum(1 for i in items if i["para_ceci"]), "cobranzas": n_cobranzas}
     return {"resumen": resumen, "items": items}
 
 
