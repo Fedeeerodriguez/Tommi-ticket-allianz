@@ -179,6 +179,9 @@ def test_el_pie_de_allianz_no_marca_el_ticket_como_delicado():
     c = Correo("<m@x>", "a@allianz.com.mx", "allianz.com.mx", [], [], "[Allianz México Ticket-2601234] Sistema escribió un mensaje",
                "Recibimos su trámite de cambio de conducto de cobro.\n" + pie)
     assert not es_delicado(c)
+    c.cuerpo_texto = ("Su solicitud ha sido resuelto y por lo tanto no es posible realizar ningún cambio o cancelación "
+                      "después de haber recibido este correo.")
+    assert not es_delicado(c)
     c.asunto = "[Allianz México Ticket-2601234] Sistema escribió un mensaje en [EXT] CANCELACIÓN DE POLIZA"
     assert es_delicado(c)
 

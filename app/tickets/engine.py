@@ -80,7 +80,9 @@ _RE_DELICADO = re.compile(
 # Pie fijo de los correos de tickets de Allianz: "…puede variar dependiendo del tipo de trámite, consulta y/o
 # reclamación que solicite…". Marcaba como delicados 18 de cada 40 tickets (medido 17/11 en integraciones@) y
 # así el asesor y el cliente se quedaban sin avisos.
-_RE_PIE_ALLIANZ = re.compile(r"tr[aá]mite,?\s*consulta\s+y/o\s+reclamaci[oó]n", re.I)
+# Lo mismo con el aviso de solicitud resuelta: "…no es posible realizar ningún cambio o cancelación después de…".
+_RE_PIE_ALLIANZ = re.compile(r"tr[aá]mite,?\s*consulta\s+y/o\s+reclamaci[oó]n|"
+                             r"no\s+es\s+posible\s+realizar\s+ning[uú]n\s+cambio\s+o\s+cancelaci[oó]n", re.I)
 
 
 def es_delicado(correo: Correo) -> bool:
