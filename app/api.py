@@ -545,6 +545,28 @@ def cambiar_envio(proceso: str, body: InterruptorIn, quien=Depends(_auth)):
     return interruptor.cambiar(_get_repo(), proceso, body.encendido, por)
 
 
+@app.get("/api/tickets-allianz/cobranza/resumen")
+def ver_resumen_cobranza(_=Depends(_auth)):
+    """Cobranza en modo resumen: lo que va acumulado para el próximo resumen y el último que se armó (con el
+    texto del correo a Ceci y Yans, enviado o en vista previa)."""
+    from app.acciones import cobranza_resumen as cr
+    repo = _get_repo()
+    pend = repo.listar_acciones(estado=cr.EN_RESUMEN)
+    filas = cr._por_poliza(pend)
+    ultimo = repo.leer_valor(cr.CLAVE_PREVIA)
+    return {"modo": config.COBRANZA_MODO, "hora_mx": config.COBRANZA_RESUMEN_HORA_MX,
+            "acumulado": {"avisos": len(pend), "polizas": len(filas),
+                          "asesores": len({f["asesor_numero"] for f in filas if f.get("asesor_numero")}),
+                          "sin_asesor": sum(1 for f in filas if not f.get("asesor_numero"))},
+            "vista_previa": _previa(cr, filas) if filas else None,
+            "ultimo": _json(ultimo) if ultimo else None}
+
+
+def _previa(cr, filas):
+    grupos, sin = cr.agrupar(filas)
+    return cr.texto_equipo(cr.por_nombre(grupos), sin, "hoy")[1]
+
+
 # ─────────────────────────── Etapa 3: abrir un trámite desde el panel ───────────────────────────
 class AdjuntoIn(BaseModel):
     nombre: str

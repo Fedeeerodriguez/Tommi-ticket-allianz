@@ -42,7 +42,7 @@ def fila(poliza="PLU3-437821"):
 def repo(tmp_path, monkeypatch):
     for k, v in (("MOTOR_ETAPAS", True), ("MOTOR_ETAPAS_ROLES", ["ceci", "asesor", "cliente"]),
                  ("COBRANZA_AVISOS", True), ("TELEGRAM_APROBACIONES", False), ("NOTION_TOKEN", ""),
-                 ("OPENAI_API_KEY", ""), ("DRY_RUN", True), ("PANEL_URL", "")):
+                 ("OPENAI_API_KEY", ""), ("DRY_RUN", True), ("PANEL_URL", ""), ("COBRANZA_MODO", "aviso")):
         monkeypatch.setattr(config, k, v)
     monkeypatch.setattr(ident_mod, "_buscador_notion", lambda: notion(fila()))
     return RepositorioSQLite(str(tmp_path / "t.sqlite"))

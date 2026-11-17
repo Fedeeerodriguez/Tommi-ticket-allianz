@@ -63,6 +63,11 @@ x-common-env: &common-env
   EJECUTIVAS_ALLIANZ: ${EJECUTIVAS_ALLIANZ:-PENNY YAMILI ORTIZ,BLANCA ISABEL XULUC}
   ALLIANZ_BUZONES_AVISOS: ${ALLIANZ_BUZONES_AVISOS:-aviso.electronico,notificaciones.optimaxx,comunicados.agentes}
   COBRANZA_AVISOS: ${COBRANZA_AVISOS:-true}
+  # resumen = un WhatsApp por día a cada asesor + correo a Ceci y Yans; aviso = uno por cada correo.
+  COBRANZA_MODO: ${COBRANZA_MODO:-resumen}
+  COBRANZA_RESUMEN_HORA_MX: ${COBRANZA_RESUMEN_HORA_MX:-10}
+  COBRANZA_RESUMEN_EMAILS: ${COBRANZA_RESUMEN_EMAILS:-}
+  COBRANZA_AGRUPAR_DIAS: ${COBRANZA_AGRUPAR_DIAS:-30}
   # --- Motor por etapa (Etapas 1 y 2; apagado por default) ---
   MOTOR_ETAPAS: ${MOTOR_ETAPAS:-false}
   MOTOR_ETAPAS_PROCESOS: ${MOTOR_ETAPAS_PROCESOS:-largo}
