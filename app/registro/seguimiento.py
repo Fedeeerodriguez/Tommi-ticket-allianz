@@ -112,7 +112,7 @@ def sincronizar_seguimiento(repo: Repositorio) -> dict:
     if not (config.NOTION_TOKEN and db):
         return {"ok": False, "motivo": "sin NOTION_DB_SEGUIMIENTO"}
     creadas = actualizadas = 0
-    for t in repo.listar_tickets(limite=500):
+    for t in repo.listar_tickets(limite=500, cobranza=False):
         if (t.get("estado") or "") == "resuelto":
             continue
         for a in repo.listar_acciones(ticket_id=t["id"]):

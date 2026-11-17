@@ -151,3 +151,21 @@ def test_hilo_de_otra_casilla_sale_igual_sin_threadid(monkeypatch):
         ["mesa@allianz.com.mx"], "[Allianz México Ticket-1] x", "cuerpo", hilo_id="hilo-de-hola", in_reply_to="<m@x>")
     assert res["ok"] and not res["en_hilo"]
     assert "threadId" in gmail.cuerpos[0] and "threadId" not in gmail.cuerpos[1]
+
+
+def test_una_rafaga_de_cobranza_no_saca_a_los_tickets_del_panel(tmp_path, monkeypatch):
+    # En integraciones@ la cobranza llega en ráfagas (585 avisos el 08/11): mezclada, dejaba a los tickets
+    # fuera de los 500 más recientes que mira el panel.
+    from fastapi.testclient import TestClient
+
+    from app import api
+    from app.db.repo import RepositorioSQLite
+    repo = RepositorioSQLite(str(tmp_path / "t.sqlite"))
+    tk = repo.crear_ticket({"nro_ticket": "77", "estado": "abierto", "proceso": "largo"})
+    for i in range(510):
+        repo.crear_ticket({"estado": "resuelto", "proceso": "cobranza", "poliza": f"PLU3-{i}"})
+    assert [t["id"] for t in repo.listar_tickets(limite=500, cobranza=False)] == [tk]
+    assert len(repo.listar_tickets(limite=500, cobranza=True)) == 500
+    monkeypatch.setattr(api, "_repo", repo)
+    r = TestClient(api.app).get("/api/tickets-allianz").json()
+    assert [t["id"] for t in r["items"]] == [tk] and r["resumen"]["cobranzas"] == 510

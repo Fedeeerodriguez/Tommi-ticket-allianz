@@ -294,7 +294,7 @@ def escanear_inactividad(repo: Repositorio, dias: int = 3) -> list[dict]:
     reactivación al responsable. Devuelve las acciones encoladas. (No envía nada.)"""
     encoladas = []
     umbral = datetime.now(timezone.utc) - timedelta(days=dias)
-    for t in repo.listar_tickets(limite=500):
+    for t in repo.listar_tickets(limite=500, cobranza=False):
         estado = (t.get("estado") or "")
         if estado in ("resuelto",) or _lo_maneja_motor_etapas(t):
             continue
@@ -329,7 +329,7 @@ def escanear_vencimientos(repo: Repositorio, ahora: datetime | None = None,
     ahora = ahora or datetime.now(timezone.utc)
     umbral = timedelta(hours=umbral_horas if umbral_horas is not None else config.SLA_AVISO_HORAS)
     encoladas = []
-    for t in repo.listar_tickets(limite=500):
+    for t in repo.listar_tickets(limite=500, cobranza=False):
         if (t.get("estado") or "") in ("resuelto",) or _lo_maneja_motor_etapas(t):
             continue
         v = t.get("vence_en")
