@@ -137,6 +137,24 @@ GMAIL_MAX_POR_CICLO = int(os.getenv("GMAIL_MAX_POR_CICLO", "40"))
 GMAIL_PAUSA_MS = int(os.getenv("GMAIL_PAUSA_MS", "250"))
 # Ya no hace falta marcar leídos (se saltean por id): por defecto no toca la casilla del equipo.
 GMAIL_MARCAR_LEIDOS = _bool("GMAIL_MARCAR_LEIDOS", "false")
+# Cuántas páginas de 100 ids pide por ciclo. En integraciones@ la cobranza llega en ráfagas (585 avisos el
+# domingo 08/11, 170 el sábado 14/11): la ventana de 2 días puede pasar los 600. Con una sola página (como
+# antes) se perdían correos. Cada página cuesta 5 unidades de cuota, lo mismo que bajar un correo.
+GMAIL_MAX_PAGINAS = int(os.getenv("GMAIL_MAX_PAGINAS", "10"))
+
+# Casilla de LECTURA aparte (12/11, José): los tickets y avisos de Allianz de todos los agentes llegan a
+# integraciones@, no a hola@ (lo que llega a hola@ de Allianz también está en integraciones@, medido 17/11).
+# Si hay token de esta casilla, el intake lee SOLO de acá; hola@ sigue para los envíos internos (resumen a
+# Ceci). Mismo formato que GOOGLE_TOKEN: contenido JSON en env (EasyPanel) o archivo local.
+GMAIL_LECTURA_BUZON = os.getenv("GMAIL_LECTURA_BUZON", "integraciones@babilonia.ai")
+GMAIL_LECTURA_TOKEN = os.getenv("GMAIL_LECTURA_TOKEN", "")
+# Lo que NO se baja de integraciones@: los códigos de acceso de Allianz (llegan ahí, ~4 por día) no tienen
+# nada que ver con tickets y no deben quedar guardados en la base.
+GMAIL_LECTURA_EXCLUIR = os.getenv("GMAIL_LECTURA_EXCLUIR", '-subject:"Codigo de Seguridad"')
+GMAIL_LECTURA_TOKEN_JSON = os.getenv("GMAIL_LECTURA_TOKEN_JSON", str(DATA_DIR / "google_token_integraciones.json"))
+# Los correos a Allianz salen desde la casilla de lectura: ahí está el hilo del ticket y es la dirección
+# que Allianz tiene como solicitante (una respuesta desde hola@ no se suma al ticket).
+ALLIANZ_DESDE_LECTURA = _bool("ALLIANZ_DESDE_LECTURA", "true")
 
 # Modo copiloto (primera parte en vivo): correo interno del equipo al que se manda el resumen
 # de tickets + borradores propuestos. Vacío = desactivado. Es interno (envía SOLO a esta
@@ -158,6 +176,9 @@ CORS_ORIGINS = _csv("CORS_ORIGINS", "")
 
 # Modo seguro: en dry-run NO se envía nada a nadie.
 DRY_RUN = _bool("DRY_RUN", "true")
+# Con DRY_RUN=false, qué procesos salen de verdad al arrancar ("tickets", "cobranza"). Después se prenden
+# y apagan desde el panel (app/envio/interruptor.py). Vacío = ninguno: DRY_RUN=false solo no prende nada.
+ENVIO_REAL = _csv("ENVIO_REAL", "")
 
 # Umbral de confianza por debajo del cual L1 deriva a L2 (LLM).
 UMBRAL_LLM = float(os.getenv("UMBRAL_LLM", "0.6"))
@@ -197,6 +218,14 @@ PANEL_URL = os.getenv("PANEL_URL", "")
 # "Notificación de Cobranza (PLU3 / N)" (cargo rechazado) → aviso al asesor y a Ceci (no al cliente: le
 # escribe el equipo de cobranza). Solo con MOTOR_ETAPAS. false = como antes (fuera de alcance).
 COBRANZA_AVISOS = os.getenv("COBRANZA_AVISOS", "true").strip().lower() in ("1", "true", "yes", "si", "sí")
+# Cómo se avisa (app/acciones/cobranza_resumen.py): "resumen" = un WhatsApp por día a cada asesor con todos sus
+# clientes + un correo a Ceci y Yans; "aviso" = un WhatsApp al asesor y otro a Ceci por cada correo (como en
+# hola@). En integraciones@ llegan ~2.400 avisos por mes, hasta 585 en un día: por eso el default es resumen.
+COBRANZA_MODO = os.getenv("COBRANZA_MODO", "resumen").strip().lower()
+COBRANZA_RESUMEN_HORA_MX = int(os.getenv("COBRANZA_RESUMEN_HORA_MX", "10"))   # lun-vie, hora de México
+COBRANZA_RESUMEN_EMAILS = _csv("COBRANZA_RESUMEN_EMAILS", "")                  # Ceci y Yans
+# Los avisos de la misma póliza dentro de estos días van al mismo ticket (Allianz reintenta y avisa cada vez).
+COBRANZA_AGRUPAR_DIAS = int(os.getenv("COBRANZA_AGRUPAR_DIAS", "30"))
 
 # Etapa 2 — proceso corto y trámites (docs/PLAN_ETAPA2_CORTO_TRAMITES.md). Qué procesos maneja el
 # motor por etapa: "largo" (Etapa 1) → sumar "corto" y "tramite". Los que no están siguen con el
@@ -226,6 +255,11 @@ def hay_imap() -> bool:
 def hay_gmail_api() -> bool:
     """True si ya se autorizó la Gmail API (token en env var o en archivo)."""
     return bool(GOOGLE_TOKEN.strip()) or Path(GOOGLE_TOKEN_JSON).is_file()
+
+
+def hay_gmail_lectura() -> bool:
+    """True si hay token de la casilla de lectura aparte (integraciones@)."""
+    return bool(GMAIL_LECTURA_TOKEN.strip()) or Path(GMAIL_LECTURA_TOKEN_JSON).is_file()
 
 
 def hay_smtp() -> bool:

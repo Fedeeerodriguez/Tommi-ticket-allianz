@@ -153,12 +153,12 @@ def listar(filtro: Optional[str] = None, _=Depends(_auth)):
     repo = _get_repo()
     para_ceci = filtro == "para_ceci"
     cobranza = filtro == "cobranza"
-    tickets, n_cobranzas = [], 0
-    for t in repo.listar_tickets(limite=500):
-        es_cobranza = (t.get("proceso") or "") == "cobranza"
-        if es_cobranza and cobranza_reciente(t):
-            n_cobranzas += 1
-        if es_cobranza != cobranza or (cobranza and not cobranza_reciente(t)):
+    tickets = []
+    n_cobranzas = repo.contar_cobranzas(datetime.now(timezone.utc) - timedelta(days=COBRANZA_DIAS_PANEL))
+    # Cobranza y tickets se listan por separado: con integraciones@ la cobranza llega en ráfagas (585 el
+    # 08/11) y, mezclada, dejaba a los tickets fuera de los 500 más recientes.
+    for t in repo.listar_tickets(limite=500, cobranza=cobranza):
+        if cobranza and not cobranza_reciente(t):
             continue
         if not (para_ceci or cobranza) and (t.get("estado") or "") == "resuelto":
             continue  # antes de calcular los motivos: son varias consultas por ticket
@@ -519,6 +519,52 @@ def aprobar_accion(accion_id: int, body: DecisionIn, _=Depends(_auth)):
         repo.agregar_evento(a["ticket_id"], None, "visto_bueno", f"Correo descartado por {por}")
         return {"ok": True, "accion_id": accion_id, "estado": "rechazada", "motivo": "descartado: no se manda"}
     raise HTTPException(status_code=400, detail="decision: enviar | descartar")
+
+
+# ─────────────────────────── Interruptor de envío real por proceso ───────────────────────────
+class InterruptorIn(BaseModel):
+    encendido: bool
+    usuario: Optional[str] = None
+
+
+@app.get("/api/tickets-allianz/envio")
+def ver_envio(_=Depends(_auth)):
+    """Si sale algo de verdad: el freno general (DRY_RUN) y el interruptor de tickets y de cobranza."""
+    from app.envio import interruptor
+    return interruptor.estado(_get_repo())
+
+
+@app.put("/api/tickets-allianz/envio/{proceso}")
+def cambiar_envio(proceso: str, body: InterruptorIn, quien=Depends(_auth)):
+    """Prende o apaga el envío real de un proceso (tickets | cobranza). Lo toma el worker en el próximo
+    despacho, sin reiniciar. Con DRY_RUN=true queda registrado, pero no sale nada hasta pasarlo a false."""
+    from app.envio import interruptor
+    if proceso not in interruptor.PROCESOS:
+        raise HTTPException(status_code=400, detail=f"proceso: {' | '.join(interruptor.PROCESOS)}")
+    por = f"panel:{(body.usuario or quien.get('usuario_id') or quien.get('via') or 'admin')}"[:60]
+    return interruptor.cambiar(_get_repo(), proceso, body.encendido, por)
+
+
+@app.get("/api/tickets-allianz/cobranza/resumen")
+def ver_resumen_cobranza(_=Depends(_auth)):
+    """Cobranza en modo resumen: lo que va acumulado para el próximo resumen y el último que se armó (con el
+    texto del correo a Ceci y Yans, enviado o en vista previa)."""
+    from app.acciones import cobranza_resumen as cr
+    repo = _get_repo()
+    pend = repo.listar_acciones(estado=cr.EN_RESUMEN)
+    filas = cr._por_poliza(pend)
+    ultimo = repo.leer_valor(cr.CLAVE_PREVIA)
+    return {"modo": config.COBRANZA_MODO, "hora_mx": config.COBRANZA_RESUMEN_HORA_MX,
+            "acumulado": {"avisos": len(pend), "polizas": len(filas),
+                          "asesores": len({f["asesor_numero"] for f in filas if f.get("asesor_numero")}),
+                          "sin_asesor": sum(1 for f in filas if not f.get("asesor_numero"))},
+            "vista_previa": _previa(cr, filas) if filas else None,
+            "ultimo": _json(ultimo) if ultimo else None}
+
+
+def _previa(cr, filas):
+    grupos, sin = cr.agrupar(filas)
+    return cr.texto_equipo(cr.por_nombre(grupos), sin, "hoy")[1]
 
 
 # ─────────────────────────── Etapa 3: abrir un trámite desde el panel ───────────────────────────

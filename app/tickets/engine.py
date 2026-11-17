@@ -77,8 +77,15 @@ _RE_DELICADO = re.compile(
 )
 
 
+# Pie fijo de los correos de tickets de Allianz: "…puede variar dependiendo del tipo de trámite, consulta y/o
+# reclamación que solicite…". Marcaba como delicados 18 de cada 40 tickets (medido 17/11 en integraciones@) y
+# así el asesor y el cliente se quedaban sin avisos.
+_RE_PIE_ALLIANZ = re.compile(r"tr[aá]mite,?\s*consulta\s+y/o\s+reclamaci[oó]n", re.I)
+
+
 def es_delicado(correo: Correo) -> bool:
-    return bool(_RE_DELICADO.search(f"{correo.asunto}\n{correo.cuerpo_texto}"))
+    texto = _RE_PIE_ALLIANZ.sub(" ", f"{correo.asunto}\n{correo.cuerpo_texto}")
+    return bool(_RE_DELICADO.search(texto))
 
 
 def procesar_correo(repo: Repositorio, correo: Correo, clf: Clasificacion, entidades: dict) -> dict:

@@ -47,7 +47,7 @@ class _Grafo:
 
 def test_el_correo_que_falla_no_se_marca_leido(monkeypatch):
     gmail = _Gmail()
-    monkeypatch.setattr(gmail_api, "construir_servicio", lambda: gmail)
+    monkeypatch.setattr(gmail_api, "construir_servicio", lambda *a: gmail)
     monkeypatch.setattr(scheduler, "despachar_pendientes", lambda repo, emisor: {"conteo": {}})
     lector = gmail_api.LectorGmail(pausa_ms=0)
     r = scheduler.job_intake(None, _Grafo(), None, lector=lector, fuente="test")
@@ -76,7 +76,7 @@ def test_saltea_los_ya_procesados_y_no_depende_de_leidos(monkeypatch):
     # 29/10: los tickets se abren a mano en hola@ (quedan leídos) y el filtro los reenvía: con
     # "is:unread" en INBOX el sistema casi no los veía. Ahora busca por fecha y saltea por id.
     gmail = _GmailConLeidos()
-    monkeypatch.setattr(gmail_api, "construir_servicio", lambda: gmail)
+    monkeypatch.setattr(gmail_api, "construir_servicio", lambda *a: gmail)
     vistos = []
     lector = gmail_api.LectorGmail(query="newer_than:2d", carpeta="", marcar_leidos=False, pausa_ms=0,
                                    ya_procesados=lambda origenes: vistos.append(origenes) or {"gmail:1"})
@@ -108,7 +108,7 @@ class _Gmail429(_Gmail):
 def test_rate_limit_espera_lo_que_pide_gmail(monkeypatch):
     # 29/10: con la cuota agotada reintentaba 4 veces cada 90 s y cada llamada le corría la espera.
     gmail = _Gmail429()
-    monkeypatch.setattr(gmail_api, "construir_servicio", lambda: gmail)
+    monkeypatch.setattr(gmail_api, "construir_servicio", lambda *a: gmail)
     monkeypatch.setattr(gmail_api, "_pausa_hasta", 0.0)
     lector = gmail_api.LectorGmail(pausa_ms=0)
     assert list(lector.leer()) == [] and gmail.llamadas == 1   # no reintenta

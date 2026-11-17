@@ -19,6 +19,13 @@ x-common-env: &common-env
   GMAIL_MAX_POR_CICLO: ${GMAIL_MAX_POR_CICLO:-40}
   GMAIL_PAUSA_MS: ${GMAIL_PAUSA_MS:-250}
   GMAIL_MARCAR_LEIDOS: ${GMAIL_MARCAR_LEIDOS:-}
+  GMAIL_MAX_PAGINAS: ${GMAIL_MAX_PAGINAS:-10}
+  # Casilla de lectura (integraciones@): con este token el intake lee solo de ahí y los correos a
+  # Allianz salen desde ahí. GOOGLE_TOKEN (hola@) queda para el resumen interno a Ceci.
+  GMAIL_LECTURA_TOKEN: ${GMAIL_LECTURA_TOKEN:-}
+  GMAIL_LECTURA_BUZON: ${GMAIL_LECTURA_BUZON:-integraciones@babilonia.ai}
+  GMAIL_LECTURA_EXCLUIR: ${GMAIL_LECTURA_EXCLUIR:--subject:"Codigo de Seguridad"}
+  ALLIANZ_DESDE_LECTURA: ${ALLIANZ_DESDE_LECTURA:-true}
   # --- Base de datos (Supabase, esquema aislado tickets_allianz) ---
   DATABASE_URL: ${DATABASE_URL:-}
   DB_SCHEMA: ${DB_SCHEMA:-tickets_allianz}
@@ -56,6 +63,11 @@ x-common-env: &common-env
   EJECUTIVAS_ALLIANZ: ${EJECUTIVAS_ALLIANZ:-PENNY YAMILI ORTIZ,BLANCA ISABEL XULUC}
   ALLIANZ_BUZONES_AVISOS: ${ALLIANZ_BUZONES_AVISOS:-aviso.electronico,notificaciones.optimaxx,comunicados.agentes}
   COBRANZA_AVISOS: ${COBRANZA_AVISOS:-true}
+  # resumen = un WhatsApp por día a cada asesor + correo a Ceci y Yans; aviso = uno por cada correo.
+  COBRANZA_MODO: ${COBRANZA_MODO:-resumen}
+  COBRANZA_RESUMEN_HORA_MX: ${COBRANZA_RESUMEN_HORA_MX:-10}
+  COBRANZA_RESUMEN_EMAILS: ${COBRANZA_RESUMEN_EMAILS:-}
+  COBRANZA_AGRUPAR_DIAS: ${COBRANZA_AGRUPAR_DIAS:-30}
   # --- Motor por etapa (Etapas 1 y 2; apagado por default) ---
   MOTOR_ETAPAS: ${MOTOR_ETAPAS:-false}
   MOTOR_ETAPAS_PROCESOS: ${MOTOR_ETAPAS_PROCESOS:-largo}
@@ -81,6 +93,9 @@ x-common-env: &common-env
   TELEGRAM_CECI_CHAT_ID: ${TELEGRAM_CECI_CHAT_ID:-}
   # --- Motor ---
   DRY_RUN: ${DRY_RUN:-true}
+  # Con DRY_RUN=false, qué procesos salen de verdad al arrancar (tickets,cobranza). Después se
+  # prenden y apagan desde el panel. Vacío = ninguno.
+  ENVIO_REAL: ${ENVIO_REAL:-}
   POLL_SEGUNDOS: ${POLL_SEGUNDOS:-90}
   RETENCION_DIAS: ${RETENCION_DIAS:-180}
   TZ: ${TZ:-America/Mexico_City}

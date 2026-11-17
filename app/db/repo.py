@@ -46,13 +46,15 @@ class Repositorio(Protocol):
     def agregar_evento(self, ticket_id: int, correo_id: Optional[int],
                        tipo_evento: str, resumen: str) -> int: ...
     def crear_accion(self, ticket_id: int, tipo_accion: str, canal: str, payload: dict,
-                     programada_para: Optional[str] = None) -> int: ...
+                     programada_para: Optional[str] = None, estado: str = "sugerida") -> int: ...
     def actualizar_accion(self, accion_id: int, estado: str,
                           resultado: Optional[dict] = None) -> None: ...
     def set_veredicto(self, accion_id: int, veredicto: str, nota: Optional[str] = None) -> int: ...
     def set_borrador(self, accion_id: int, borrador: str) -> int: ...
     def listar_acciones(self, ticket_id: Optional[int] = None, estado: Optional[str] = None) -> list[dict]: ...
-    def listar_tickets(self, limite: int = 100) -> list[dict]: ...
+    def listar_tickets(self, limite: int = 100, cobranza: Optional[bool] = None) -> list[dict]: ...
+    def contar_cobranzas(self, desde: datetime) -> int: ...
+    def buscar_cobranza(self, poliza: str, desde: datetime) -> Optional[dict]: ...
     def obtener_ticket(self, ticket_id: int) -> Optional[dict]: ...
     def listar_eventos(self, ticket_id: int) -> list[dict]: ...
     def listar_correos(self, ticket_id: int, limite: int = 20) -> list[dict]: ...
@@ -197,12 +199,12 @@ class RepositorioPostgres:
                 f"values (%s,%s,%s,%s) returning id", (ticket_id, correo_id, tipo_evento, resumen))
             return int(cur.fetchone()[0])
 
-    def crear_accion(self, ticket_id, tipo_accion, canal, payload, programada_para=None) -> int:
+    def crear_accion(self, ticket_id, tipo_accion, canal, payload, programada_para=None, estado="sugerida") -> int:
         with self.conn.cursor() as cur:
             cur.execute(
                 f"insert into {self._t('acciones')} (ticket_id, tipo_accion, canal, estado, payload, programada_para) "
-                f"values (%s,%s,%s,'sugerida',%s::jsonb,%s) returning id",
-                (ticket_id, tipo_accion, canal, json.dumps(payload, ensure_ascii=False), programada_para))
+                f"values (%s,%s,%s,%s,%s::jsonb,%s) returning id",
+                (ticket_id, tipo_accion, canal, estado, json.dumps(payload, ensure_ascii=False), programada_para))
             return int(cur.fetchone()[0])
 
     def actualizar_accion(self, accion_id, estado, resultado=None) -> None:
@@ -234,10 +236,27 @@ class RepositorioPostgres:
             cur.execute(f"select * from {self._t('acciones')}{where} order by created_at", args)
             return self._rows(cur)
 
-    def listar_tickets(self, limite: int = 100) -> list[dict]:
+    def listar_tickets(self, limite: int = 100, cobranza: Optional[bool] = None) -> list[dict]:
+        """`cobranza=False`: sin los cargos rechazados (en integraciones@ llegan ~2.400 por mes y, mezclados,
+        sacaban a los tickets de los 500 más recientes). `True`: solo esos. `None`: todo."""
+        where = {None: "", True: " where proceso='cobranza'", False: " where proceso is distinct from 'cobranza'"}[cobranza]
         with self.conn.cursor() as cur:
-            cur.execute(f"select * from {self._t('tickets')} order by ultima_actividad desc limit %s", (limite,))
+            cur.execute(f"select * from {self._t('tickets')}{where} order by ultima_actividad desc limit %s", (limite,))
             return self._rows(cur)
+
+    def buscar_cobranza(self, poliza, desde):
+        """El ticket de cobranza más nuevo de esa póliza creado desde `desde` (para juntar los reintentos)."""
+        with self.conn.cursor() as cur:
+            cur.execute(f"select * from {self._t('tickets')} where proceso='cobranza' and poliza=%s and created_at >= %s "
+                        f"order by created_at desc limit 1", (poliza, desde))
+            filas = self._rows(cur)
+            return filas[0] if filas else None
+
+    def contar_cobranzas(self, desde):
+        with self.conn.cursor() as cur:
+            cur.execute(f"select count(*) from {self._t('tickets')} where proceso='cobranza' and created_at >= %s",
+                        (desde,))
+            return int(cur.fetchone()[0])
 
     def listar_tramites_abiertos(self, sin_ticket: bool = False) -> list[dict]:
         extra = " and nro_ticket is null" if sin_ticket else ""
@@ -567,11 +586,11 @@ class RepositorioSQLite:
         self.conn.commit()
         return int(cur.lastrowid)
 
-    def crear_accion(self, ticket_id, tipo_accion, canal, payload, programada_para=None) -> int:
+    def crear_accion(self, ticket_id, tipo_accion, canal, payload, programada_para=None, estado="sugerida") -> int:
         cur = self.conn.cursor()
         cur.execute("insert into acciones(ticket_id,tipo_accion,canal,estado,payload,programada_para) "
-                    "values(?,?,?,'sugerida',?,?)",
-                    (ticket_id, tipo_accion, canal, json.dumps(payload, ensure_ascii=False), programada_para))
+                    "values(?,?,?,?,?,?)",
+                    (ticket_id, tipo_accion, canal, estado, json.dumps(payload, ensure_ascii=False), programada_para))
         self.conn.commit()
         return int(cur.lastrowid)
 
@@ -601,9 +620,20 @@ class RepositorioSQLite:
         cur = self.conn.execute(f"select * from acciones{where} order by created_at", args)
         return [dict(r) for r in cur.fetchall()]
 
-    def listar_tickets(self, limite: int = 100) -> list[dict]:
-        cur = self.conn.execute("select * from tickets order by ultima_actividad desc limit ?", (limite,))
+    def listar_tickets(self, limite: int = 100, cobranza: Optional[bool] = None) -> list[dict]:
+        where = {None: "", True: " where proceso='cobranza'", False: " where coalesce(proceso,'') <> 'cobranza'"}[cobranza]
+        cur = self.conn.execute(f"select * from tickets{where} order by ultima_actividad desc limit ?", (limite,))
         return [dict(r) for r in cur.fetchall()]
+
+    def buscar_cobranza(self, poliza, desde):
+        from app.acciones.motor_etapas import _parse_ts
+        cur = self.conn.execute("select * from tickets where proceso='cobranza' and poliza=? order by id desc", (poliza,))
+        return next((dict(r) for r in cur.fetchall() if (_parse_ts(r["created_at"]) or desde) >= desde), None)
+
+    def contar_cobranzas(self, desde):
+        cur = self.conn.execute("select created_at from tickets where proceso='cobranza'")
+        from app.acciones.motor_etapas import _parse_ts
+        return sum(1 for (c,) in cur.fetchall() if (_parse_ts(c) or desde) >= desde)
 
     def listar_tramites_abiertos(self, sin_ticket: bool = False) -> list[dict]:
         extra = " and nro_ticket is null" if sin_ticket else ""
