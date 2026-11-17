@@ -131,6 +131,7 @@ _RE_POLIZA = re.compile(r"\b(" + "|".join(PRODUCTOS) + r")[-/_](\d{3,})(?:[-_]\d
 
 # --------------------------------------------------------------------------- patrones
 _RE_TICKET = re.compile(r"Ticket[-\s#]*(\d{5,})", re.I)
+_RE_RESUELTA_ASUNTO = re.compile(r"\]\s*(.+?)\s+resolvi\w*\s+su\s+solicitud", re.I)
 _RE_REENVIO = re.compile(r"^\s*(?:RV|RE|FW|FWD|TR)\s*:", re.I)
 _RE_ACTOR_ASUNTO = re.compile(r"\]\s*(.+?)\s+(escrib\w*\s+un\s+mensaje|cre[oó]\s+una\s+nueva\s+solicitud)", re.I)
 _RE_TITULO_MSG = re.compile(r"escrib\w*\s+un\s+mensaje\s+en\s+(.+?)(?:<[^>\n]*>)?:[ \t]*\r?\n", re.I | re.S)
@@ -441,6 +442,13 @@ def detectar_etapa(asunto: str, cuerpo: str, remitente: str) -> EtapaCorreo:
 
     if creo:
         etapa, motivo = Etapa.APERTURA, "se creó la solicitud"
+    elif _RE_RESUELTA_ASUNTO.search(asunto):
+        # "[Service Desk Ticket-N] MONICA SANCHEZ resolvió su solicitud" (24 en 30 días de integraciones@).
+        etapa, motivo = Etapa.ATENDIDA, "la mesa de servicio resolvió la solicitud"
+        actor = actor or _plano(_RE_RESUELTA_ASUNTO.search(asunto).group(1))
+    elif _RE_INACTIVIDAD_CIERRE.search(asunto):
+        # "[Allianz MéxicoTicket-N] Su solicitud ha sido cerrada por inactividad": el aviso está en el asunto.
+        etapa, motivo = Etapa.CERRADO_INACTIVIDAD, "sistema: cerrado por inactividad"
     elif actor_tipo == "sistema":
         etapa, motivo = _etapa_sistema(_plano(msg or plano))
     elif actor:
