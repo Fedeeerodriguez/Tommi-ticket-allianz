@@ -88,6 +88,9 @@ x-common-env: &common-env
   TELEGRAM_CECI_CHAT_ID: ${TELEGRAM_CECI_CHAT_ID:-}
   # --- Motor ---
   DRY_RUN: ${DRY_RUN:-true}
+  # Con DRY_RUN=false, qué procesos salen de verdad al arrancar (tickets,cobranza). Después se
+  # prenden y apagan desde el panel. Vacío = ninguno.
+  ENVIO_REAL: ${ENVIO_REAL:-}
   POLL_SEGUNDOS: ${POLL_SEGUNDOS:-90}
   RETENCION_DIAS: ${RETENCION_DIAS:-180}
   TZ: ${TZ:-America/Mexico_City}

@@ -176,6 +176,9 @@ CORS_ORIGINS = _csv("CORS_ORIGINS", "")
 
 # Modo seguro: en dry-run NO se envía nada a nadie.
 DRY_RUN = _bool("DRY_RUN", "true")
+# Con DRY_RUN=false, qué procesos salen de verdad al arrancar ("tickets", "cobranza"). Después se prenden
+# y apagan desde el panel (app/envio/interruptor.py). Vacío = ninguno: DRY_RUN=false solo no prende nada.
+ENVIO_REAL = _csv("ENVIO_REAL", "")
 
 # Umbral de confianza por debajo del cual L1 deriva a L2 (LLM).
 UMBRAL_LLM = float(os.getenv("UMBRAL_LLM", "0.6"))

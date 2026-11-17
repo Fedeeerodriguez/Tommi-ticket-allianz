@@ -521,6 +521,30 @@ def aprobar_accion(accion_id: int, body: DecisionIn, _=Depends(_auth)):
     raise HTTPException(status_code=400, detail="decision: enviar | descartar")
 
 
+# ─────────────────────────── Interruptor de envío real por proceso ───────────────────────────
+class InterruptorIn(BaseModel):
+    encendido: bool
+    usuario: Optional[str] = None
+
+
+@app.get("/api/tickets-allianz/envio")
+def ver_envio(_=Depends(_auth)):
+    """Si sale algo de verdad: el freno general (DRY_RUN) y el interruptor de tickets y de cobranza."""
+    from app.envio import interruptor
+    return interruptor.estado(_get_repo())
+
+
+@app.put("/api/tickets-allianz/envio/{proceso}")
+def cambiar_envio(proceso: str, body: InterruptorIn, quien=Depends(_auth)):
+    """Prende o apaga el envío real de un proceso (tickets | cobranza). Lo toma el worker en el próximo
+    despacho, sin reiniciar. Con DRY_RUN=true queda registrado, pero no sale nada hasta pasarlo a false."""
+    from app.envio import interruptor
+    if proceso not in interruptor.PROCESOS:
+        raise HTTPException(status_code=400, detail=f"proceso: {' | '.join(interruptor.PROCESOS)}")
+    por = f"panel:{(body.usuario or quien.get('usuario_id') or quien.get('via') or 'admin')}"[:60]
+    return interruptor.cambiar(_get_repo(), proceso, body.encendido, por)
+
+
 # ─────────────────────────── Etapa 3: abrir un trámite desde el panel ───────────────────────────
 class AdjuntoIn(BaseModel):
     nombre: str

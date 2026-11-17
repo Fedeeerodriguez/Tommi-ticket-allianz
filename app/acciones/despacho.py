@@ -32,7 +32,7 @@ from typing import Optional
 from app import config
 from app.acciones.criticas import CANALES_SALIENTES, es_accion_critica, retener_para_ceci
 from app.db import Repositorio
-from app.envio import Emisor, emisor_allianz, emisor_desde_config
+from app.envio import Emisor, EmisorLaboratorio, emisor_allianz, emisor_desde_config, interruptor
 
 log = logging.getLogger(__name__)
 
@@ -207,6 +207,15 @@ def _despachar_una(repo: Repositorio, accion: dict, emisor: Emisor, ahora: datet
         repo.actualizar_accion(aid, "omitida", {"motivo": "canal interno (panel/Ceci)"})
         return "omitida"
 
+    # Interruptor por proceso (tickets / cobranza): con DRY_RUN=false, lo del proceso apagado se compone
+    # igual pero sale por el laboratorio (queda "simulada"). Con DRY_RUN=true no cambia nada.
+    wati_lab = False
+    if not config.DRY_RUN:
+        proceso = interruptor.proceso_de(repo.obtener_ticket(accion["ticket_id"]), pay)
+        if not interruptor.es_real(repo, proceso):
+            emisor = EmisorLaboratorio(getattr(emisor, "remitente", config.SMTP_REMITENTE), config.SMTP_NOMBRE)
+            wati_lab = True
+
     # Canal WhatsApp (WATI): plantilla según el rol. Ceci usa su número fijo; asesor/cliente usan
     # el número del payload (lo completa Notion en Fase F). Sin número → queda pendiente.
     if canal == "wati":
@@ -226,8 +235,8 @@ def _despachar_una(repo: Repositorio, accion: dict, emisor: Emisor, ahora: datet
                                    {"motivo": "sin número de WhatsApp", "rol": rol,
                                     "mensaje": pay.get("mensaje")})
             return "pendiente_wati"
-        from app.wati import wati_desde_config
-        wati = wati_desde_config()
+        from app.wati import WatiLaboratorio, wati_desde_config
+        wati = WatiLaboratorio() if wati_lab else wati_desde_config()
         params = {"mensaje": pay.get("mensaje", "")}
         # Avisos del motor por etapa → la plantilla de su destinatario (equipo / cliente / guía).
         if pay.get("etapa"):
