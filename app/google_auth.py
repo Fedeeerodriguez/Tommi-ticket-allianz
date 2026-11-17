@@ -22,12 +22,20 @@ SCOPES = [
 ]
 
 
-def cargar_credenciales():
+def _fuente(buzon: str) -> tuple[str, Path]:
+    """(token en env, archivo) de cada casilla: 'envio' = hola@ (GOOGLE_TOKEN), 'lectura' = integraciones@."""
+    if buzon == "lectura":
+        return config.GMAIL_LECTURA_TOKEN, Path(config.GMAIL_LECTURA_TOKEN_JSON)
+    return config.GOOGLE_TOKEN, Path(config.GOOGLE_TOKEN_JSON)
+
+
+def cargar_credenciales(buzon: str = "envio"):
     """Devuelve unas Credentials válidas (refrescando si hace falta) o None.
 
-    Fuente del token, en orden: env var `GOOGLE_TOKEN` (contenido JSON, para EasyPanel/headless)
-    → archivo `GOOGLE_TOKEN_JSON` (local). El token de InstalledAppFlow ya trae client_id y
-    client_secret, así que alcanza para refrescar solo (no hace falta credentials.json en el server).
+    Fuente del token, en orden: env var (contenido JSON, para EasyPanel/headless) → archivo local.
+    `buzon='envio'` usa GOOGLE_TOKEN / GOOGLE_TOKEN_JSON (hola@); `buzon='lectura'` usa
+    GMAIL_LECTURA_TOKEN / GMAIL_LECTURA_TOKEN_JSON (integraciones@). El token de InstalledAppFlow ya
+    trae client_id y client_secret, así que alcanza para refrescar solo (no hace falta credentials.json).
     """
     try:
         import json
@@ -38,17 +46,17 @@ def cargar_credenciales():
         log.warning("google-auth no instalado; Gmail API no disponible")
         return None
 
-    token_path = Path(config.GOOGLE_TOKEN_JSON)
-    desde_env = bool(config.GOOGLE_TOKEN.strip())
+    token_env, token_path = _fuente(buzon)
+    desde_env = bool(token_env.strip())
     try:
         if desde_env:
-            creds = Credentials.from_authorized_user_info(json.loads(config.GOOGLE_TOKEN), SCOPES)
+            creds = Credentials.from_authorized_user_info(json.loads(token_env), SCOPES)
         elif token_path.is_file():
             creds = Credentials.from_authorized_user_file(str(token_path), SCOPES)
         else:
             return None
     except Exception as ex:  # noqa: BLE001
-        log.warning("token de Gmail ilegible: %s", ex)
+        log.warning("token de Gmail (%s) ilegible: %s", buzon, ex)
         return None
 
     if creds and creds.expired and creds.refresh_token:
@@ -59,14 +67,14 @@ def cargar_credenciales():
             if not desde_env:
                 token_path.write_text(creds.to_json(), encoding="utf-8")
         except Exception as ex:  # noqa: BLE001
-            log.warning("no se pudo refrescar el token de Gmail: %s", ex)
+            log.warning("no se pudo refrescar el token de Gmail (%s): %s", buzon, ex)
             return None
     return creds if (creds and creds.valid) else None
 
 
-def construir_servicio():
-    """Cliente de la Gmail API listo para usar, o None si no hay credenciales/libs."""
-    creds = cargar_credenciales()
+def construir_servicio(buzon: str = "envio"):
+    """Cliente de la Gmail API de esa casilla ('envio' o 'lectura'), o None si no hay credenciales/libs."""
+    creds = cargar_credenciales(buzon)
     if creds is None:
         return None
     try:

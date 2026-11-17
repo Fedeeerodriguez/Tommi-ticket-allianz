@@ -32,7 +32,7 @@ from typing import Optional
 from app import config
 from app.acciones.criticas import CANALES_SALIENTES, es_accion_critica, retener_para_ceci
 from app.db import Repositorio
-from app.envio import Emisor, emisor_desde_config
+from app.envio import Emisor, emisor_allianz, emisor_desde_config
 
 log = logging.getLogger(__name__)
 
@@ -295,7 +295,7 @@ def _despachar_una(repo: Repositorio, accion: dict, emisor: Emisor, ahora: datet
         if hold:
             return hold
         with _archivos(pay.get("adjuntos")) as adjuntos:
-            res = emisor.enviar([destino], asunto, cuerpo, cc=cc, adjuntos=adjuntos or None,
+            res = emisor_allianz(emisor).enviar([destino], asunto, cuerpo, cc=cc, adjuntos=adjuntos or None,
                                 hilo_id=ticket.get("gmail_thread_id"),
                                 in_reply_to=ticket.get("ultimo_message_id"))
         if res.get("simulado"):

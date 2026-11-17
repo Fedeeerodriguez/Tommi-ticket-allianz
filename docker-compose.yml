@@ -19,6 +19,13 @@ x-common-env: &common-env
   GMAIL_MAX_POR_CICLO: ${GMAIL_MAX_POR_CICLO:-40}
   GMAIL_PAUSA_MS: ${GMAIL_PAUSA_MS:-250}
   GMAIL_MARCAR_LEIDOS: ${GMAIL_MARCAR_LEIDOS:-}
+  GMAIL_MAX_PAGINAS: ${GMAIL_MAX_PAGINAS:-10}
+  # Casilla de lectura (integraciones@): con este token el intake lee solo de ahí y los correos a
+  # Allianz salen desde ahí. GOOGLE_TOKEN (hola@) queda para el resumen interno a Ceci.
+  GMAIL_LECTURA_TOKEN: ${GMAIL_LECTURA_TOKEN:-}
+  GMAIL_LECTURA_BUZON: ${GMAIL_LECTURA_BUZON:-integraciones@babilonia.ai}
+  GMAIL_LECTURA_EXCLUIR: ${GMAIL_LECTURA_EXCLUIR:--subject:"Codigo de Seguridad"}
+  ALLIANZ_DESDE_LECTURA: ${ALLIANZ_DESDE_LECTURA:-true}
   # --- Base de datos (Supabase, esquema aislado tickets_allianz) ---
   DATABASE_URL: ${DATABASE_URL:-}
   DB_SCHEMA: ${DB_SCHEMA:-tickets_allianz}

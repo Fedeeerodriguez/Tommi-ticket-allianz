@@ -108,7 +108,8 @@ def _accion(a: "Analisis") -> str:
 
 def analizar(query: str = "from:allianz.com.mx", limite: int = 60) -> list[Analisis]:
     """Lee correos de Allianz por Gmail API y devuelve el análisis de cada uno. Solo lectura."""
-    svc = construir_servicio()
+    from app import config
+    svc = construir_servicio("lectura" if config.hay_gmail_lectura() else "envio")
     if svc is None:
         raise RuntimeError("Gmail API sin credenciales/token — autorizá con app.google_oauth_setup")
 

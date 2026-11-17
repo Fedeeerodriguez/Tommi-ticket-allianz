@@ -43,6 +43,30 @@ mientras exista el `refresh_token`.
 > El token es un secreto: no se commitea (está en `.gitignore` y `.dockerignore`). Solo vive
 > como variable de entorno en EasyPanel.
 
+### 1.b Segundo token: integraciones@ (lectura)
+
+Los tickets y avisos de Allianz de todos los agentes llegan a **`integraciones@babilonia.ai`**, no a
+hola@. Todo lo de Allianz que llega a hola@ también llega ahí: se midió el 17/11 y eran 72 de 72. Por eso
+el gestor lee **solo** integraciones@ cuando tiene su token:
+
+| Variable | Casilla | Para qué |
+|---|---|---|
+| `GOOGLE_TOKEN` | hola@ | resumen diario a Ceci (interno) |
+| `GMAIL_LECTURA_TOKEN` | integraciones@ | leer los correos de Allianz y responderle a Allianz |
+
+El token se genera igual que el de arriba, pero se inicia sesión con integraciones@. Queda en
+`data/google_token_integraciones.json` y su contenido se pega en EasyPanel como **`GMAIL_LECTURA_TOKEN`**.
+
+- **Los correos a Allianz salen desde integraciones@** (`ALLIANZ_DESDE_LECTURA=true`). Es la dirección que
+  Allianz tiene como solicitante y donde vive el hilo del ticket: una respuesta desde hola@ no se suma al
+  ticket. Si un hilo viejo no existe en la casilla, el correo sale igual, encadenado por `In-Reply-To`.
+- **Volumen:** unos 1.600 correos en 10 días. La cobranza llega en ráfagas (585 avisos el domingo
+  08/11). El lector pagina hasta `GMAIL_MAX_PAGINAS` (10, es decir 1.000 ids) y baja como mucho
+  `GMAIL_MAX_POR_CICLO` (40) por ciclo, así una ráfaga se procesa en unos 30 minutos sin pasar la cuota.
+- **Excluidos:** los "Código de Seguridad - Servicios Allianz" (`GMAIL_LECTURA_EXCLUIR`) no se bajan ni
+  se guardan.
+- Sin `GMAIL_LECTURA_TOKEN`, todo sigue como antes: lee y envía con hola@.
+
 ## 2. Crear el servicio en EasyPanel
 
 1. Nuevo servicio → **App** → origen: este repositorio (rama `main`), build por **Dockerfile**.
