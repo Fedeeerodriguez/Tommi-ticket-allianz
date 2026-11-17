@@ -176,7 +176,7 @@ def plantilla_etapas(pay: dict) -> tuple[str, dict]:
     destinatario: equipo (asesor/Ceci), cliente, y la guía de aportación."""
     p = pay.get("params") or {}
     rol = (pay.get("rol") or "").lower()
-    if p.get("plantilla") == "cobranza":   # resumen diario de cobranza: plantilla propia (Ceci, 18/11)
+    if p.get("plantilla") == "cobranza":   # resumen diario de cobranza: plantilla propia (Ceci, 17/11)
         return config.WATI_PLANTILLA_COBRANZA, {k: una_linea(p.get(k)) for k in ("cantidad", "clientes", "indicacion")}
     if rol == "cliente" and p.get("guia"):
         from app.acciones.mensajes_etapa import guia_de, valores_guia

@@ -114,7 +114,7 @@ def test_con_cobranza_en_vivo_sale_el_correo_y_los_whatsapp(repo, monkeypatch):
     monkeypatch.setattr("app.wati.wati_desde_config", lambda: _Wati())
     assert despacho.despachar_pendientes(repo, em)["conteo"] == {"enviada": 3}
     assert sorted(n for n, _, _ in enviados) == ["5500000000", "5511112222", "5598765432"]
-    # Plantilla propia de cobranza, con sus 3 variables (Ceci, 18/11).
+    # Plantilla propia de cobranza, con sus 3 variables (Ceci, 17/11).
     assert {pl for _, pl, _ in enviados} == {config.WATI_PLANTILLA_COBRANZA}
     assert all(set(p) == {"cantidad", "clientes", "indicacion"} for _, _, p in enviados)
     assert all(len(v) <= despacho._MAX_VARIABLE for _, _, p in enviados for v in p.values())

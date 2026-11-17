@@ -10,7 +10,7 @@ cientos de mensajes en un día. En modo resumen:
   - una vez por día hábil, a COBRANZA_RESUMEN_HORA_MX, `armar_resumen` junta lo acumulado desde el último
     resumen (el lunes incluye el fin de semana):
       · a cada asesor, UN WhatsApp (plantilla propia, WATI_PLANTILLA_COBRANZA) con sus clientes con cargo
-        rechazado, los de más días de atraso primero: los 6 primeros y "consulta el resto con Ceci" (Ceci, 18/11).
+        rechazado, los de más días de atraso primero: los 6 primeros y "consulta el resto con Ceci" (Ceci, 17/11).
         Pasa por el despacho, así que respeta DRY_RUN, el interruptor de cobranza y MOTOR_ETAPAS_ROLES;
       · a Ceci, UN WhatsApp con las pólizas sin asesor para avisar (no están en Notion o falta el teléfono),
         para que las asigne ella o Jime;
@@ -36,7 +36,7 @@ RESUMIDA = "resumida"
 TIPO = "resumen_cobranza"
 CLAVE_PREVIA = "cobranza_resumen:ultimo"
 MEXICO = timezone(timedelta(hours=-6))
-MAX_CLIENTES_WHATSAPP = 6   # los 6 con más atraso; el resto, "consulta el resto con Ceci" (Ceci, 18/11)
+MAX_CLIENTES_WHATSAPP = 6   # los 6 con más atraso; el resto, "consulta el resto con Ceci" (Ceci, 17/11)
 INDICACION_ASESOR = "Contacta a cada uno para que tenga el monto disponible o se ponga al corriente."
 INDICACION_CECI = "No encontré a quién avisarle: asígnalas en Notion o avísale tú al asesor."
 

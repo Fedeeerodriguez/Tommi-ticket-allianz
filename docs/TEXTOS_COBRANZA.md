@@ -2,7 +2,7 @@
 
 Estado: **para aprobar** (Ceci / Yans). Generado desde `app/acciones/cobranza_resumen.py`: lo que se lee acá es exactamente lo que sale.
 
-Decidido con Ceci (18/11/2026):
+Decidido con Ceci (17/11/2026):
 - Un WhatsApp por asesor por día hábil, a las 10:00 de México. El lunes incluye el fin de semana.
 - Van **los 6 clientes con más días de atraso**; si hay más, el mensaje dice "consulta el resto con Ceci".
 - Las pólizas **sin asesor para avisar** (no están en Notion o falta el teléfono) le llegan a Ceci en un WhatsApp aparte, para que las asigne ella o Jime.
