@@ -109,6 +109,22 @@ class EmisorLaboratorio:
                 "en_hilo": bool(hilo_id or in_reply_to)}
 
 
+def emisor_allianz(emisor: Emisor) -> Emisor:
+    """Emisor para los correos A ALLIANZ. Con casilla de lectura (integraciones@) y ALLIANZ_DESDE_LECTURA,
+    salen desde ahí: es la dirección que Allianz tiene como solicitante del ticket y donde vive el hilo.
+    Respeta el modo del emisor recibido: el de laboratorio sigue simulando (solo cambia el remitente)."""
+    if not (config.ALLIANZ_DESDE_LECTURA and config.hay_gmail_lectura()):
+        return emisor
+    modo = getattr(emisor, "modo", None)
+    if modo == "gmail_api":
+        from .gmail_api import EmisorGmail
+
+        return EmisorGmail(config.GMAIL_LECTURA_BUZON, config.SMTP_NOMBRE, buzon="lectura")
+    if isinstance(emisor, EmisorLaboratorio):
+        return EmisorLaboratorio(config.GMAIL_LECTURA_BUZON, config.SMTP_NOMBRE)
+    return emisor
+
+
 def emisor_desde_config() -> Emisor:
     """Envío real solo con DRY_RUN=false: Gmail API si está autorizada, si no SMTP; en
     cualquier otro caso, emisor de laboratorio (no toca la red)."""

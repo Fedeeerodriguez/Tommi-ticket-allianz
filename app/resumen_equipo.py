@@ -40,7 +40,7 @@ def pendientes_ceci(repo: Repositorio) -> list[dict]:
     """Tickets que necesitan a Ceci (mismo criterio que el panel)."""
     from app.api import motivos_para_ceci
     salida = []
-    for t in repo.listar_tickets(limite=500):
+    for t in repo.listar_tickets(limite=500, cobranza=False):
         motivos = motivos_para_ceci(repo, t)
         if motivos:
             salida.append({**t, "_motivos": motivos})

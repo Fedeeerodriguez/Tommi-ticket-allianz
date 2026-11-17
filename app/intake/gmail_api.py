@@ -41,6 +41,21 @@ _pausa_hasta = 0.0
 _RE_RETRY_AFTER = re.compile(r"Retry after (\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z)")
 
 
+# Ids de Gmail ya bajados en este proceso, por casilla. Un correo que ya entró por otra casilla (p. ej. un
+# aviso que llegó a hola@ y a integraciones@) tiene otro id acá: la base lo descarta por Message-ID pero no
+# guarda este origen, y sin esta memoria se volvería a bajar en cada ciclo durante los 2 días de la ventana
+# (eso fue lo que quemó la cuota en octubre). El lector se crea en cada ciclo, por eso vive en el módulo.
+_VISTOS: dict[str, dict[str, None]] = {}
+_MAX_VISTOS = 5000
+
+
+def _recordar(buzon: str, gmail_id: str) -> None:
+    vistos = _VISTOS.setdefault(buzon, {})
+    vistos[gmail_id] = None
+    while len(vistos) > _MAX_VISTOS:          # dict mantiene el orden: se va el más viejo
+        vistos.pop(next(iter(vistos)))
+
+
 def _retry_after(ex: Exception) -> float:
     m = _RE_RETRY_AFTER.search(str(ex))
     if not m:
@@ -74,7 +89,10 @@ def _ejecutar(req, intentos: int = 5):
 class LectorGmail:
     def __init__(self, query: str = "is:unread", carpeta: str = "INBOX",
                  marcar_leidos: bool = True, limite: int = 40, pausa_ms: int = 250,
-                 ya_procesados: Optional[Callable[[list[str]], set[str]]] = None):
+                 ya_procesados: Optional[Callable[[list[str]], set[str]]] = None,
+                 buzon: str = "envio", max_paginas: int = 5):
+        self.buzon = buzon              # 'envio' (hola@) o 'lectura' (integraciones@)
+        self.max_paginas = max(1, max_paginas)
         self.query = query
         self.carpeta = carpeta
         self.marcar_leidos = marcar_leidos
@@ -82,26 +100,51 @@ class LectorGmail:
         self.pausa_ms = pausa_ms
         self.ya_procesados = ya_procesados  # origenes ('gmail:<id>') → los que ya están en la base
 
+    def _listar(self, service, labels) -> Optional[list[dict]]:
+        """Ids de la ventana (`query`), siguiendo `nextPageToken` hasta `max_paginas` páginas de 100.
+
+        Sin `ya_procesados` alcanza con la primera página (se marcan leídos y no vuelven). Con él, hay que
+        ver la ventana entera para no perder correos: integraciones@ recibe ~220 en 2 días. Cada página
+        cuesta 5 unidades de cuota (contra 5 por correo bajado), así que listar de más es barato.
+        """
+        metas: list[dict] = []
+        token = None
+        paginas = self.max_paginas if self.ya_procesados else 1
+        for _ in range(paginas):
+            try:
+                resp = _ejecutar(service.users().messages().list(
+                    userId="me", q=self.query, labelIds=labels, pageToken=token,
+                    maxResults=100 if self.ya_procesados else min(self.limite, 100)))
+            except Exception as ex:  # noqa: BLE001
+                log.warning("Gmail API list falló: %s", ex)
+                return metas or None
+            metas += resp.get("messages", [])
+            token = resp.get("nextPageToken")
+            if not token:
+                break
+        else:
+            if token:
+                log.warning("Gmail (%s): la ventana '%s' tiene más de %d correos; se ven los más nuevos",
+                            self.buzon, self.query, len(metas))
+        return metas
+
     def leer(self) -> Iterator[Correo]:
-        service = construir_servicio()
+        service = construir_servicio(self.buzon)
         if service is None:
-            log.warning("Gmail API sin credenciales/token; no se leyó nada")
+            log.warning("Gmail API (%s) sin credenciales/token; no se leyó nada", self.buzon)
             return
         if time.time() < _pausa_hasta:
             log.info("Gmail pidió esperar hasta %s UTC; no se lee en este ciclo",
                      datetime.fromtimestamp(_pausa_hasta, timezone.utc).strftime("%H:%M:%S"))
             return
         labels = [self.carpeta] if self.carpeta else None
-        try:
-            resp = _ejecutar(service.users().messages().list(
-                userId="me", q=self.query, labelIds=labels,
-                maxResults=100 if self.ya_procesados else min(self.limite, 100)))
-        except Exception as ex:  # noqa: BLE001
-            log.warning("Gmail API list falló: %s", ex)
+        metas = self._listar(service, labels)
+        if metas is None:
             return
-        metas = resp.get("messages", [])
         if self.ya_procesados and metas:
-            conocidos = self.ya_procesados([f"gmail:{m['id']}" for m in metas])
+            vistos = _VISTOS.get(self.buzon, {})
+            metas = [m for m in metas if m["id"] not in vistos]
+            conocidos = self.ya_procesados([f"gmail:{m['id']}" for m in metas]) if metas else set()
             # Los más viejos primero: así un ticket se procesa en el orden en que pasó.
             metas = [m for m in metas if f"gmail:{m['id']}" not in conocidos][::-1][: self.limite]
         for meta in metas:
@@ -117,6 +160,8 @@ class LectorGmail:
             correo = normalizar_desde_bytes(crudo, origen=f"gmail:{meta['id']}")
             correo.hilo_id = meta.get("threadId")  # para responder en el mismo hilo (Fase B)
             yield correo
+            if not correo.fallo:  # si falló, se reintenta en el próximo ciclo
+                _recordar(self.buzon, meta["id"])
             # Marcar leído DESPUÉS de procesar → el próximo poll no re-baja este correo.
             if self.marcar_leidos and not correo.fallo:  # si falló queda sin leer → se reintenta
                 try:

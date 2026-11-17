@@ -107,7 +107,7 @@ def ticket_para_emision(repo: Repositorio, etapa: dict) -> Optional[int]:
         proceso = t.get("proceso") or "largo"
         return t.get("etapa") and proceso in activos and proceso != "tramite"
 
-    tickets = [t for t in repo.listar_tickets(limite=500) if en_motor(t)]  # más reciente primero
+    tickets = [t for t in repo.listar_tickets(limite=500, cobranza=False) if en_motor(t)]  # más reciente primero
     if etapa.get("poliza"):
         t = next((t for t in tickets if misma_poliza(t.get("poliza"), etapa["poliza"])), None)
         if t:

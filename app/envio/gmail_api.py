@@ -16,18 +16,24 @@ from .smtp import _armar_mensaje
 log = logging.getLogger(__name__)
 
 
+def _hilo_invalido(ex: Exception) -> bool:
+    t = str(ex).lower()
+    return "404" in t or "not found" in t or "invalid thread" in t or "threadid" in t
+
+
 class EmisorGmail:
     modo = "gmail_api"
 
-    def __init__(self, remitente: str, remitente_nombre: str = "Babilonia"):
+    def __init__(self, remitente: str, remitente_nombre: str = "Babilonia", buzon: str = "envio"):
         self.remitente, self.remitente_nombre = remitente, remitente_nombre
+        self.buzon = buzon  # 'envio' (hola@) o 'lectura' (integraciones@): de qué token sale
 
     def enviar(self, destinatarios, asunto, cuerpo_texto, cc=None, adjuntos=None,
                hilo_id=None, in_reply_to=None) -> dict:
         destinatarios = [d for d in destinatarios if d]
         if not destinatarios:
             return {"ok": False, "modo": self.modo, "error": "sin destinatario"}
-        service = construir_servicio()
+        service = construir_servicio(self.buzon)
         if service is None:
             return {"ok": False, "modo": self.modo, "error": "Gmail API sin credenciales/token"}
         msg = _armar_mensaje(self.remitente_nombre, self.remitente, destinatarios,
@@ -37,8 +43,18 @@ class EmisorGmail:
         if hilo_id:
             cuerpo_envio["threadId"] = hilo_id  # responder DENTRO del hilo del ticket
         try:
-            res = service.users().messages().send(userId="me", body=cuerpo_envio).execute()
-            return {"ok": True, "modo": self.modo, "message_id": res.get("id"),
+            try:
+                res = service.users().messages().send(userId="me", body=cuerpo_envio).execute()
+            except Exception as ex:  # noqa: BLE001
+                # El hilo es de otra casilla (tickets viejos leídos en hola@, o al revés): Gmail no lo
+                # encuentra. Sale igual, encadenado por In-Reply-To/References.
+                if not hilo_id or not _hilo_invalido(ex):
+                    raise
+                log.warning("Gmail (%s): el hilo %s no existe en esta casilla; sale sin threadId", self.buzon, hilo_id)
+                cuerpo_envio.pop("threadId", None)
+                hilo_id = None
+                res = service.users().messages().send(userId="me", body=cuerpo_envio).execute()
+            return {"ok": True, "modo": self.modo, "de": self.remitente, "message_id": res.get("id"),
                     "thread_id": res.get("threadId"), "para": destinatarios, "cc": cc or [],
                     "asunto": asunto, "en_hilo": bool(hilo_id)}
         except Exception as ex:  # noqa: BLE001

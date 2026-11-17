@@ -137,6 +137,24 @@ GMAIL_MAX_POR_CICLO = int(os.getenv("GMAIL_MAX_POR_CICLO", "40"))
 GMAIL_PAUSA_MS = int(os.getenv("GMAIL_PAUSA_MS", "250"))
 # Ya no hace falta marcar leídos (se saltean por id): por defecto no toca la casilla del equipo.
 GMAIL_MARCAR_LEIDOS = _bool("GMAIL_MARCAR_LEIDOS", "false")
+# Cuántas páginas de 100 ids pide por ciclo. En integraciones@ la cobranza llega en ráfagas (585 avisos el
+# domingo 08/11, 170 el sábado 14/11): la ventana de 2 días puede pasar los 600. Con una sola página (como
+# antes) se perdían correos. Cada página cuesta 5 unidades de cuota, lo mismo que bajar un correo.
+GMAIL_MAX_PAGINAS = int(os.getenv("GMAIL_MAX_PAGINAS", "10"))
+
+# Casilla de LECTURA aparte (12/11, José): los tickets y avisos de Allianz de todos los agentes llegan a
+# integraciones@, no a hola@ (lo que llega a hola@ de Allianz también está en integraciones@, medido 17/11).
+# Si hay token de esta casilla, el intake lee SOLO de acá; hola@ sigue para los envíos internos (resumen a
+# Ceci). Mismo formato que GOOGLE_TOKEN: contenido JSON en env (EasyPanel) o archivo local.
+GMAIL_LECTURA_BUZON = os.getenv("GMAIL_LECTURA_BUZON", "integraciones@babilonia.ai")
+GMAIL_LECTURA_TOKEN = os.getenv("GMAIL_LECTURA_TOKEN", "")
+# Lo que NO se baja de integraciones@: los códigos de acceso de Allianz (llegan ahí, ~4 por día) no tienen
+# nada que ver con tickets y no deben quedar guardados en la base.
+GMAIL_LECTURA_EXCLUIR = os.getenv("GMAIL_LECTURA_EXCLUIR", '-subject:"Codigo de Seguridad"')
+GMAIL_LECTURA_TOKEN_JSON = os.getenv("GMAIL_LECTURA_TOKEN_JSON", str(DATA_DIR / "google_token_integraciones.json"))
+# Los correos a Allianz salen desde la casilla de lectura: ahí está el hilo del ticket y es la dirección
+# que Allianz tiene como solicitante (una respuesta desde hola@ no se suma al ticket).
+ALLIANZ_DESDE_LECTURA = _bool("ALLIANZ_DESDE_LECTURA", "true")
 
 # Modo copiloto (primera parte en vivo): correo interno del equipo al que se manda el resumen
 # de tickets + borradores propuestos. Vacío = desactivado. Es interno (envía SOLO a esta
@@ -226,6 +244,11 @@ def hay_imap() -> bool:
 def hay_gmail_api() -> bool:
     """True si ya se autorizó la Gmail API (token en env var o en archivo)."""
     return bool(GOOGLE_TOKEN.strip()) or Path(GOOGLE_TOKEN_JSON).is_file()
+
+
+def hay_gmail_lectura() -> bool:
+    """True si hay token de la casilla de lectura aparte (integraciones@)."""
+    return bool(GMAIL_LECTURA_TOKEN.strip()) or Path(GMAIL_LECTURA_TOKEN_JSON).is_file()
 
 
 def hay_smtp() -> bool:

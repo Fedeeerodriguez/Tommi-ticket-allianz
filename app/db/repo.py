@@ -52,7 +52,8 @@ class Repositorio(Protocol):
     def set_veredicto(self, accion_id: int, veredicto: str, nota: Optional[str] = None) -> int: ...
     def set_borrador(self, accion_id: int, borrador: str) -> int: ...
     def listar_acciones(self, ticket_id: Optional[int] = None, estado: Optional[str] = None) -> list[dict]: ...
-    def listar_tickets(self, limite: int = 100) -> list[dict]: ...
+    def listar_tickets(self, limite: int = 100, cobranza: Optional[bool] = None) -> list[dict]: ...
+    def contar_cobranzas(self, desde: datetime) -> int: ...
     def obtener_ticket(self, ticket_id: int) -> Optional[dict]: ...
     def listar_eventos(self, ticket_id: int) -> list[dict]: ...
     def listar_correos(self, ticket_id: int, limite: int = 20) -> list[dict]: ...
@@ -234,10 +235,19 @@ class RepositorioPostgres:
             cur.execute(f"select * from {self._t('acciones')}{where} order by created_at", args)
             return self._rows(cur)
 
-    def listar_tickets(self, limite: int = 100) -> list[dict]:
+    def listar_tickets(self, limite: int = 100, cobranza: Optional[bool] = None) -> list[dict]:
+        """`cobranza=False`: sin los cargos rechazados (en integraciones@ llegan ~2.400 por mes y, mezclados,
+        sacaban a los tickets de los 500 más recientes). `True`: solo esos. `None`: todo."""
+        where = {None: "", True: " where proceso='cobranza'", False: " where proceso is distinct from 'cobranza'"}[cobranza]
         with self.conn.cursor() as cur:
-            cur.execute(f"select * from {self._t('tickets')} order by ultima_actividad desc limit %s", (limite,))
+            cur.execute(f"select * from {self._t('tickets')}{where} order by ultima_actividad desc limit %s", (limite,))
             return self._rows(cur)
+
+    def contar_cobranzas(self, desde):
+        with self.conn.cursor() as cur:
+            cur.execute(f"select count(*) from {self._t('tickets')} where proceso='cobranza' and created_at >= %s",
+                        (desde,))
+            return int(cur.fetchone()[0])
 
     def listar_tramites_abiertos(self, sin_ticket: bool = False) -> list[dict]:
         extra = " and nro_ticket is null" if sin_ticket else ""
@@ -601,9 +611,15 @@ class RepositorioSQLite:
         cur = self.conn.execute(f"select * from acciones{where} order by created_at", args)
         return [dict(r) for r in cur.fetchall()]
 
-    def listar_tickets(self, limite: int = 100) -> list[dict]:
-        cur = self.conn.execute("select * from tickets order by ultima_actividad desc limit ?", (limite,))
+    def listar_tickets(self, limite: int = 100, cobranza: Optional[bool] = None) -> list[dict]:
+        where = {None: "", True: " where proceso='cobranza'", False: " where coalesce(proceso,'') <> 'cobranza'"}[cobranza]
+        cur = self.conn.execute(f"select * from tickets{where} order by ultima_actividad desc limit ?", (limite,))
         return [dict(r) for r in cur.fetchall()]
+
+    def contar_cobranzas(self, desde):
+        cur = self.conn.execute("select created_at from tickets where proceso='cobranza'")
+        from app.acciones.motor_etapas import _parse_ts
+        return sum(1 for (c,) in cur.fetchall() if (_parse_ts(c) or desde) >= desde)
 
     def listar_tramites_abiertos(self, sin_ticket: bool = False) -> list[dict]:
         extra = " and nro_ticket is null" if sin_ticket else ""
