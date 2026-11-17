@@ -59,6 +59,36 @@ def _leer_correos(dsn: str, desde: datetime) -> list:
         c.close()
 
 
+def _leer_gmail_lectura(desde: datetime, hasta: datetime) -> list:
+    """Los correos de Allianz de integraciones@ (solo lectura), sin cobranza ni códigos de acceso: ahí entran
+    los tickets de todos los agentes. Misma forma que `_leer_correos`, del más viejo al más nuevo."""
+    import base64
+
+    from app.google_auth import construir_servicio
+    from app.intake.gmail_api import _ejecutar
+    from app.intake.reader import normalizar_desde_bytes
+    svc = construir_servicio("lectura")
+    if svc is None:
+        raise RuntimeError("sin token de integraciones@ (GMAIL_LECTURA_TOKEN / GMAIL_LECTURA_TOKEN_JSON)")
+    q = (f"from:allianz.com.mx after:{desde:%Y/%m/%d} before:{(hasta + timedelta(days=1)):%Y/%m/%d} "
+         f"-subject:cobranza {config.GMAIL_LECTURA_EXCLUIR}")
+    ids, tok = [], None
+    while True:
+        r = _ejecutar(svc.users().messages().list(userId="me", q=q, maxResults=500, pageToken=tok))
+        ids += [m["id"] for m in r.get("messages", [])]
+        tok = r.get("nextPageToken")
+        if not tok:
+            break
+    filas = []
+    for i in ids:
+        raw = base64.urlsafe_b64decode(_ejecutar(svc.users().messages().get(userId="me", id=i, format="raw"))["raw"])
+        c = normalizar_desde_bytes(raw, origen=f"gmail:{i}")
+        filas.append((c.message_id, c.remitente, c.remitente_dominio, c.para, c.cc, c.asunto, c.cuerpo_texto, c.fecha))
+    lejos = datetime(1970, 1, 1, tzinfo=timezone.utc)
+    filas.sort(key=lambda f: f[7] if (f[7] and f[7].tzinfo) else lejos)
+    return filas
+
+
 def replay(desde: datetime, hasta: datetime) -> dict:
     """Los correos reales de la base."""
     _forzar_sandbox()
@@ -312,11 +342,20 @@ def main() -> int:
     p.add_argument("--desde", default="2026-09-01")
     p.add_argument("--salida", default=str(config.DATA_DIR / "replay_etapas.html"))
     p.add_argument("--solo-prueba", action="store_true", help="solo la semana de prueba (sin leer la base)")
+    p.add_argument("--integraciones", action="store_true",
+                   help="los correos reales salen de integraciones@ (Gmail, solo lectura) en vez de la base")
     a = p.parse_args()
     prueba = semana_de_prueba()
     print(f"semana de prueba: correos={prueba['correos']} rutas={dict(prueba['rutas'])} errores={len(prueba['errores'])}")
     r = None
-    if not a.solo_prueba:
+    if not a.solo_prueba and a.integraciones:
+        desde = datetime.fromisoformat(a.desde).replace(tzinfo=timezone.utc)
+        hasta = datetime.now(timezone.utc)
+        filas = _leer_gmail_lectura(desde, hasta)
+        _forzar_sandbox()
+        r = replay_correos(filas, desde, hasta, {})
+        print(f"integraciones@: correos={r['correos']} rutas={dict(r['rutas'])} errores={len(r['errores'])}")
+    elif not a.solo_prueba:
         if not config.hay_db():
             print("Falta DATABASE_URL (la base de donde se leen los correos reales). Usa --solo-prueba.")
             return 1
