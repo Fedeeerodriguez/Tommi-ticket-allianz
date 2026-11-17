@@ -72,8 +72,11 @@ def textos(d: dict, cliente: str) -> dict[str, str]:
 def procesar(repo: Repositorio, correo_id: Optional[int], asunto: str, d: dict,
              buscar: Optional[Buscador] = None) -> dict:
     """Crea el ticket de cobranza (cerrado) y encola los avisos. Devuelve {ticket_id, plan, omitidos}."""
+    from app.acciones import cobranza_resumen
     ident = identificar(poliza=d["poliza"], buscar=buscar)
     datos = ident.datos if ident.ok else {}
+    if cobranza_resumen.activo():
+        return _procesar_para_resumen(repo, correo_id, asunto, d, ident, datos)
     tid = repo.crear_ticket({"estado": "resuelto", "proceso": PROCESO, "producto": d["producto"],
                              "poliza": d["poliza"], "titulo_hilo": asunto, "etapa": ETAPA,
                              **({k: datos.get(k) for k in ("cliente_nombre", "cliente_correo", "telefono_cliente",
@@ -104,6 +107,39 @@ def procesar(repo: Repositorio, correo_id: Optional[int], asunto: str, d: dict,
     repo.agregar_evento(tid, correo_id, "cobranza",
                         f"Cargo rechazado · avisos: {', '.join(x['rol'] for x in plan) or 'ninguno'}"[:200])
     return {"ticket_id": tid, "plan": plan, "omitidos": omitidos, "identificacion": ident.estado}
+
+
+def _procesar_para_resumen(repo: Repositorio, correo_id: Optional[int], asunto: str, d: dict, ident, datos: dict) -> dict:
+    """Modo resumen: el aviso se guarda para el resumen del día (no sale nada ahora). Los reintentos de la misma
+    póliza van al mismo ticket."""
+    from datetime import datetime, timedelta, timezone
+
+    from app.acciones import cobranza_resumen
+    desde = datetime.now(timezone.utc) - timedelta(days=config.COBRANZA_AGRUPAR_DIAS)
+    previo = repo.buscar_cobranza(d["poliza"], desde)
+    if previo:
+        tid = previo["id"]
+        repo.actualizar_ticket(tid, estado="resuelto")   # mueve ultima_actividad: vuelve arriba en el panel
+    else:
+        tid = repo.crear_ticket({"estado": "resuelto", "proceso": PROCESO, "producto": d["producto"],
+                                 "poliza": d["poliza"], "titulo_hilo": asunto, "etapa": ETAPA,
+                                 **({k: datos.get(k) for k in ("cliente_nombre", "cliente_correo", "telefono_cliente",
+                                                                "asesor_correo", "telefono_asesor")} if ident.ok else {}),
+                                 **({"identificado_por": ident.via} if ident.ok else {})})
+    if correo_id:
+        repo.vincular_correo(correo_id, tid)
+    ctx = contexto({"poliza": d["poliza"], "producto": d["producto"]}, {}, datos)
+    omitidos = []
+    if not ident.ok:
+        omitidos.append(f"No pude identificar la póliza {d['poliza']} en Notion ({ident.motivo}).")
+    elif not datos.get("telefono_asesor"):
+        omitidos.append("Falta el teléfono del asesor en Notion.")
+    plan_nombre = PRODUCTOS.get(d["producto"], (None, d["producto"]))[1]
+    aid = cobranza_resumen.guardar_aviso(repo, tid, d, ctx["cliente"], plan_nombre, datos, omitidos, correo_id)
+    repo.agregar_evento(tid, correo_id, "cobranza",
+                        f"Cargo rechazado · va en el resumen del día{' (reintento)' if previo else ''}"[:200])
+    return {"ticket_id": tid, "plan": [], "omitidos": omitidos, "identificacion": ident.estado,
+            "en_resumen": aid, "agrupado": bool(previo)}
 
 
 def activo() -> bool:

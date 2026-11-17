@@ -112,6 +112,15 @@ def job_resumen_equipo(repo) -> dict:
     return res
 
 
+def job_cobranza_resumen(repo, emisor) -> dict:
+    """Resumen diario de cobranza (COBRANZA_MODO=resumen): un WhatsApp por asesor + correo a Ceci y Yans."""
+    from app.acciones import cobranza_resumen
+    res = cobranza_resumen.armar_resumen(repo)
+    if res.get("whatsapp_encolados"):
+        despachar_pendientes(repo, emisor)
+    return res
+
+
 def job_seguimiento_notion(repo) -> dict:
     """Sandbox: sincroniza el panel de revisión 'Ticket Allianz Seguimiento' en Notion (opt-in)."""
     from app.registro import sincronizar_seguimiento
@@ -141,6 +150,11 @@ def construir_scheduler():
         if config.hay_telegram():  # Etapa 2: aprobación de la guía de aportación
             sched.add_job(lambda: job_telegram(repo, emisor), "interval", seconds=15, id="telegram",
                           max_instances=1, coalesce=True)
+    # Cobranza en modo resumen: lo acumulado sale una vez por día hábil (el lunes incluye el fin de semana).
+    from app.acciones import cobranza, cobranza_resumen
+    if cobranza.activo() and cobranza_resumen.activo():
+        sched.add_job(lambda: job_cobranza_resumen(repo, emisor), "cron", day_of_week="mon-fri",
+                      hour=(config.COBRANZA_RESUMEN_HORA_MX + 6) % 24, minute=0, id="cobranza_resumen")
     # Resumen para Ceci: una vez por día hábil a RESUMEN_HORA_MX (México = UTC-6), solo si cambió algo.
     # No corre al arrancar: antes cada deploy le mandaba uno más.
     if config.RESUMEN_EQUIPO_EMAIL:

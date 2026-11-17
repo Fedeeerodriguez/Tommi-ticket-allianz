@@ -218,6 +218,14 @@ PANEL_URL = os.getenv("PANEL_URL", "")
 # "Notificación de Cobranza (PLU3 / N)" (cargo rechazado) → aviso al asesor y a Ceci (no al cliente: le
 # escribe el equipo de cobranza). Solo con MOTOR_ETAPAS. false = como antes (fuera de alcance).
 COBRANZA_AVISOS = os.getenv("COBRANZA_AVISOS", "true").strip().lower() in ("1", "true", "yes", "si", "sí")
+# Cómo se avisa (app/acciones/cobranza_resumen.py): "resumen" = un WhatsApp por día a cada asesor con todos sus
+# clientes + un correo a Ceci y Yans; "aviso" = un WhatsApp al asesor y otro a Ceci por cada correo (como en
+# hola@). En integraciones@ llegan ~2.400 avisos por mes, hasta 585 en un día: por eso el default es resumen.
+COBRANZA_MODO = os.getenv("COBRANZA_MODO", "resumen").strip().lower()
+COBRANZA_RESUMEN_HORA_MX = int(os.getenv("COBRANZA_RESUMEN_HORA_MX", "10"))   # lun-vie, hora de México
+COBRANZA_RESUMEN_EMAILS = _csv("COBRANZA_RESUMEN_EMAILS", "")                  # Ceci y Yans
+# Los avisos de la misma póliza dentro de estos días van al mismo ticket (Allianz reintenta y avisa cada vez).
+COBRANZA_AGRUPAR_DIAS = int(os.getenv("COBRANZA_AGRUPAR_DIAS", "30"))
 
 # Etapa 2 — proceso corto y trámites (docs/PLAN_ETAPA2_CORTO_TRAMITES.md). Qué procesos maneja el
 # motor por etapa: "largo" (Etapa 1) → sumar "corto" y "tramite". Los que no están siguen con el
