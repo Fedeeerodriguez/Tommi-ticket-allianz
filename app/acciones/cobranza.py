@@ -135,7 +135,8 @@ def _procesar_para_resumen(repo: Repositorio, correo_id: Optional[int], asunto: 
     elif not datos.get("telefono_asesor"):
         omitidos.append("Falta el teléfono del asesor en Notion.")
     plan_nombre = PRODUCTOS.get(d["producto"], (None, d["producto"]))[1]
-    aid = cobranza_resumen.guardar_aviso(repo, tid, d, ctx["cliente"], plan_nombre, datos, omitidos, correo_id)
+    aid = cobranza_resumen.guardar_aviso(repo, tid, d, ctx["cliente"], plan_nombre, datos, omitidos, correo_id,
+                                         primer_intento=cobranza_resumen.primer_intento_de(repo, tid) if previo else None)
     repo.agregar_evento(tid, correo_id, "cobranza",
                         f"Cargo rechazado · va en el resumen del día{' (reintento)' if previo else ''}"[:200])
     return {"ticket_id": tid, "plan": [], "omitidos": omitidos, "identificacion": ident.estado,
