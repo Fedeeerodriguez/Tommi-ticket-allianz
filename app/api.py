@@ -153,12 +153,12 @@ def listar(filtro: Optional[str] = None, _=Depends(_auth)):
     repo = _get_repo()
     para_ceci = filtro == "para_ceci"
     cobranza = filtro == "cobranza"
-    tickets, n_cobranzas = [], 0
-    for t in repo.listar_tickets(limite=500):
-        es_cobranza = (t.get("proceso") or "") == "cobranza"
-        if es_cobranza and cobranza_reciente(t):
-            n_cobranzas += 1
-        if es_cobranza != cobranza or (cobranza and not cobranza_reciente(t)):
+    tickets = []
+    n_cobranzas = repo.contar_cobranzas(datetime.now(timezone.utc) - timedelta(days=COBRANZA_DIAS_PANEL))
+    # Cobranza y tickets se listan por separado: con integraciones@ la cobranza llega en ráfagas (585 el
+    # 08/11) y, mezclada, dejaba a los tickets fuera de los 500 más recientes.
+    for t in repo.listar_tickets(limite=500, cobranza=cobranza):
+        if cobranza and not cobranza_reciente(t):
             continue
         if not (para_ceci or cobranza) and (t.get("estado") or "") == "resuelto":
             continue  # antes de calcular los motivos: son varias consultas por ticket
