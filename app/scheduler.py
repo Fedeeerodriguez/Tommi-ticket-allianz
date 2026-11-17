@@ -154,6 +154,11 @@ def construir_scheduler():
 
     log.info("Scheduler listo | DB=%s | SMTP=%s | DRY_RUN=%s | poll=%ds",
              backend, "on" if config.hay_smtp() else "off", config.DRY_RUN, config.POLL_SEGUNDOS)
+    if not config.DRY_RUN:
+        from app.envio import interruptor
+        est = interruptor.estado(repo)["procesos"]
+        log.info("envío real por proceso: %s",
+                 ", ".join(f"{p}={'SI' if e['real'] else 'no'} ({e['origen']})" for p, e in est.items()))
     return sched, repo
 
 
