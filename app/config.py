@@ -221,6 +221,15 @@ EJECUTIVOS_ALLIANZ_DEFAULT = {
     "VIPP": "penny.ortiz@allianz.com.mx",          # Vida / Protección — Penny Ortiz
 }
 EJECUTIVOS_ALLIANZ = os.getenv("EJECUTIVOS_ALLIANZ", "")
+# Trámites que el cliente pide por correo (Ceci, 17/11): a Servicio al Cliente de su producto, con copia a
+# integraciones@. JSON {"PRODUCTO": "correo"} para cambiarlo.
+CORREOS_CLIENTES_ALLIANZ_DEFAULT = {
+    "PLU3": "cliente.optimaxx@allianz.com.mx",
+    "SVIP": "cliente.inversion@allianz.com.mx",
+    "OPPT": "cliente.inversion@allianz.com.mx",
+}
+CORREOS_CLIENTES_ALLIANZ = os.getenv("CORREOS_CLIENTES_ALLIANZ", "")
+CC_TRAMITE_CLIENTE = os.getenv("CC_TRAMITE_CLIENTE", "integraciones@babilonia.ai")
 # Firma del correo de escalación a Allianz (Ceci, 17/11).
 FIRMA_ESCALACION = os.getenv("FIRMA_ESCALACION", "Cecilia Cansino")
 # Los recordatorios salen también en feriados (Ceci, 17/11). false = como antes (sin feriados de México).
@@ -322,6 +331,18 @@ def hay_wati() -> bool:
 def hay_telegram() -> bool:
     """Aprobaciones por Telegram encendidas y configuradas."""
     return bool(TELEGRAM_APROBACIONES and TELEGRAM_BOT_TOKEN and telegram_chats())
+
+
+def correo_clientes_allianz(producto) -> str:
+    """Correo de Servicio al Cliente de Allianz al que el cliente manda sus trámites (Ceci, 17/11): OptiMaxx Plus →
+    cliente.optimaxx@, Elite y Patrimonial → cliente.inversion@. Vacío si el producto no tiene (lo ve Ceci)."""
+    import json
+    try:
+        m = {**CORREOS_CLIENTES_ALLIANZ_DEFAULT,
+             **(json.loads(CORREOS_CLIENTES_ALLIANZ) if CORREOS_CLIENTES_ALLIANZ else {})}
+    except Exception:  # noqa: BLE001
+        m = dict(CORREOS_CLIENTES_ALLIANZ_DEFAULT)
+    return m.get(str(producto or "").strip().upper(), "")
 
 
 def ejecutivo_de(producto) -> str:

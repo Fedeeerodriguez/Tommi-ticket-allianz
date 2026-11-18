@@ -241,6 +241,8 @@ def _despachar_una(repo: Repositorio, accion: dict, emisor: Emisor, ahora: datet
             return "pendiente_wati"
         from app.wati import WatiLaboratorio, wati_desde_config
         wati = WatiLaboratorio() if wati_lab else wati_desde_config()
+        if accion.get("borrador_editado"):  # Ceci lo modificó (Telegram / panel): sale su texto
+            pay = {**pay, "mensaje": accion["borrador_editado"]}
         params = {"mensaje": pay.get("mensaje", "")}
         # Avisos del motor por etapa → la plantilla de su destinatario (equipo / cliente / guía).
         if pay.get("etapa"):
