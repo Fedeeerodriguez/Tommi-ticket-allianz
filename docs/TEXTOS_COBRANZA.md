@@ -1,19 +1,38 @@
-# Textos de cobranza — resumen diario
+# Textos de cobranza
 
 Estado: **para aprobar** (Ceci / Yans). Generado desde `app/acciones/cobranza_resumen.py`: lo que se lee acá es exactamente lo que sale.
 
-Decidido con Ceci (17/11/2026):
-- Un WhatsApp por asesor por día hábil, a las 10:00 de México. El lunes incluye el fin de semana.
-- Van **los 6 clientes con más días de atraso**; si hay más, el mensaje dice "consulta el resto con Ceci".
-- Las pólizas **sin asesor para avisar** (no están en Notion o falta el teléfono) le llegan a Ceci en un WhatsApp aparte, para que las asigne ella o Jime.
-- Plantilla de WhatsApp **propia de cobranza** (no la de actualización de trámite).
+Acordado con Yans y Ceci (17/11/2026):
+- **Todos los días hábiles a las 10:00 (México)**, con lo acumulado desde el último resumen (el lunes incluye el fin de semana):
+  - a **Yans**, un correo con un **Excel adjunto**: todas las pólizas con cargo rechazado, por asesor y de más a menos días de atraso, y al final una lista aparte **"Sin asesor"**;
+  - a **Ceci**, un WhatsApp con las pólizas sin asesor (no están en Notion o no tienen asesor), para que las asigne.
+- **Martes y jueves a las 10:00**, a **cada asesor**: un correo con el detalle de sus clientes (el mismo Excel, solo con los suyos) y un WhatsApp con la cantidad.
+- Al cliente no se le escribe: lo contacta cobranza por su WATI. Pasa a automático cuando la tasa de acierto sea buena.
+- Las pólizas que Yans marca en la tabla de Cobranzas de Notion como **"Pago hecho: aplicado"** dejan de salir.
 
-**Días de atraso:** Allianz no manda la fecha de vencimiento. Se cuentan desde el **primer cargo rechazado** que conocemos de esa póliza en los últimos 30 días (si Allianz reintenta, sigue contando desde el primero).
+**Días de atraso:** desde la fecha del intento de cobro del **primer** correo de cobranza de esa póliza (si Allianz reintenta, sigue contando desde el primero). Es más exacto que la base de Notion, que se actualiza a mano cada 1 o 2 semanas.
 
-## Plantilla de WhatsApp para crear en WATI
+## Excel (columnas)
 
-- Nombre: `tommy_cobranza` · Categoría: **Utility** · Idioma: **Spanish (MEX)**
-- Variables (por nombre): `{{cantidad}}` `{{clientes}}` `{{indicacion}}`
+Asesor · Cliente · Teléfono del cliente · Plan · Póliza · N° de aportación · Monto · Días de atraso · Fecha del primer cargo rechazado · Motivo del banco · Próximo intento · Avisos. En la lista "Sin asesor" se agrega la columna "Por qué no tiene asesor".
+
+## Plantillas de WhatsApp para crear en WATI
+
+Las dos: categoría **Utility**, idioma **Spanish (MEX)**, variables por nombre.
+
+### `tommy_cobranza_asesor` (al asesor, martes y jueves)
+
+```
+Hola {{nombre}} 👋 Tienes {{cantidad}} con cargo rechazado por Allianz. Te mandé el detalle a tu correo: contacta a cada uno para que tenga el monto disponible o se ponga al corriente.
+
+Recuerda que luego de 60 días de atraso se puede cancelar el plan en cualquier momento.
+
+— Tommy · Babilonia
+```
+
+Ejemplos para Meta: `nombre` = Luisa · `cantidad` = 3 clientes
+
+### `tommy_cobranza` (a Ceci, pólizas sin asesor)
 
 ```
 🔔 *Cobranza Allianz*
@@ -21,54 +40,51 @@ Decidido con Ceci (17/11/2026):
 {{clientes}}
 
 {{indicacion}}
-A los 60 días de atraso Allianz puede cancelar el plan.
+Recuerda que luego de 60 días de atraso se puede cancelar el plan en cualquier momento.
 
 — Tommy · Babilonia
 ```
 
-Ejemplos para cargar en WATI al crearla (Meta los pide para aprobar):
-- `cantidad`: 2 clientes tuyos tuvieron
+Ejemplos para Meta:
+- `cantidad`: 2 pólizas sin asesor tuvieron
 - `clientes`: Luisa Prueba Soto (OptiMaxx Plus PLU3-437821): 23 días de atraso, $2,000.00, fondos insuficientes; Pedro Dos (OptiMaxx Plus PLU3-500001): 9 días de atraso, $1,500.00, fondos insuficientes
-- `indicacion`: Contacta a cada uno para que tenga el monto disponible o se ponga al corriente.
+- `indicacion`: No encontré a quién avisarle: asígnalas en Notion o avísale tú al asesor.
 
-Si en WATI le ponen otro nombre, se cambia con `WATI_PLANTILLA_COBRANZA` en EasyPanel.
+Van las 6 con más atraso; si hay más: "y N más en el correo de cobranza".
 
-## Al asesor
-
-| Caso | `cantidad` | `clientes` | `indicacion` |
-|---|---|---|---|
-| 1 cliente | 1 cliente tuyo tuvo | Luisa Prueba Soto (OptiMaxx Plus PLU3-437821): 23 días de atraso, $2,000.00, fondos insuficientes, 2 avisos | Contacta a cada uno para que tenga el monto disponible o se ponga al corriente. |
-| 9 clientes | 9 clientes tuyos tuvieron | los 6 con más atraso, separados por "; " … ; y 3 más: consulta el resto con Ceci | (igual) |
-
-"2 avisos" aparece cuando Allianz avisó más de una vez de la misma póliza desde el último resumen.
-
-## A Ceci (pólizas sin asesor para avisar)
-
-| `cantidad` | `clientes` | `indicacion` |
-|---|---|---|
-| 2 pólizas sin asesor para avisar tuvieron | Cliente sin identificar (OptiMaxx Plus PLU3-999999): 12 días de atraso, $3,100.00; … | No encontré a quién avisarle: asígnalas en Notion o avísale tú al asesor. |
-
-Si son más de 6: "y N más en el correo de cobranza".
-
-## Correo de cobranza (Ceci, Yans y quien se agregue)
-
-Un correo por día con **la lista completa**, agrupada por asesor y de más a menos atraso, más las pólizas sin asesor con el motivo. Destinatarios en `COBRANZA_RESUMEN_EMAILS`. Sale solo con el envío real de cobranza prendido en el panel; mientras tanto se ve como vista previa en la pestaña Cobranzas.
+## Correo de Yans (ejemplo)
 
 ```
 Asunto: [Tommi] Cobranza 18/11: 4 pólizas con cargo rechazado
 
-Cargos rechazados desde el último resumen: 4 pólizas, 2 asesores avisados. Cada lista va de más a menos días de atraso.
+Cargos rechazados desde el último resumen: 4 pólizas de 2 asesores.
+No incluye 1 con el pago ya aplicado en Notion.
 
-Asesor Uno (2):
-  • Luisa Prueba Soto (OptiMaxx Plus PLU3-437821): 23 días de atraso, $2,000.00, fondos insuficientes, próximo intento 04 de noviembre de 2026, 2 avisos
-  • Pedro Dos (OptiMaxx Plus PLU3-500001): 9 días de atraso, $1,500.00, fondos insuficientes
+El detalle (cliente, teléfono, póliza, aportación, monto, días de atraso) va en el Excel adjunto, de más a menos atraso.
 
-Asesor Dos (1):
-  • Ana Tres (OptiMaxx Plus PLU3-600001): 5 días de atraso, $900.00, fondos insuficientes
+Asesor Uno: 2
+Asesor Dos: 1
 
-Sin asesor para avisar (1): las asigna Ceci o Jime.
-  • Cliente sin identificar (OptiMaxx Plus PLU3-999999): 12 días de atraso, $3,100.00 — No pude identificar la póliza PLU3-999999 en Notion (no está en Emisiones).
+Sin asesor: 1 (se las mandé a Ceci para que las asigne).
 
-A los 60 días de atraso Allianz puede cancelar el plan.
+Recuerda que luego de 60 días de atraso se puede cancelar el plan en cualquier momento.
 — Tommi
+```
+
+## Correo a cada asesor (ejemplo)
+
+```
+Asunto: [Tommi] Cobranza 18/11: 2 clientes tuyos con cargo rechazado
+
+Hola Luisa,
+
+Allianz rechazó el cargo de 2 clientes tuyos desde el último resumen. Contacta a cada uno para que tenga el monto disponible o se ponga al corriente.
+
+  • Luisa Prueba Soto (OptiMaxx Plus PLU3-437821): 23 días de atraso, $2,000.00, aportación 1, fondos insuficientes, próximo intento 04 de noviembre de 2026, 2 avisos
+  • Pedro Dos (OptiMaxx Plus PLU3-500001): 9 días de atraso, $1,500.00, aportación 1, fondos insuficientes
+
+Va el mismo detalle en el Excel adjunto (con el teléfono de cada cliente).
+
+Recuerda que luego de 60 días de atraso se puede cancelar el plan en cualquier momento.
+— Tommi · Babilonia
 ```
