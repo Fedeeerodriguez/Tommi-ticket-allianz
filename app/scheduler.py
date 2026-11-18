@@ -113,9 +113,18 @@ def job_resumen_equipo(repo) -> dict:
 
 
 def job_cobranza_resumen(repo, emisor) -> dict:
-    """Resumen diario de cobranza (COBRANZA_MODO=resumen): un WhatsApp por asesor + correo a Ceci y Yans."""
+    """Resumen diario de cobranza (COBRANZA_MODO=resumen): correo con Excel a Yans + WhatsApp a Ceci (sin asesor)."""
     from app.acciones import cobranza_resumen
     res = cobranza_resumen.armar_resumen(repo)
+    if res.get("whatsapp_encolados"):
+        despachar_pendientes(repo, emisor)
+    return res
+
+
+def job_cobranza_asesores(repo, emisor) -> dict:
+    """Martes y jueves: a cada asesor, un correo con sus clientes con cargo rechazado + un WhatsApp con la cantidad."""
+    from app.acciones import cobranza_resumen
+    res = cobranza_resumen.armar_resumen_asesores(repo)
     if res.get("whatsapp_encolados"):
         despachar_pendientes(repo, emisor)
     return res
@@ -155,6 +164,8 @@ def construir_scheduler():
     if cobranza.activo() and cobranza_resumen.activo():
         sched.add_job(lambda: job_cobranza_resumen(repo, emisor), "cron", day_of_week="mon-fri",
                       hour=(config.COBRANZA_RESUMEN_HORA_MX + 6) % 24, minute=0, id="cobranza_resumen")
+        sched.add_job(lambda: job_cobranza_asesores(repo, emisor), "cron", day_of_week=config.COBRANZA_ASESOR_DIAS,
+                      hour=(config.COBRANZA_ASESOR_HORA_MX + 6) % 24, minute=5, id="cobranza_asesores")
     # Resumen para Ceci: una vez por día hábil a RESUMEN_HORA_MX (México = UTC-6), solo si cambió algo.
     # No corre al arrancar: antes cada deploy le mandaba uno más.
     if config.RESUMEN_EQUIPO_EMAIL:

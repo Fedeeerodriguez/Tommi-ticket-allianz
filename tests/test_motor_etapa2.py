@@ -473,7 +473,7 @@ def test_guia_de_patrimonial_manda_el_comprobante_a_cliente_inversion():
 
 def test_el_largo_no_cambia_de_texto():
     ctx = {**m.contexto({"nro_ticket": "2576612", "proceso": "largo", "nro_solicitud": "1950110"},
-                        {"cliente": "Hortencia Prueba Gama"}), "desde": "26/10", "cc": "x"}
+                        {"cliente": "Hortencia Prueba Gama"}), "desde": "26/10", "cc": "x", "firma": "Cecilia Cansino"}
     assert m.texto_recordatorio("ceci", "esperando_allianz", "recordatorio", ctx).startswith(
         "Ticket 2576612 · Hortencia Prueba Gama: Allianz no responde desde que mandamos los documentos (26/10).")
     assert ("Damos seguimiento a la solicitud 1950110 de Hortencia Prueba Gama (ticket 2576612). El 26/10 "
@@ -483,7 +483,7 @@ def test_el_largo_no_cambia_de_texto():
 
 def test_escalacion_del_corto_habla_del_pago():
     ctx = {**m.contexto({"nro_ticket": "2567479", "proceso": "corto", "poliza": "SVIP-21799"},
-                        {"cliente": "GUILLERMO PRUEBA"}), "desde": "30/10"}
+                        {"cliente": "GUILLERMO PRUEBA"}), "desde": "30/10", "firma": "Cecilia Cansino"}
     assert "Damos seguimiento a la póliza SVIP-21799 de Guillermo Prueba (ticket 2567479). El 30/10 enviamos " \
            "el comprobante de pago" in m.CORREO_ESCALACION.format(**ctx)
 

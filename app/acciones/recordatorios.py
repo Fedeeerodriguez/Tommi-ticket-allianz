@@ -36,10 +36,12 @@ def hora_mx(ahora: datetime) -> datetime:
 
 
 def en_horario(ahora: datetime) -> bool:
-    """Lunes a viernes, sin feriados de México, dentro de HORARIO_AVISOS (hora de CDMX)."""
+    """Lunes a viernes dentro de HORARIO_AVISOS (hora de CDMX). También en feriados (Ceci, 17/11), salvo
+    AVISOS_EN_FERIADOS=false."""
     local = hora_mx(ahora)
     ini, _, fin = config.HORARIO_AVISOS.partition("-")
-    return sla._es_habil(ahora) and int(ini) <= local.hour < int(fin or 24)  # _es_habil ya mira CDMX
+    habil = local.weekday() < 5 if config.AVISOS_EN_FERIADOS else sla._es_habil(ahora)  # _es_habil ya mira CDMX
+    return habil and int(ini) <= local.hour < int(fin or 24)
 
 
 def _ctx(ticket: dict, rec: dict) -> dict:
@@ -48,8 +50,17 @@ def _ctx(ticket: dict, rec: dict) -> dict:
              "que_piden": rec.get("nota")}
     # "Desde": cuándo entró el ticket a la etapa actual (ej. cuándo mandamos los documentos, C4).
     desde = _parse_ts(ticket.get("etapa_desde")) or _parse_ts(rec.get("created_at"))
-    return {**mensajes_etapa.contexto(ticket, etapa), "ticket_id": ticket["id"],
-            "desde": f"{hora_mx(desde):%d/%m}" if desde else "—", "cc": ", ".join(config.ESCALA_CC) or "—"}
+    return {**mensajes_etapa.contexto(ticket, etapa), "ticket_id": ticket["id"], "firma": config.FIRMA_ESCALACION,
+            "desde": f"{hora_mx(desde):%d/%m}" if desde else "—", "cc": ", ".join(copias_escalacion(ticket)) or "—"}
+
+
+def copias_escalacion(ticket: dict) -> list[str]:
+    """La ejecutiva del producto + Penny (ESCALA_CC), sin repetir (Ceci, 17/11)."""
+    out: list[str] = []
+    for c in [config.ejecutivo_de(ticket.get("producto")), *config.ESCALA_CC]:
+        if c and c.lower() not in [x.lower() for x in out]:
+            out.append(c)
+    return out
 
 
 def _avisar(repo: Repositorio, ticket: dict, rec: dict, momento: str, roles: list[str]) -> list[dict]:
@@ -98,7 +109,7 @@ def _correo_escalacion(repo: Repositorio, ticket: dict, rec: dict) -> Optional[d
                                     canal="email", texto=cuerpo, correo_id=rec.get("correo_id"))
     if aviso_id is None:
         return None
-    payload = {"rol": "allianz", "destinatario": None, "cc": list(config.ESCALA_CC), "cuerpo": cuerpo,
+    payload = {"rol": "allianz", "destinatario": None, "cc": copias_escalacion(ticket), "cuerpo": cuerpo,
                "mensaje": f"Escalación: Allianz no responde (ticket {ctx['tk']}).", "requiere_visto_bueno": True,
                "etapa": f"escalado_{rec['motivo']}", "aviso_id": aviso_id}
     accion_id = repo.crear_accion(ticket["id"], "escalar_allianz", "email", payload)
