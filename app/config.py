@@ -76,8 +76,10 @@ CECI_WHATSAPP = os.getenv("CECI_WHATSAPP", "")                           # núme
 WATI_PLANTILLA_AVISO_EQUIPO = os.getenv("WATI_PLANTILLA_AVISO_EQUIPO", "tommy_aviso_equipo")
 WATI_PLANTILLA_AVISO_CLIENTE = os.getenv("WATI_PLANTILLA_AVISO_CLIENTE", "tommy_actualizacion_cliente")
 WATI_PLANTILLA_GUIA = os.getenv("WATI_PLANTILLA_GUIA", "tommy_guia_aportacion")
-# Resumen diario de cobranza (asesor y Ceci): {{cantidad}} {{clientes}} {{indicacion}} — texto en docs/TEXTOS_COBRANZA.md
+# Cobranza a Ceci (pólizas sin asesor): {{cantidad}} {{clientes}} {{indicacion}} — texto en docs/TEXTOS_COBRANZA.md
 WATI_PLANTILLA_COBRANZA = os.getenv("WATI_PLANTILLA_COBRANZA", "tommy_cobranza")
+# Cobranza al asesor (martes y jueves): {{nombre}} {{cantidad}} — el detalle le llega por correo.
+WATI_PLANTILLA_COBRANZA_ASESOR = os.getenv("WATI_PLANTILLA_COBRANZA_ASESOR", "tommy_cobranza_asesor")
 # Guías por producto (los pasos de Ceci): Patrimonial y Elite tienen la suya; el resto usa la general.
 WATI_PLANTILLA_GUIA_PATRIMONIAL = os.getenv("WATI_PLANTILLA_GUIA_PATRIMONIAL", "tommy_guia_patrimonial")
 WATI_PLANTILLA_GUIA_ELITE = os.getenv("WATI_PLANTILLA_GUIA_ELITE", "tommy_guia_elite")
@@ -204,8 +206,34 @@ ESCALAR_A_ALLIANZ = _bool("ESCALAR_A_ALLIANZ", "false")
 # y se escala (correo con copia a la ejecutiva + aviso a Ceci) M h hábiles después.
 RECORDATORIO_HORAS_HABILES = int(os.getenv("RECORDATORIO_HORAS_HABILES", "72"))
 ESCALA_HORAS_HABILES = int(os.getenv("ESCALA_HORAS_HABILES", "24"))
-# Copia del correo de escalación a Allianz (cuando Allianz no responde). ⚠️ por confirmar con Fede.
+# Copia del correo de escalación a Allianz (cuando Allianz no responde): la ejecutiva del producto
+# (EJECUTIVOS_ALLIANZ) + Penny, la ejecutiva principal (Ceci, 17/11). Siempre con aprobación previa de Ceci.
 ESCALA_CC = _csv("ESCALA_CC", "penny.ortiz@allianz.com.mx")
+# Ejecutivo de Allianz por producto (directorio que pasó Ceci el 17/11). Los trámites que abrimos van con copia
+# a este ejecutivo (sin Penny); la escalación, a este + ESCALA_CC. JSON {"PRODUCTO": "correo"} para cambiarlo.
+EJECUTIVOS_ALLIANZ_DEFAULT = {
+    "SVIP": "jose.monterrosa@allianz.com.mx",      # Elite — Alberto Monterrosa ("Beto")
+    "OPPT": "jose.monterrosa@allianz.com.mx",      # Patrimonial — Alberto Monterrosa
+    "GMMI": "blanca.xuluc@allianz.com.mx",         # SGMM — Blanca Xuluc
+    "GMLI": "blanca.xuluc@allianz.com.mx",
+    "SIMPLE": "blanca.xuluc@allianz.com.mx",       # Allianz Simple — Blanca Xuluc
+    "AUTO": "nelda.baqueiro@allianz.com.mx",       # Auto — Nelda Baqueiro
+    "VIPP": "penny.ortiz@allianz.com.mx",          # Vida / Protección — Penny Ortiz
+}
+EJECUTIVOS_ALLIANZ = os.getenv("EJECUTIVOS_ALLIANZ", "")
+# Trámites que el cliente pide por correo (Ceci, 17/11): a Servicio al Cliente de su producto, con copia a
+# integraciones@. JSON {"PRODUCTO": "correo"} para cambiarlo.
+CORREOS_CLIENTES_ALLIANZ_DEFAULT = {
+    "PLU3": "cliente.optimaxx@allianz.com.mx",
+    "SVIP": "cliente.inversion@allianz.com.mx",
+    "OPPT": "cliente.inversion@allianz.com.mx",
+}
+CORREOS_CLIENTES_ALLIANZ = os.getenv("CORREOS_CLIENTES_ALLIANZ", "")
+CC_TRAMITE_CLIENTE = os.getenv("CC_TRAMITE_CLIENTE", "integraciones@babilonia.ai")
+# Firma del correo de escalación a Allianz (Ceci, 17/11).
+FIRMA_ESCALACION = os.getenv("FIRMA_ESCALACION", "Cecilia Cansino")
+# Los recordatorios salen también en feriados (Ceci, 17/11). false = como antes (sin feriados de México).
+AVISOS_EN_FERIADOS = _bool("AVISOS_EN_FERIADOS", "true")
 # Los recordatorios por WhatsApp solo salen en horario de oficina de CDMX (UTC-6, sin horario de
 # verano desde 2022), de lunes a viernes. Fuera de horario esperan al siguiente escaneo.
 HORARIO_AVISOS = os.getenv("HORARIO_AVISOS", "9-19")
@@ -220,12 +248,20 @@ PANEL_URL = os.getenv("PANEL_URL", "")
 # "Notificación de Cobranza (PLU3 / N)" (cargo rechazado) → aviso al asesor y a Ceci (no al cliente: le
 # escribe el equipo de cobranza). Solo con MOTOR_ETAPAS. false = como antes (fuera de alcance).
 COBRANZA_AVISOS = os.getenv("COBRANZA_AVISOS", "true").strip().lower() in ("1", "true", "yes", "si", "sí")
-# Cómo se avisa (app/acciones/cobranza_resumen.py): "resumen" = un WhatsApp por día a cada asesor con todos sus
-# clientes + un correo a Ceci y Yans; "aviso" = un WhatsApp al asesor y otro a Ceci por cada correo (como en
-# hola@). En integraciones@ llegan ~2.400 avisos por mes, hasta 585 en un día: por eso el default es resumen.
+# Cómo se avisa (app/acciones/cobranza_resumen.py): "resumen" = correo diario con Excel a Yans + WhatsApp a Ceci
+# con las pólizas sin asesor + martes y jueves un correo y un WhatsApp a cada asesor; "aviso" = un WhatsApp al
+# asesor y otro a Ceci por cada correo (como en hola@). En integraciones@ llegan ~2.400 avisos por mes, hasta 585
+# en un día: por eso el default es resumen.
 COBRANZA_MODO = os.getenv("COBRANZA_MODO", "resumen").strip().lower()
 COBRANZA_RESUMEN_HORA_MX = int(os.getenv("COBRANZA_RESUMEN_HORA_MX", "10"))   # lun-vie, hora de México
-COBRANZA_RESUMEN_EMAILS = _csv("COBRANZA_RESUMEN_EMAILS", "")                  # Ceci y Yans
+COBRANZA_RESUMEN_EMAILS = _csv("COBRANZA_RESUMEN_EMAILS", "")                  # Yans (y quien se sume)
+COBRANZA_ASESOR_DIAS = os.getenv("COBRANZA_ASESOR_DIAS", "tue,thu")            # a los asesores: martes y jueves
+COBRANZA_ASESOR_HORA_MX = int(os.getenv("COBRANZA_ASESOR_HORA_MX", "10"))
+# Pagos aplicados: Yans marca en la tabla de Cobranzas (NOTION_DB_COBRANZAS) "Pago hecho" = aplicado → esa
+# póliza ya no sale en los resúmenes. Se miran las filas editadas en los últimos COBRANZA_PAGO_DIAS.
+COBRANZA_PROP_PAGO = os.getenv("COBRANZA_PROP_PAGO", "Pago hecho")
+COBRANZA_VALOR_PAGADO = os.getenv("COBRANZA_VALOR_PAGADO", "aplicado")
+COBRANZA_PAGO_DIAS = int(os.getenv("COBRANZA_PAGO_DIAS", "60"))
 # Los avisos de la misma póliza dentro de estos días van al mismo ticket (Allianz reintenta y avisa cada vez).
 COBRANZA_AGRUPAR_DIAS = int(os.getenv("COBRANZA_AGRUPAR_DIAS", "30"))
 
@@ -238,13 +274,21 @@ MOTOR_ETAPAS_PROCESOS = _csv("MOTOR_ETAPAS_PROCESOS", "largo")
 # manda el comprobante por su cuenta (a cliente.inversion@ o al ticket), según la guía de Ceci.
 # Ninguno por defecto: OptiMaxx Plus se cobra en automático (Ceci, 29/10); el atraso lo avisa Allianz.
 RECORDATORIO_PAGO_PRODUCTOS = _csv("RECORDATORIO_PAGO_PRODUCTOS", "")
+# Productos del proceso corto SIN guía de aportación: OptiMaxx Plus se cobra en automático desde la primera y
+# Allianz ya le avisa al cliente (Ceci, 17/11).
+GUIA_SIN_PRODUCTOS = _csv("GUIA_SIN_PRODUCTOS", "plu3")
 RECORDATORIO_PAGO_HORAS_HABILES = int(os.getenv("RECORDATORIO_PAGO_HORAS_HABILES",
                                                 str(RECORDATORIO_HORAS_HABILES)))
 # Aprobación de la guía de aportación por Telegram. Sin token/chat (o apagado) se aprueba desde el
 # panel. Es un canal interno (solo Ceci): no depende de DRY_RUN; lo que sale al cliente sí.
 TELEGRAM_APROBACIONES = _bool("TELEGRAM_APROBACIONES", "false")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+# Chats que aprueban (Ceci y Jime, que la reemplaza en todo — 17/11): uno o varios separados por coma.
 TELEGRAM_CECI_CHAT_ID = os.getenv("TELEGRAM_CECI_CHAT_ID", "")
+
+
+def telegram_chats() -> list[str]:
+    return [c.strip() for c in str(TELEGRAM_CECI_CHAT_ID or "").split(",") if c.strip()]
 
 # Intervalo de polling IMAP (segundos).
 POLL_SEGUNDOS = int(os.getenv("POLL_SEGUNDOS", "90"))
@@ -286,7 +330,29 @@ def hay_wati() -> bool:
 
 def hay_telegram() -> bool:
     """Aprobaciones por Telegram encendidas y configuradas."""
-    return bool(TELEGRAM_APROBACIONES and TELEGRAM_BOT_TOKEN and TELEGRAM_CECI_CHAT_ID)
+    return bool(TELEGRAM_APROBACIONES and TELEGRAM_BOT_TOKEN and telegram_chats())
+
+
+def correo_clientes_allianz(producto) -> str:
+    """Correo de Servicio al Cliente de Allianz al que el cliente manda sus trámites (Ceci, 17/11): OptiMaxx Plus →
+    cliente.optimaxx@, Elite y Patrimonial → cliente.inversion@. Vacío si el producto no tiene (lo ve Ceci)."""
+    import json
+    try:
+        m = {**CORREOS_CLIENTES_ALLIANZ_DEFAULT,
+             **(json.loads(CORREOS_CLIENTES_ALLIANZ) if CORREOS_CLIENTES_ALLIANZ else {})}
+    except Exception:  # noqa: BLE001
+        m = dict(CORREOS_CLIENTES_ALLIANZ_DEFAULT)
+    return m.get(str(producto or "").strip().upper(), "")
+
+
+def ejecutivo_de(producto) -> str:
+    """Correo del ejecutivo de Allianz del producto (vacío si no hay uno asignado)."""
+    import json
+    try:
+        m = {**EJECUTIVOS_ALLIANZ_DEFAULT, **(json.loads(EJECUTIVOS_ALLIANZ) if EJECUTIVOS_ALLIANZ else {})}
+    except Exception:  # noqa: BLE001
+        m = dict(EJECUTIVOS_ALLIANZ_DEFAULT)
+    return m.get(str(producto or "").strip().upper(), "")
 
 
 def directorio_allianz(clave: str) -> str:

@@ -61,9 +61,12 @@ def test_la_guia_le_llega_a_ceci_con_botones(repo, bot):
     assert msg["text"].startswith("Guía de aportación · Ticket 2567479 · Guillermo Prueba Castro · Elite")
     # Elite: el n° de solicitud ya viene; falta el monto (Ceci lo completa respondiendo).
     # El ejemplo para responder usa el n° de solicitud de ESTA guía (Ceci, 29/10: tienen que coincidir).
-    assert "⚠️ Falta completar monto. Responde a este mensaje así:\nMonto: $50,000 MXN\nSolicitud: 25287681" in msg["text"]
+    assert ("⚠️ Falta completar monto. Toca Modificar y mándame los datos así:\nMonto: $50,000 MXN\n"
+            "Solicitud: 25287681") in msg["text"]
     botones = msg["reply_markup"]["inline_keyboard"][0]
-    assert [b["callback_data"] for b in botones] == [f"ap:{ap['id']}:1", f"de:{ap['id']}:1"]
+    # Ceci, 17/11: Autorizar / Modificar.
+    assert [(b["text"], b["callback_data"]) for b in botones] == [("✅ Autorizar", f"ap:{ap['id']}:1"),
+                                                                  ("✏️ Modificar", f"mo:{ap['id']}:1")]
     assert ap["telegram_msg_id"] == "101"
     assert telegram.enviar_pendientes(repo, bot) == 0  # no se manda dos veces
 
@@ -113,7 +116,7 @@ def test_corregir_respondiendo_y_aprobar(repo, bot, guia_general):
     assert "• Monto: $50,000 MXN\n• Datos para depositar: CLABE 0123 a nombre de Allianz" in cli["mensaje"]
     final = repo.obtener_aprobacion(ap["id"])
     assert (final["estado"], final["resuelto_por"]) == ("aprobada", "telegram:ceci")
-    assert bot.de("sendMessage")[-1]["text"].startswith("✅ Aprobada")
+    assert bot.de("sendMessage")[-1]["text"].startswith("✅ Autorizada")
     assert bot.de("editMessageReplyMarkup")[-1]["reply_markup"] == {"inline_keyboard": []}
 
 

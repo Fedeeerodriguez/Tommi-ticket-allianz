@@ -81,6 +81,13 @@ def destino(tramite: str) -> str:
     return config.directorio_allianz((tramite or "").strip())
 
 
+def copias(poliza: str) -> list[str]:
+    """Copia al ejecutivo de Allianz del producto, sin Penny (Ceci, 17/11: Penny va solo en las escalaciones)."""
+    producto = "".join(ch for ch in (poliza or "").upper() if ch.isalnum())[:4]
+    ejecutivo = config.ejecutivo_de(producto)
+    return [ejecutivo] if ejecutivo else []
+
+
 def _norm(s: Optional[str]) -> str:
     s = unicodedata.normalize("NFKD", s or "").encode("ascii", "ignore").decode().lower()
     s = re.sub(r"^\s*\[ext\]\s*", "", s)
@@ -217,7 +224,7 @@ def abrir(repo: Repositorio, tramite: str, poliza: str, nota: Optional[str] = No
     accion_id = repo.crear_accion(ticket_id, TIPO_ACCION, "email", {
         "rol": "allianz", "destinatario": p["destino"], "asunto": p["asunto"], "cuerpo": p["cuerpo"],
         "mensaje": f"Abrir trámite: {p['asunto']}", "tramite": p["tramite"], "abierto_por": usuario,
-        "adjuntos": p["_adjuntos"],
+        "adjuntos": p["_adjuntos"], "cc": copias(p["poliza"]),
     })
     return {"ok": True, "motivo": "trámite abierto: el correo sale en el próximo ciclo",
             "ticket_id": ticket_id, "accion_id": accion_id, "asunto": p["asunto"],

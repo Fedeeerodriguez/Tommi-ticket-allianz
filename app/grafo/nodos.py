@@ -24,7 +24,8 @@ from app.registro import registrar_en_notion
 from app.tickets import sla
 from app.tramites import identificar_tramite
 from app.tickets.engine import (
-    _ESTADO_POR_TIPO, _EVENTO_POR_TIPO, _TIPOS_TICKET, _abierto_por, es_delicado, estado_sugerido,
+    _ESTADO_POR_TIPO, _EVENTO_POR_TIPO, _TIPOS_TICKET, _abierto_por, clave_cancelacion, es_cancelacion, es_delicado,
+    estado_sugerido,
 )
 
 from .estado import EstadoCorreo
@@ -171,6 +172,8 @@ def n_upsert_ticket(estado: EstadoCorreo, repo: Repositorio) -> dict:
                                        "vence_en": vence_en, "estado": estado_tk.value,
                                        "delicado": delicado, "abierto_por": _abierto_por(clf.tipo)})
 
+    if delicado and es_cancelacion(correo):   # cancelación: además de Ceci, se le avisa al asesor (17/11)
+        repo.guardar_valor(clave_cancelacion(ticket_id), "1")
     repo.vincular_correo(estado["correo_id"], ticket_id)
     repo.agregar_evento(ticket_id, estado["correo_id"],
                         clf.subtipo or _EVENTO_POR_TIPO.get(clf.tipo, "evento"),

@@ -158,6 +158,8 @@ def valor(prop: dict | None):
         return "".join(x.get("plain_text", "") for x in (v or [])) or None
     if t in ("select", "status"):
         return v.get("name") if v else None
+    if t == "multi_select":
+        return ", ".join(x.get("name", "") for x in (v or [])) or None
     if t in ("number", "email", "phone_number", "url", "checkbox"):
         return v
     if t == "people":
@@ -314,6 +316,54 @@ def resolver_emision(poliza: str | None = None, nro_solicitud=None,
         if res:
             return _extraer(res[0], mapa)
     return {}
+
+
+# ───────────────────── Cobranzas: pagos ya aplicados ─────────────────────
+CAMPOS_COBRANZA = {
+    "poliza": ["numero de poliza", "poliza", "no de poliza", "num poliza"],
+    "pago": [config.COBRANZA_PROP_PAGO, "pago hecho", "pago"],
+}
+
+
+def _query_todo(db_id: str, filt: dict, maximo: int = 2000) -> list[dict]:
+    """Todas las páginas que cumplen el filtro (paginando), hasta `maximo`."""
+    out, cursor = [], None
+    while len(out) < maximo:
+        body: dict = {"page_size": 100, "filter": filt}
+        if cursor:
+            body["start_cursor"] = cursor
+        data = _post(f"{_API}/databases/{db_id}/query", body)
+        out += data.get("results", []) or []
+        if not data.get("has_more"):
+            break
+        cursor = data.get("next_cursor")
+    return out
+
+
+def polizas_pagadas(polizas: list[str]) -> set[str]:
+    """De `polizas`, las que en la tabla de Cobranzas tienen "Pago hecho" = aplicado (las marca Yans, 17/11).
+    Mira solo filas editadas en los últimos COBRANZA_PAGO_DIAS. Sin Notion o sin la columna → set()."""
+    db = descubrir_db("cobranzas")
+    if not (polizas and db and config.NOTION_TOKEN):
+        return set()
+    mapa = mapear_campos(db, CAMPOS_COBRANZA)
+    if not (mapa.get("poliza") and mapa.get("pago")):
+        log.warning("cobranzas: no encuentro las columnas de póliza / pago en la tabla de Notion: %s", mapa)
+        return set()
+    from datetime import datetime, timedelta, timezone
+    desde = (datetime.now(timezone.utc) - timedelta(days=config.COBRANZA_PAGO_DIAS)).isoformat(timespec="seconds")
+    buscadas = {norm_poliza(p): p for p in polizas if p}
+    hechas = set()
+    pagado = _norm(config.COBRANZA_VALOR_PAGADO)
+    for page in _query_todo(db, {"timestamp": "last_edited_time", "last_edited_time": {"on_or_after": desde}}):
+        props = page.get("properties", {})
+        if pagado not in _norm(str(valor(props.get(mapa["pago"])) or "")):
+            continue
+        n = norm_poliza(valor(props.get(mapa["poliza"])))
+        for clave, original in buscadas.items():
+            if misma_poliza(n, clave):
+                hechas.add(original)
+    return hechas
 
 
 def diagnostico() -> dict:

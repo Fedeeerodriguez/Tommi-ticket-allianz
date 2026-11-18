@@ -298,7 +298,7 @@ CORREO_ESCALACION = (
     "Damos seguimiento {referencia}. El {desde} enviamos {lo_enviado_formal} "
     "y a la fecha no hemos recibido respuesta.\n\n"
     "¿Nos apoyan con el estatus, por favor?\n\n"
-    "Quedamos atentos.\nBabilonia"
+    "Quedamos atentos.\n{firma}\nBabilonia"
 )
 
 

@@ -248,11 +248,13 @@ def _plan_tramite(repo: Repositorio, ticket_id: int, ctx: dict, correo: Correo,
             "tipo_accion": "consulta_general", "canal": "wati", "rol": "ceci", "destinatario": None,
             "mensaje": f"Consulta de proceso sin trámite reconocido → revisar. Asunto: {correo.asunto}"}])
 
-    if tramite.ruta == Ruta.CLIENTE_PORTAL:
+    if tramite.ruta != Ruta.NOSOTROS_MAIL:  # portal, o lo pide el cliente por correo: instrucciones
         return _persistir(repo, ticket_id, [{
             "tipo_accion": "instruir_tramite", "canal": "email_cliente", "rol": "cliente",
             "destinatario": destino, "asunto": f"Cómo hacer: {tramite.nombre}",
-            "mensaje": instrucciones_cliente(tramite, nombre)}])
+            "mensaje": instrucciones_cliente(tramite, nombre, ctx.get("poliza"), ctx.get("cliente_nombre"),
+                                             "".join(ch for ch in str(ctx.get("poliza") or "").upper()
+                                                     if ch.isalnum())[:4])}])
 
     # NOSOTROS_MAIL: lo hacemos nosotros por correo (a Allianz) + le avisamos al cliente.
     hola = f"Hola {nombre}! " if nombre else "Hola! "
