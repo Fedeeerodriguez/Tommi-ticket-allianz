@@ -86,9 +86,9 @@ def job_recordatorios(repo, emisor) -> dict:
 
 
 def job_telegram(repo, emisor) -> dict:
-    """Etapa 2: guías de aportación a Ceci por Telegram + sus botones/correcciones."""
+    """Telegram: guías de aportación y correos retenidos para Ceci/Jime + sus botones (Autorizar / Modificar)."""
     from app.rieles import telegram
-    enviadas = telegram.enviar_pendientes(repo)
+    enviadas = telegram.enviar_pendientes(repo) + telegram.enviar_acciones(repo)
     res = telegram.procesar_updates(repo)
     desp = despachar_pendientes(repo, emisor) if res["plan"] else {"conteo": {}}
     if enviadas or res["botones"] or res["correcciones"]:
