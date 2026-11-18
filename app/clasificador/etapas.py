@@ -91,7 +91,7 @@ ACCIONES: dict[tuple[Etapa, str], Accion] = {
     (Etapa.CERRADO_INACTIVIDAD, "*"): Accion(LOS_3, cancela_recordatorio=True, cerrar=True),
     (Etapa.RECORDATORIO_ALLIANZ, "*"): Accion(nota="Recordatorio automático de Allianz: se ignora."),
     (Etapa.COPIA_EJECUTIVA, "*"): Accion(nota="Copia del mismo mensaje: ya se avisó con el original."),
-    (Etapa.NOTA_EJECUTIVA, "*"): Accion(("ceci", "asesor"), nota="Comentario propio de la ejecutiva."),
+    (Etapa.NOTA_EJECUTIVA, "*"): Accion(("ceci",), nota="Comentario propio de la ejecutiva: solo a Ceci (17/11)."),
     (Etapa.REBOTE_TICKET_CERRADO, "*"): Accion(
         ("ceci",), nota="Nuestra respuesta NO entró: el ticket ya estaba cerrado. Hay que abrir uno nuevo."),
     (Etapa.EMISION_REGISTRADA, "*"): Accion(nota="Registrar póliza y solicitud (sin avisar)."),

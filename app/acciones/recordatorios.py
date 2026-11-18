@@ -26,7 +26,8 @@ from app.db import Repositorio
 from app.tickets import sla
 
 from . import mensajes_etapa
-from .motor_etapas import REC_ESPERANDO_ALLIANZ, _encolar, _parse_ts, mas_horas_habiles, rol_activo
+from .motor_etapas import (REC_ESPERANDO_ALLIANZ, _encolar, _parse_ts, delicado_avisa_asesor, mas_horas_habiles,
+                           rol_activo)
 
 log = logging.getLogger(__name__)
 
@@ -76,7 +77,8 @@ def _avisar(repo: Repositorio, ticket: dict, rec: dict, momento: str, roles: lis
     for rol in sorted(roles, key=lambda r: r != "cliente"):
         if rol == "ceci":
             continue
-        if ticket.get("delicado"):  # igual que el motor: en un ticket delicado solo se le escribe a Ceci
+        # Igual que el motor: en un ticket delicado solo se le escribe a Ceci (en una cancelación, también al asesor).
+        if ticket.get("delicado") and not (rol == "asesor" and delicado_avisa_asesor(repo, ticket)):
             omitidos.append(f"Ticket delicado: no se le recordó al {rol}.")
             continue
         if not identificado:

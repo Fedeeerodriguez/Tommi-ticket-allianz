@@ -81,6 +81,30 @@ def es_delicado(correo: Correo) -> bool:
     return bool(_RE_DELICADO.search(f"{correo.asunto}\n{correo.cuerpo_texto}"))
 
 
+# Cancelación (la pide el cliente o Allianz avisa que se canceló): sigue siendo delicado —al cliente no se le
+# escribe—, pero además del aviso a Ceci se le avisa al asesor para que lo contacte (Ceci, 17/11).
+_RE_CANCELACION = re.compile(r"\b(cancelaci|cancelar|cancelad)", re.I)
+# Pie fijo de Allianz que menciona "cancelación" en todos los avisos de solicitud resuelta (no es una).
+_RE_PIE_CANCELACION = re.compile(r"no\s+es\s+posible\s+realizar\s+ning[uú]n\s+cambio\s+o\s+cancelaci[oó]n", re.I)
+
+
+def es_cancelacion(correo: Correo) -> bool:
+    texto = _RE_PIE_CANCELACION.sub(" ", f"{correo.asunto}\n{correo.cuerpo_texto}")
+    return bool(_RE_CANCELACION.search(texto))
+
+
+def clave_cancelacion(ticket_id) -> str:
+    return f"delicado_cancelacion:{ticket_id}"
+
+
+def delicado_avisa_asesor(repo: Repositorio, ticket: dict) -> bool:
+    """¿Este ticket delicado es una cancelación? Entonces el asesor sí recibe el aviso (el cliente no)."""
+    try:
+        return bool(ticket.get("id") and repo.leer_valor(clave_cancelacion(ticket["id"])))
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def procesar_correo(repo: Repositorio, correo: Correo, clf: Clasificacion, entidades: dict) -> dict:
     """Devuelve un resumen de lo que se hizo (para logging/UI)."""
     correo_id, es_nuevo = repo.guardar_correo(correo, clf, entidades)

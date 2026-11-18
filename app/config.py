@@ -265,6 +265,9 @@ MOTOR_ETAPAS_PROCESOS = _csv("MOTOR_ETAPAS_PROCESOS", "largo")
 # manda el comprobante por su cuenta (a cliente.inversion@ o al ticket), según la guía de Ceci.
 # Ninguno por defecto: OptiMaxx Plus se cobra en automático (Ceci, 29/10); el atraso lo avisa Allianz.
 RECORDATORIO_PAGO_PRODUCTOS = _csv("RECORDATORIO_PAGO_PRODUCTOS", "")
+# Productos del proceso corto SIN guía de aportación: OptiMaxx Plus se cobra en automático desde la primera y
+# Allianz ya le avisa al cliente (Ceci, 17/11).
+GUIA_SIN_PRODUCTOS = _csv("GUIA_SIN_PRODUCTOS", "plu3")
 RECORDATORIO_PAGO_HORAS_HABILES = int(os.getenv("RECORDATORIO_PAGO_HORAS_HABILES",
                                                 str(RECORDATORIO_HORAS_HABILES)))
 # Aprobación de la guía de aportación por Telegram. Sin token/chat (o apagado) se aprueba desde el

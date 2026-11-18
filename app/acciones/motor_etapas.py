@@ -257,6 +257,12 @@ def _recordatorios(repo: Repositorio, ticket_id: int, e: Etapa, etapa: dict, ron
 _asunto = mensajes_etapa._asunto
 
 
+def delicado_avisa_asesor(repo: Repositorio, ticket: dict) -> bool:
+    """Ticket delicado por una cancelación: el asesor sí recibe el aviso (Ceci, 17/11)."""
+    from app.tickets.engine import delicado_avisa_asesor as _f  # import tardío: engine importa app.acciones
+    return _f(repo, ticket)
+
+
 def rol_activo(rol: str) -> bool:
     """Encendido gradual (MOTOR_ETAPAS_ROLES): a un rol apagado no se le registra ni encola nada."""
     return rol in {r.strip().lower() for r in config.MOTOR_ETAPAS_ROLES}
@@ -355,6 +361,12 @@ def decidir_por_etapa(repo: Repositorio, ticket_id: int, etapa: dict, correo_id:
     # Guía de aportación (corto, C2): no sale a nadie hasta que Ceci la apruebe. Si las aprobaciones
     # van por Telegram, Ceci no recibe además el aviso por WhatsApp.
     guia = bool(acc.aprobacion_telegram and e not in SIN_AVANCE)
+    # OptiMaxx Plus: la primera aportación se cobra en automático y Allianz ya le avisa al cliente → sin guía ni
+    # aviso (Ceci, 17/11).
+    if guia and str(etapa.get("producto") or ticket.get("producto") or "").lower() in config.GUIA_SIN_PRODUCTOS:
+        guia, roles = False, []
+        repo.agregar_evento(ticket_id, correo_id, "sin_guia",
+                            "OptiMaxx Plus: la primera aportación se cobra en automático, no lleva guía")
     if guia and config.hay_telegram():
         roles = [r for r in roles if r != "ceci"]
 
@@ -389,7 +401,7 @@ def decidir_por_etapa(repo: Repositorio, ticket_id: int, etapa: dict, correo_id:
             continue
         if rol == "cliente" and acc.delicado:
             continue  # rechazado / declinado: el asesor contacta al cliente
-        if ticket.get("delicado"):
+        if ticket.get("delicado") and not (rol == "asesor" and delicado_avisa_asesor(repo, ticket)):
             omitidos.append(f"Ticket delicado: no se le avisó al {rol}.")
             continue
         if not (ident and ident.ok):

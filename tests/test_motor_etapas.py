@@ -279,8 +279,9 @@ def test_nota_de_la_ejecutiva_lleva_lo_que_escribio(repo, tk):
             "Hola, ya subí la hoja membretada al ticket.\nDe: Allianz.Mexico\n...")
     r = decidir_por_etapa(repo, tk, detectar_etapa(*nota, "blanca.xuluc@allianz.com.mx").como_dict(),
                           correo_id=2, ahora=LUNES, buscar=notion(fila()))
-    ases = next(a for a in r["plan"] if a["rol"] == "asesor")
-    assert ases["mensaje"].endswith("la ejecutiva de Allianz escribió: Hola, ya subí la hoja membretada al ticket")
+    # Solo a Ceci (17/11): el asesor ya no recibe las notas de la ejecutiva.
+    assert [a["rol"] for a in r["plan"]] == ["ceci"]
+    assert "la ejecutiva de Allianz escribió: Hola, ya subí la hoja membretada al ticket" in r["plan"][0]["mensaje"]
 
 
 def test_apertura_sin_producto_ni_solicitud_no_dice_tu_seguro(repo, tk):
@@ -290,3 +291,19 @@ def test_apertura_sin_producto_ni_solicitud_no_dice_tu_seguro(repo, tk):
     assert textos["asesor"] == ("Ticket 2576612 · Hortencia Prueba Gama: Allianz abrió la solicitud, está en proceso "
                                 "de autorización.")
     assert textos["cliente"].startswith("Hola Hortencia, tu solicitud ya está en Allianz")
+
+
+def test_cancelacion_es_delicada_pero_tambien_avisa_al_asesor(repo, tk):
+    """Ceci, 17/11: una cancelación (la pide el cliente o la avisa Allianz) va a Ceci y al asesor; al cliente no."""
+    from app.models import Correo
+    from app.tickets.engine import clave_cancelacion, delicado_avisa_asesor, es_cancelacion
+    assert es_cancelacion(Correo("m", "x", "x", [], [], "Solicitud de cancelación de póliza", ""))
+    pie = "Recuerda que no es posible realizar ningún cambio o cancelación después de atendida."
+    assert not es_cancelacion(Correo("m", "x", "x", [], [], "Solicitud resuelta", pie))
+    repo.actualizar_ticket(tk, delicado=True)
+    r = correr(repo, tk, C1, 1)
+    assert "asesor" not in [a["rol"] for a in r["plan"]]          # delicado común (siniestro…): solo Ceci
+    repo.guardar_valor(clave_cancelacion(tk), "1")
+    assert delicado_avisa_asesor(repo, repo.obtener_ticket(tk))
+    r = correr(repo, tk, C5, 5)
+    assert "asesor" in [a["rol"] for a in r["plan"]] and "cliente" not in [a["rol"] for a in r["plan"]]

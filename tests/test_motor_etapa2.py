@@ -99,6 +99,7 @@ def guia_general(monkeypatch):
     from app.acciones import mensajes_etapa
     monkeypatch.delitem(mensajes_etapa.GUIAS, "PLU3")
     monkeypatch.setattr(config, "RECORDATORIO_PAGO_PRODUCTOS", ["plu3"])
+    monkeypatch.setattr(config, "GUIA_SIN_PRODUCTOS", [])   # desde el 17/11 OptiMaxx Plus no lleva guía
 
 
 @pytest.fixture
@@ -268,9 +269,18 @@ def test_aprobar_elite_manda_la_guia_sin_recordatorio_de_pago(repo):
     assert not r2["ok"] and r2["plan"] == []
 
 
-def test_optimaxx_plus_cargo_automatico_sin_recordatorio_de_pago(repo):
-    # Ceci (29/10): en OptiMaxx Plus el cargo es automático. Ceci completa solo el monto y aprueba;
-    # al cliente se le recuerda tener el monto disponible, y no hay recordatorio de pago.
+def test_optimaxx_plus_no_lleva_guia(repo):
+    # Ceci (17/11): la primera aportación de OptiMaxx Plus se cobra en automático y Allianz ya le avisa al
+    # cliente → no hay guía para aprobar ni avisos.
+    tk = plu3(repo)
+    r = correr(repo, tk, C2_PLU3, 1)
+    assert repo.listar_aprobaciones(tk) == [] and r["plan"] == []
+    assert vivos(repo, tk) == {}
+
+
+def test_optimaxx_plus_con_guia_si_se_vuelve_a_prender(repo, monkeypatch):
+    # Si algún día vuelve a llevar guía (GUIA_SIN_PRODUCTOS vacío), es la de cargo automático del 29/10.
+    monkeypatch.setattr(config, "GUIA_SIN_PRODUCTOS", [])
     tk = plu3(repo)
     correr(repo, tk, C2_PLU3, 1)
     ap = repo.listar_aprobaciones(tk)[0]

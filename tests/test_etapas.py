@@ -392,7 +392,7 @@ Blanca Isabel Xuluc Pérez
 Ejecutivo Comercial Sureste
 De: Allianz.Mexico@allianz.com.mx""", "blanca.xuluc@allianz.com.mx")
     assert r.etapa == Etapa.NOTA_EJECUTIVA and "hoja membretada" in r.mensaje
-    assert set(r.accion.avisar) == {"ceci", "asesor"}
+    assert set(r.accion.avisar) == {"ceci"}   # solo a Ceci (17/11)
 
 
 def test_rebote_ticket_ya_cerrado_alerta_a_ceci():
