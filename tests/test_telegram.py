@@ -154,6 +154,14 @@ def test_sin_chats_cargados_el_bot_igual_contesta_start(repo, bot, monkeypatch):
     assert bot.de("sendMessage") == [{"chat_id": "4242", "text": "Hola. Tu chat id es 4242."}]
 
 
+def test_un_chat_sin_cargar_recibe_su_chat_id_con_cualquier_mensaje(repo, bot):
+    # Ceci escribió "Hola" (o "Start" sin la barra): igual le contesta su chat id.
+    bot.updates = [{"update_id": 1, "message": {"message_id": 9, "text": "Hola", "chat": {"id": 5151}}},
+                   {"update_id": 2, "message": {"message_id": 10, "text": "Start", "chat": {"id": 6161}}}]
+    telegram.procesar_updates(repo, bot)
+    assert [m["chat_id"] for m in bot.de("sendMessage")] == ["5151", "6161"]
+
+
 def test_offset_no_repite_updates(repo, bot):
     tk, ap = preparar(repo, bot)
     bot.updates = [boton(7, f"de:{ap['id']}:1")]

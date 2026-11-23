@@ -419,10 +419,15 @@ def procesar_updates(repo: Repositorio, transporte: Optional[Transporte] = None)
         try:
             cq, msg = u.get("callback_query"), u.get("message")
             chat = str(((cq or {}).get("message") or msg or {}).get("chat", {}).get("id", ""))
-            if msg and (msg.get("text") or "").strip().startswith("/start"):
+            # "/start" (como sea que lo escriba) o cualquier mensaje de un chat que todavía no está cargado:
+            # se contesta el chat id, para que configurarlo no dependa de escribir exacto "/start".
+            if msg and ((msg.get("text") or "").strip().lower().startswith(("/start", "start"))
+                        or chat not in _chats()):
                 enviar("sendMessage", {"chat_id": chat, "text": f"Hola. Tu chat id es {chat}."})
-                nombre = ((msg.get("from") or {}).get("first_name") or "").strip()
-                log.info("telegram: /start de %s · chat id %s%s", nombre or "?", chat,
+                if chat not in _chats():
+                    res["ignorados"] += 1  # se le contesta el id, pero no aprueba ni corrige nada
+                nombre =((msg.get("from") or {}).get("first_name") or "").strip()
+                log.info("telegram: mensaje de %s · chat id %s%s", nombre or "?", chat,
                          "" if chat in _chats() else " (todavía no está en TELEGRAM_CECI_CHAT_ID)")
             elif chat not in _chats():
                 res["ignorados"] += 1  # solo Ceci y Jime aprueban
