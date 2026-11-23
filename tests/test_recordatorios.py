@@ -87,7 +87,10 @@ def test_c4_corta_a_tiempo_y_escala_a_allianz_para_aprobar(repo):
     assert [a["rol"] for a in r["plan"]] == ["ceci"] and "Allianz no responde" in r["plan"][0]["mensaje"]
     e = escanear_recordatorios(repo, utc(30, 17))
     correo = next(a for a in e["plan"] if a["tipo_accion"] == "escalar_allianz")
-    assert correo["cc"] == ["penny.ortiz@allianz.com.mx"] and "no hemos recibido respuesta" in correo["cuerpo"]
+    # Copia a la ejecutiva del producto (gastos médicos → Blanca) y a Penny; firma Cecilia Cansino (Ceci, 17/11).
+    assert correo["cc"] == ["blanca.xuluc@allianz.com.mx", "penny.ortiz@allianz.com.mx"]
+    assert "no hemos recibido respuesta" in correo["cuerpo"]
+    assert correo["cuerpo"].endswith("Quedamos atentos.\nCecilia Cansino\nBabilonia")
     assert any(a["rol"] == "ceci" and "para que lo apruebes" in a["mensaje"] for a in e["plan"])
 
     # Despacho: el correo a Allianz queda retenido hasta que Ceci lo aprueba.
@@ -99,7 +102,8 @@ def test_c4_corta_a_tiempo_y_escala_a_allianz_para_aprobar(repo):
     despachar_pendientes(repo)
     esc = next(a for a in repo.listar_acciones(tk) if a["tipo_accion"] == "escalar_allianz")
     res = json.loads(esc["resultado"])
-    assert esc["estado"] == "simulada" and res["cc"] == ["penny.ortiz@allianz.com.mx"]  # DRY_RUN
+    assert esc["estado"] == "simulada"  # DRY_RUN
+    assert res["cc"] == ["blanca.xuluc@allianz.com.mx", "penny.ortiz@allianz.com.mx"]
 
 
 def test_otra_escalacion_tambien_pide_aprobacion_aunque_el_ticket_ya_este_autorizado(repo):
@@ -117,7 +121,14 @@ def test_fuera_de_horario_espera(repo):
     assert escanear_recordatorios(repo, utc(31, 16))["fuera_de_horario"]   # sábado
     assert escanear_recordatorios(repo, utc(29, 3))["fuera_de_horario"]    # mié 21:00 CDMX
     assert avisos(repo, tk, "recordatorio") == []
-    assert en_horario(utc(28, 15)) and not en_horario(utc(28, 14)) and not en_horario(utc(16, 16, mes=11))
+    assert en_horario(utc(28, 15)) and not en_horario(utc(28, 14))
+
+
+def test_en_feriado_tambien_sale(monkeypatch):
+    """Ceci, 17/11: los recordatorios salen también en feriados (16/11, Revolución). Se puede volver atrás."""
+    assert en_horario(utc(16, 16, mes=11))
+    monkeypatch.setattr(config, "AVISOS_EN_FERIADOS", False)
+    assert not en_horario(utc(16, 16, mes=11))
 
 
 def test_ticket_cerrado_corta_lo_que_quede(repo):

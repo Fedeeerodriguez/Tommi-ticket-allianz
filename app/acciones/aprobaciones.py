@@ -78,11 +78,22 @@ def puede_aprobarse(repo: Repositorio, ap: Optional[dict], cambios: Optional[dic
 
 def aprobar(repo: Repositorio, aprobacion_id: int, por: str, monto: Optional[str] = None,
             datos_deposito: Optional[str] = None, ahora: Optional[datetime] = None,
-            solicitud: Optional[str] = None) -> dict:
+            solicitud: Optional[str] = None, texto_libre: Optional[str] = None) -> dict:
     """Aprueba la guía (con los campos que Ceci completó en el momento, si vinieron) y la manda a
-    cliente y asesor."""
+    cliente y asesor. Con `texto_libre` (Telegram → Modificar, Ceci 17/11) al cliente le sale ese texto tal cual,
+    por la plantilla general del cliente, en vez de la guía armada."""
     ap = repo.obtener_aprobacion(aprobacion_id)
     cambios = _campos(monto, datos_deposito, solicitud)
+    libre = " ".join((texto_libre or "").split())[:900] or None
+    if libre:
+        motivo = _motivo_libre(repo, ap)
+        if motivo:
+            return _resultado(False, motivo)
+        if not repo.resolver_aprobacion(aprobacion_id, "aprobada", por, texto=libre):
+            return _resultado(False, "Esa guía ya se había resuelto.")
+        repo.agregar_evento(ap["ticket_id"], ap.get("correo_id"), "guia_corregida",
+                            f"Guía reescrita por {por} antes de aprobarla"[:200])
+        return _mandar(repo, aprobacion_id, por, _ahora(ahora), libre)
     if ap and ap.get("estado") == "pendiente":
         # Lo que el ticket supo después de crearse la guía (póliza, nombre…): versión nueva para que
         # Ceci la vea antes de aprobar (se aprueba exactamente lo que se ve).
@@ -100,15 +111,34 @@ def aprobar(repo: Repositorio, aprobacion_id: int, por: str, monto: Optional[str
     ap = _guardar(repo, ap, cambios)
     if not repo.resolver_aprobacion(aprobacion_id, "aprobada", por):
         return _resultado(False, "Esa guía ya se había resuelto.")
-    ahora = _ahora(ahora)
+    return _mandar(repo, aprobacion_id, por, _ahora(ahora))
+
+
+def _motivo_libre(repo: Repositorio, ap: Optional[dict]) -> Optional[str]:
+    """Con texto propio de Ceci no hacen falta los campos de la guía, pero sí saber a quién mandárselo."""
+    if not ap:
+        return "No encontré esa guía."
+    if ap.get("estado") != "pendiente":
+        return f"Esa guía ya estaba {ap.get('estado')}."
+    if not (repo.obtener_ticket(ap["ticket_id"]) or {}).get("identificado_por"):
+        return "Todavía no está identificado el cliente/asesor del ticket: asígnalo en el panel y vuelve a aprobar."
+    return None
+
+
+def _mandar(repo: Repositorio, aprobacion_id: int, por: str, ahora: datetime,
+            texto_libre: Optional[str] = None) -> dict:
+    """Guía aprobada → al cliente (la guía, o el texto de Ceci) y aviso al asesor + recordatorio de pago."""
     ap = repo.obtener_aprobacion(aprobacion_id)
     ticket = repo.obtener_ticket(ap["ticket_id"]) or {"id": ap["ticket_id"]}
     tid, ronda = ticket["id"], int(ap.get("ronda") or 1)
     datos = ap.get("datos") or {}
     ctx = {**mensajes_etapa.contexto(ticket, {}, {"cliente_nombre": ticket.get("cliente_nombre")}),
-           "ticket_id": tid, "guia": ap["texto"], "resumen_guia": mensajes_etapa.resumen_guia(datos)}
-    # La plantilla de la guía (WATI) se arma con estos datos; el texto queda registrado en el aviso.
-    params = {**mensajes_etapa.params_wati(ctx, GUIA, ticket.get("telefono_cliente"), "corto"), "guia": datos}
+           "ticket_id": tid, "guia": texto_libre or ap["texto"], "resumen_guia": mensajes_etapa.resumen_guia(datos)}
+    # La plantilla de la guía (WATI) se arma con estos datos; el texto queda registrado en el aviso. Con texto
+    # propio de Ceci va por la plantilla general del cliente ({{nombre}} {{mensaje}}): sin "guia" en los params.
+    params = mensajes_etapa.params_wati(ctx, GUIA, ticket.get("telefono_cliente"), "corto")
+    if not texto_libre:
+        params = {**params, "guia": datos}
     res = _resultado(True, "Guía aprobada.")
     omitidos: list[str] = []
     for rol in ("cliente", "asesor"):
@@ -119,7 +149,7 @@ def aprobar(repo: Repositorio, aprobacion_id: int, por: str, monto: Optional[str
         if not numero:
             omitidos.append(f"Falta el teléfono del {rol} en Notion: no se le mandó la guía.")
             continue
-        t = mensajes_etapa.texto(rol, GUIA, ctx, proceso="corto")
+        t = texto_libre if (texto_libre and rol == "cliente") else mensajes_etapa.texto(rol, GUIA, ctx, proceso="corto")
         a = _encolar(repo, tid, rol, t, GUIA, ronda, str(numero), ap.get("correo_id"), params)
         if a:
             res["plan"].append(a)

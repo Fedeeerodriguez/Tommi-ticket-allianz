@@ -555,16 +555,18 @@ def ver_resumen_cobranza(_=Depends(_auth)):
     filas = cr._por_poliza(pend)
     ultimo = repo.leer_valor(cr.CLAVE_PREVIA)
     return {"modo": config.COBRANZA_MODO, "hora_mx": config.COBRANZA_RESUMEN_HORA_MX,
+            "asesores_dias": config.COBRANZA_ASESOR_DIAS,
             "acumulado": {"avisos": len(pend), "polizas": len(filas),
-                          "asesores": len({f["asesor_numero"] for f in filas if f.get("asesor_numero")}),
-                          "sin_asesor": sum(1 for f in filas if not f.get("asesor_numero"))},
+                          "asesores": len(cr.agrupar(filas)[0]),
+                          "sin_asesor": sum(1 for f in filas if not cr.tiene_asesor(f))},
             "vista_previa": _previa(cr, filas) if filas else None,
             "ultimo": _json(ultimo) if ultimo else None}
 
 
 def _previa(cr, filas):
-    grupos, sin = cr.agrupar(filas)
-    return cr.texto_equipo(cr.por_nombre(grupos), sin, "hoy")[1]
+    from datetime import datetime, timezone
+    grupos, sin = cr.agrupar(cr.ordenar(filas, datetime.now(timezone.utc).astimezone(cr.MEXICO).date()))
+    return cr.texto_equipo(grupos, sin, "hoy", con_excel=False)[1]
 
 
 # ─────────────────────────── Etapa 3: abrir un trámite desde el panel ───────────────────────────

@@ -99,6 +99,7 @@ def guia_general(monkeypatch):
     from app.acciones import mensajes_etapa
     monkeypatch.delitem(mensajes_etapa.GUIAS, "PLU3")
     monkeypatch.setattr(config, "RECORDATORIO_PAGO_PRODUCTOS", ["plu3"])
+    monkeypatch.setattr(config, "GUIA_SIN_PRODUCTOS", [])   # desde el 17/11 OptiMaxx Plus no lleva guía
 
 
 @pytest.fixture
@@ -268,9 +269,18 @@ def test_aprobar_elite_manda_la_guia_sin_recordatorio_de_pago(repo):
     assert not r2["ok"] and r2["plan"] == []
 
 
-def test_optimaxx_plus_cargo_automatico_sin_recordatorio_de_pago(repo):
-    # Ceci (29/10): en OptiMaxx Plus el cargo es automático. Ceci completa solo el monto y aprueba;
-    # al cliente se le recuerda tener el monto disponible, y no hay recordatorio de pago.
+def test_optimaxx_plus_no_lleva_guia(repo):
+    # Ceci (17/11): la primera aportación de OptiMaxx Plus se cobra en automático y Allianz ya le avisa al
+    # cliente → no hay guía para aprobar ni avisos.
+    tk = plu3(repo)
+    r = correr(repo, tk, C2_PLU3, 1)
+    assert repo.listar_aprobaciones(tk) == [] and r["plan"] == []
+    assert vivos(repo, tk) == {}
+
+
+def test_optimaxx_plus_con_guia_si_se_vuelve_a_prender(repo, monkeypatch):
+    # Si algún día vuelve a llevar guía (GUIA_SIN_PRODUCTOS vacío), es la de cargo automático del 29/10.
+    monkeypatch.setattr(config, "GUIA_SIN_PRODUCTOS", [])
     tk = plu3(repo)
     correr(repo, tk, C2_PLU3, 1)
     ap = repo.listar_aprobaciones(tk)[0]
@@ -473,7 +483,7 @@ def test_guia_de_patrimonial_manda_el_comprobante_a_cliente_inversion():
 
 def test_el_largo_no_cambia_de_texto():
     ctx = {**m.contexto({"nro_ticket": "2576612", "proceso": "largo", "nro_solicitud": "1950110"},
-                        {"cliente": "Hortencia Prueba Gama"}), "desde": "26/10", "cc": "x"}
+                        {"cliente": "Hortencia Prueba Gama"}), "desde": "26/10", "cc": "x", "firma": "Cecilia Cansino"}
     assert m.texto_recordatorio("ceci", "esperando_allianz", "recordatorio", ctx).startswith(
         "Ticket 2576612 · Hortencia Prueba Gama: Allianz no responde desde que mandamos los documentos (26/10).")
     assert ("Damos seguimiento a la solicitud 1950110 de Hortencia Prueba Gama (ticket 2576612). El 26/10 "
@@ -483,7 +493,7 @@ def test_el_largo_no_cambia_de_texto():
 
 def test_escalacion_del_corto_habla_del_pago():
     ctx = {**m.contexto({"nro_ticket": "2567479", "proceso": "corto", "poliza": "SVIP-21799"},
-                        {"cliente": "GUILLERMO PRUEBA"}), "desde": "30/10"}
+                        {"cliente": "GUILLERMO PRUEBA"}), "desde": "30/10", "firma": "Cecilia Cansino"}
     assert "Damos seguimiento a la póliza SVIP-21799 de Guillermo Prueba (ticket 2567479). El 30/10 enviamos " \
            "el comprobante de pago" in m.CORREO_ESCALACION.format(**ctx)
 
