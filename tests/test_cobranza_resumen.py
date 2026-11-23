@@ -164,7 +164,10 @@ def test_si_notion_falla_el_resumen_sale_igual_con_todas(repo):
 def test_martes_y_jueves_a_cada_asesor_correo_con_sus_clientes_y_whatsapp_con_la_cantidad(repo):
     _llegan(repo)
     cr.armar_resumen(repo, ahora=HOY, emisor=_Emisor(), pagadas=NINGUNA)   # el diario no le quita nada
-    res = cr.armar_resumen_asesores(repo, ahora=HOY + timedelta(minutes=5), emisor=_Emisor(), pagadas=NINGUNA)
+    # Las acciones se guardan con la hora real (created_at de la base): "lo nuevo desde el último envío" se mide
+    # contra el reloj de verdad, no contra HOY, o el test depende del día en que corre.
+    ahora = datetime.now(timezone.utc) + timedelta(minutes=5)
+    res = cr.armar_resumen_asesores(repo, ahora=ahora, emisor=_Emisor(), pagadas=NINGUNA)
     assert res == {"asesores": 2, "polizas": 4, "pagadas": 0, "correos_enviados": 0, "correos": 2,
                    "whatsapp_encolados": 2}
     wa = {p["numero"]: p for p in _sugeridas(repo) if p["rol"] == "asesor"}
@@ -176,7 +179,7 @@ def test_martes_y_jueves_a_cada_asesor_correo_con_sus_clientes_y_whatsapp_con_la
     detalle = json.loads(repo.leer_valor(f"{cr.CLAVE_ASESORES}:detalle"))
     assert {c["para"] for c in detalle["correos"]} == {"asesor1@babilonia.ai", "asesor2@babilonia.ai"}
     # El siguiente envío solo lleva lo nuevo.
-    otra = cr.armar_resumen_asesores(repo, ahora=HOY + timedelta(days=2), emisor=_Emisor(), pagadas=NINGUNA)
+    otra = cr.armar_resumen_asesores(repo, ahora=ahora + timedelta(days=2), emisor=_Emisor(), pagadas=NINGUNA)
     assert otra["asesores"] == 0 and otra["whatsapp_encolados"] == 0
 
 
