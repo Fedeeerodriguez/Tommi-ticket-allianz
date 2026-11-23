@@ -333,6 +333,11 @@ def hay_telegram() -> bool:
     return bool(TELEGRAM_APROBACIONES and TELEGRAM_BOT_TOKEN and telegram_chats())
 
 
+def hay_bot_telegram() -> bool:
+    """Bot encendido aunque falten los chats: así contesta "/start" con el chat id para configurarlos."""
+    return bool(TELEGRAM_APROBACIONES and TELEGRAM_BOT_TOKEN)
+
+
 def correo_clientes_allianz(producto) -> str:
     """Correo de Servicio al Cliente de Allianz al que el cliente manda sus trámites (Ceci, 17/11): OptiMaxx Plus →
     cliente.optimaxx@, Elite y Patrimonial → cliente.inversion@. Vacío si el producto no tiene (lo ve Ceci)."""

@@ -421,6 +421,9 @@ def procesar_updates(repo: Repositorio, transporte: Optional[Transporte] = None)
             chat = str(((cq or {}).get("message") or msg or {}).get("chat", {}).get("id", ""))
             if msg and (msg.get("text") or "").strip().startswith("/start"):
                 enviar("sendMessage", {"chat_id": chat, "text": f"Hola. Tu chat id es {chat}."})
+                nombre = ((msg.get("from") or {}).get("first_name") or "").strip()
+                log.info("telegram: /start de %s · chat id %s%s", nombre or "?", chat,
+                         "" if chat in _chats() else " (todavía no está en TELEGRAM_CECI_CHAT_ID)")
             elif chat not in _chats():
                 res["ignorados"] += 1  # solo Ceci y Jime aprueban
             elif cq:

@@ -142,6 +142,18 @@ def test_start_responde_el_chat_id(repo, bot):
     assert bot.de("sendMessage")[-1] == {"chat_id": "4242", "text": "Hola. Tu chat id es 4242."}
 
 
+def test_sin_chats_cargados_el_bot_igual_contesta_start(repo, bot, monkeypatch):
+    # Recién creado el bot todavía no hay TELEGRAM_CECI_CHAT_ID: tiene que leer igual para darle a Ceci su chat id.
+    from app import scheduler
+    monkeypatch.setattr(config, "TELEGRAM_CECI_CHAT_ID", "")
+    monkeypatch.setattr(telegram, "_http", bot)
+    assert config.hay_bot_telegram() and not config.hay_telegram()
+    bot.updates = [{"update_id": 1, "message": {"message_id": 9, "text": "/start", "from": {"first_name": "Ceci"},
+                                                "chat": {"id": 4242}}}]
+    scheduler.job_telegram(repo, None)
+    assert bot.de("sendMessage") == [{"chat_id": "4242", "text": "Hola. Tu chat id es 4242."}]
+
+
 def test_offset_no_repite_updates(repo, bot):
     tk, ap = preparar(repo, bot)
     bot.updates = [boton(7, f"de:{ap['id']}:1")]

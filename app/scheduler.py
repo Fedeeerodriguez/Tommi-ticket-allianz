@@ -88,6 +88,8 @@ def job_recordatorios(repo, emisor) -> dict:
 def job_telegram(repo, emisor) -> dict:
     """Telegram: guías de aportación y correos retenidos para Ceci/Jime + sus botones (Autorizar / Modificar)."""
     from app.rieles import telegram
+    if not config.hay_telegram():  # falta el chat de Ceci/Jime: solo se contesta "/start" con su chat id
+        return telegram.procesar_updates(repo)
     enviadas = telegram.enviar_pendientes(repo) + telegram.enviar_acciones(repo)
     res = telegram.procesar_updates(repo)
     desp = despachar_pendientes(repo, emisor) if res["plan"] else {"conteo": {}}
@@ -156,7 +158,7 @@ def construir_scheduler():
     sched.add_job(lambda: job_retencion(repo), "cron", hour=3, minute=30, id="retencion")
     if config.MOTOR_ETAPAS:
         sched.add_job(lambda: job_recordatorios(repo, emisor), "interval", minutes=30, id="recordatorios")
-        if config.hay_telegram():  # Etapa 2: aprobación de la guía de aportación
+        if config.hay_bot_telegram():  # Etapa 2: aprobación de la guía (sin chats todavía: solo "/start")
             sched.add_job(lambda: job_telegram(repo, emisor), "interval", seconds=15, id="telegram",
                           max_instances=1, coalesce=True)
     # Cobranza en modo resumen: lo acumulado sale una vez por día hábil (el lunes incluye el fin de semana).
