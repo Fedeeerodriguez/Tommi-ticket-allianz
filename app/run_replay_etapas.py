@@ -22,6 +22,7 @@ import argparse
 import html
 import os
 import tempfile
+import time
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -57,6 +58,42 @@ def _leer_correos(dsn: str, desde: datetime) -> list:
         return filas, viejo
     finally:
         c.close()
+
+
+def _leer_gmail_lectura(desde: datetime, hasta: datetime) -> list:
+    """Los correos de Allianz de integraciones@ (solo lectura), sin cobranza ni códigos de acceso: ahí entran
+    los tickets de todos los agentes. Misma forma que `_leer_correos`, del más viejo al más nuevo."""
+    import base64
+
+    from app.google_auth import construir_servicio
+    from app.intake.gmail_api import _ejecutar
+    from app.intake.reader import normalizar_desde_bytes
+    import pickle
+    cache = config.DATA_DIR / f"replay_integraciones_{desde:%Y%m%d}.pkl"   # datos personales: solo en data/
+    if cache.is_file():
+        return pickle.loads(cache.read_bytes())
+    svc = construir_servicio("lectura")
+    if svc is None:
+        raise RuntimeError("sin token de integraciones@ (GMAIL_LECTURA_TOKEN / GMAIL_LECTURA_TOKEN_JSON)")
+    q = (f"from:allianz.com.mx after:{desde:%Y/%m/%d} before:{(hasta + timedelta(days=1)):%Y/%m/%d} "
+         f"-subject:cobranza {config.GMAIL_LECTURA_EXCLUIR}")
+    ids, tok = [], None
+    while True:
+        r = _ejecutar(svc.users().messages().list(userId="me", q=q, maxResults=500, pageToken=tok))
+        ids += [m["id"] for m in r.get("messages", [])]
+        tok = r.get("nextPageToken")
+        if not tok:
+            break
+    filas = []
+    for i in ids:
+        raw = base64.urlsafe_b64decode(_ejecutar(svc.users().messages().get(userId="me", id=i, format="raw"))["raw"])
+        c = normalizar_desde_bytes(raw, origen=f"gmail:{i}")
+        filas.append((c.message_id, c.remitente, c.remitente_dominio, c.para, c.cc, c.asunto, c.cuerpo_texto, c.fecha))
+        time.sleep(0.15)  # integraciones@ comparte la cuota por minuto con el intake: sin apuro
+    lejos = datetime(1970, 1, 1, tzinfo=timezone.utc)
+    filas.sort(key=lambda f: f[7] if (f[7] and f[7].tzinfo) else lejos)
+    cache.write_bytes(pickle.dumps(filas))
+    return filas
 
 
 def replay(desde: datetime, hasta: datetime) -> dict:
@@ -200,7 +237,7 @@ def informe_html(r: dict, prueba: Optional[dict] = None) -> str:
                            "enviado»). Nombres y teléfonos de prueba. Hace falta porque en hola@ todavía no llegan los "
                            "correos del proceso corto ni los trámites.", real=False)
     if r:
-        partes += _seccion(r, ("2. " if prueba else "") + "Correos reales de hola@",
+        partes += _seccion(r, ("2. " if prueba else "") + f"Correos reales de {r.get('fuente', 'hola@')}",
                            f"Del {r['desde']:%d/%m/%Y} al {r['hasta']:%d/%m/%Y}.", real=True)
     partes.append("</main>")
     return "\n".join(partes)
@@ -312,11 +349,21 @@ def main() -> int:
     p.add_argument("--desde", default="2026-09-01")
     p.add_argument("--salida", default=str(config.DATA_DIR / "replay_etapas.html"))
     p.add_argument("--solo-prueba", action="store_true", help="solo la semana de prueba (sin leer la base)")
+    p.add_argument("--integraciones", action="store_true",
+                   help="los correos reales salen de integraciones@ (Gmail, solo lectura) en vez de la base")
     a = p.parse_args()
     prueba = semana_de_prueba()
     print(f"semana de prueba: correos={prueba['correos']} rutas={dict(prueba['rutas'])} errores={len(prueba['errores'])}")
     r = None
-    if not a.solo_prueba:
+    if not a.solo_prueba and a.integraciones:
+        desde = datetime.fromisoformat(a.desde).replace(tzinfo=timezone.utc)
+        hasta = datetime.now(timezone.utc)
+        filas = _leer_gmail_lectura(desde, hasta)
+        _forzar_sandbox()
+        r = replay_correos(filas, desde, hasta, {})
+        r["fuente"] = config.GMAIL_LECTURA_BUZON
+        print(f"integraciones@: correos={r['correos']} rutas={dict(r['rutas'])} errores={len(r['errores'])}")
+    elif not a.solo_prueba:
         if not config.hay_db():
             print("Falta DATABASE_URL (la base de donde se leen los correos reales). Usa --solo-prueba.")
             return 1
@@ -326,7 +373,7 @@ def main() -> int:
     os.makedirs(os.path.dirname(os.path.abspath(a.salida)), exist_ok=True)
     with open(a.salida, "w", encoding="utf-8") as f:
         f.write(informe_html(r, prueba))
-    print(f"→ {a.salida}")
+    print(f"-> {a.salida}")
     return 0
 
 

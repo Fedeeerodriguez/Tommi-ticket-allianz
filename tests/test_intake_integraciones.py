@@ -169,3 +169,28 @@ def test_una_rafaga_de_cobranza_no_saca_a_los_tickets_del_panel(tmp_path, monkey
     monkeypatch.setattr(api, "_repo", repo)
     r = TestClient(api.app).get("/api/tickets-allianz").json()
     assert [t["id"] for t in r["items"]] == [tk] and r["resumen"]["cobranzas"] == 510
+
+
+def test_el_pie_de_allianz_no_marca_el_ticket_como_delicado():
+    from app.models import Correo
+    from app.tickets.engine import es_delicado
+    pie = ("El tiempo de respuesta puede variar dependiendo del tipo de trámite, consulta y/o reclamación que "
+           "solicite, siempre y cuando conte con la documentación completa.")
+    c = Correo("<m@x>", "a@allianz.com.mx", "allianz.com.mx", [], [], "[Allianz México Ticket-2601234] Sistema escribió un mensaje",
+               "Recibimos su trámite de cambio de conducto de cobro.\n" + pie)
+    assert not es_delicado(c)
+    c.cuerpo_texto = ("Su solicitud ha sido resuelto y por lo tanto no es posible realizar ningún cambio o cancelación "
+                      "después de haber recibido este correo.")
+    assert not es_delicado(c)
+    c.asunto = "[Allianz México Ticket-2601234] Sistema escribió un mensaje en [EXT] CANCELACIÓN DE POLIZA"
+    assert es_delicado(c)
+
+
+def test_cierres_de_la_mesa_de_servicio_e_inactividad():
+    from app.clasificador.etapas import Etapa, detectar_etapa
+    r = detectar_etapa("[Service Desk Ticket-2610001] MONICA SANCHEZ resolvió su solicitud",
+                       "Hola,\nSolicitud atendida\nMONICA SANCHEZ resolvió su solicitud [EXT] CAMBIO CONDUCTO", "x@allianz.com.mx")
+    assert r.etapa == Etapa.ATENDIDA and r.nro_ticket == "2610001" and r.actor
+    r = detectar_etapa("[Allianz MéxicoTicket-2610002] Su solicitud ha sido cerrada por inactividad",
+                       "Estimado cliente.", "allianz.mexico@allianz.com.mx")
+    assert r.etapa == Etapa.CERRADO_INACTIVIDAD and r.nro_ticket == "2610002"
