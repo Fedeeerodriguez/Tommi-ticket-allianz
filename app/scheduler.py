@@ -158,9 +158,12 @@ def construir_scheduler():
     sched.add_job(lambda: job_retencion(repo), "cron", hour=3, minute=30, id="retencion")
     if config.MOTOR_ETAPAS:
         sched.add_job(lambda: job_recordatorios(repo, emisor), "interval", minutes=30, id="recordatorios")
-        if config.hay_bot_telegram():  # Etapa 2: aprobación de la guía (sin chats todavía: solo "/start")
-            sched.add_job(lambda: job_telegram(repo, emisor), "interval", seconds=15, id="telegram",
-                          max_instances=1, coalesce=True)
+    # Telegram no depende del motor: también lleva las instrucciones de trámites que espera Ceci.
+    # Sin chats cargados todavía, solo contesta "/start" con el chat id.
+    if config.hay_bot_telegram():
+        sched.add_job(lambda: job_telegram(repo, emisor), "interval", seconds=15, id="telegram",
+                      max_instances=1, coalesce=True)
+        log.info("telegram: bot encendido · %d chats cargados", len(config.telegram_chats()))
     # Cobranza en modo resumen: lo acumulado sale una vez por día hábil (el lunes incluye el fin de semana).
     from app.acciones import cobranza, cobranza_resumen
     if cobranza.activo() and cobranza_resumen.activo():
