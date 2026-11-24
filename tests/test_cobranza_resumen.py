@@ -68,7 +68,8 @@ class _Emisor:
         for ruta in adjuntos or []:
             with open(ruta, "rb") as fh:
                 archivos[os.path.basename(ruta)] = fh.read()
-        self.enviados.append({"para": para, "asunto": asunto, "cuerpo": cuerpo, "adjuntos": archivos})
+        self.enviados.append({"para": para, "asunto": asunto, "cuerpo": cuerpo, "adjuntos": archivos,
+                              "cc": _.get("cc")})
         return {"ok": True}
 
 
@@ -143,6 +144,30 @@ def test_con_cobranza_en_vivo_sale_el_correo_con_el_excel_y_el_whatsapp_a_ceci(r
     assert despacho.despachar_pendientes(repo, em)["conteo"] == {"enviada": 1}
     assert enviados[0][0] == "5500000000" and enviados[0][1] == config.WATI_PLANTILLA_COBRANZA
     assert set(enviados[0][2]) == {"cantidad", "clientes", "indicacion"}
+
+
+def test_el_correo_diario_va_a_integraciones_con_copia_a_yans(repo, monkeypatch):
+    # 23/11: el correo de Yans va a integraciones@ con copia a su correo personal.
+    monkeypatch.setattr(config, "DRY_RUN", False)
+    monkeypatch.setattr(config, "COBRANZA_RESUMEN_EMAILS", ["integraciones@babilonia.ai"])
+    monkeypatch.setattr(config, "COBRANZA_RESUMEN_CC", ["yans.personal@example.com"])
+    interruptor.cambiar(repo, "cobranza", True)
+    _llegan(repo)
+    em = _Emisor()
+    cr.armar_resumen(repo, ahora=HOY, emisor=em, pagadas=NINGUNA)
+    assert em.enviados[0]["para"] == ["integraciones@babilonia.ai"]
+    assert em.enviados[0]["cc"] == ["yans.personal@example.com"]
+
+
+def test_el_resumen_que_manda_tommy_no_vuelve_a_entrar_como_ticket(repo):
+    # Integraciones@ es el buzón que leemos: el resumen de cobranza le llega y no tiene que abrir nada.
+    from app.models import Correo
+    g = construir_grafo(repo)
+    res = g.invoke({"correo": Correo("tommi-1", "hola@babilonia.ai", "babilonia.ai", ["integraciones@babilonia.ai"],
+                                     [], "[Tommi] Cobranza 18/11: 4 pólizas con cargo rechazado",
+                                     "Cargos rechazados desde el último resumen: 4 pólizas. Pago, póliza PLU3-437821."),
+                    "despachar": False})
+    assert res["fin"] == "reporte_propio" and repo.listar_tickets() == []
 
 
 def test_las_polizas_con_el_pago_aplicado_no_salen(repo):
