@@ -300,7 +300,8 @@ def excel(grupos: "OrderedDict[str, list[dict]]", sin_asesor: list[dict]) -> Opt
     return buf.getvalue()
 
 
-def _enviar(emisor, para: list[str], asunto: str, cuerpo: str, xlsx: Optional[bytes], nombre_xlsx: str) -> dict:
+def _enviar(emisor, para: list[str], asunto: str, cuerpo: str, xlsx: Optional[bytes], nombre_xlsx: str,
+            cc: Optional[list[str]] = None) -> dict:
     with tempfile.TemporaryDirectory(prefix="cobranza_") as carpeta:
         adjuntos = []
         if xlsx:
@@ -308,7 +309,7 @@ def _enviar(emisor, para: list[str], asunto: str, cuerpo: str, xlsx: Optional[by
             with open(ruta, "wb") as fh:
                 fh.write(xlsx)
             adjuntos.append(ruta)
-        res = emisor.enviar(para, asunto, cuerpo, adjuntos=adjuntos or None)
+        res = emisor.enviar(para, asunto, cuerpo, cc=cc or None, adjuntos=adjuntos or None)
     return {"enviado": bool(res.get("ok") and not res.get("simulado")),
             "resultado": {k: res.get(k) for k in ("ok", "error", "simulado")}}
 
@@ -348,10 +349,12 @@ def armar_resumen(repo: Repositorio, ahora: Optional[datetime] = None, emisor=No
     xlsx = excel(grupos, sin_asesor) if filas else None
     asunto, cuerpo = texto_equipo(grupos, sin_asesor, hoy, len(ya_pagadas), con_excel=bool(xlsx))
     destinos = [x for x in config.COBRANZA_RESUMEN_EMAILS if x]
-    correo = {"asunto": asunto, "cuerpo": cuerpo, "para": destinos, "enviado": False, "excel": bool(xlsx)}
+    copia = [x for x in config.COBRANZA_RESUMEN_CC if x and x not in destinos]
+    correo = {"asunto": asunto, "cuerpo": cuerpo, "para": destinos, "cc": copia, "enviado": False,
+              "excel": bool(xlsx)}
     if filas and destinos and interruptor.es_real(repo, "cobranza"):
         correo.update(_enviar(_emisor(emisor), destinos, asunto, cuerpo, xlsx,
-                              f"cobranza_{ahora.astimezone(MEXICO):%Y-%m-%d}.xlsx"))
+                              f"cobranza_{ahora.astimezone(MEXICO):%Y-%m-%d}.xlsx", cc=copia))
     repo.guardar_valor(CLAVE_PREVIA, json.dumps({"en": ahora.isoformat(timespec="seconds"), **correo},
                                                  ensure_ascii=False))
 

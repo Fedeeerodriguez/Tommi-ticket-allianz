@@ -54,6 +54,10 @@ def n_persistir(estado: EstadoCorreo, repo: Repositorio) -> dict:
     """Guarda el correo (idempotente) y decide si el flujo sigue o termina."""
     correo, clf, ent = estado["correo"], estado["clasificacion"], estado.get("entidades", {})
     correo_id, es_nuevo = repo.guardar_correo(correo, clf, ent)
+    if es_nuevo and es_reporte_propio(correo):
+        # Los resúmenes que manda Tommy (cobranza a Yans va a integraciones@, que es el buzón que leemos):
+        # se guardan, pero no son un ticket ni un aviso de Allianz.
+        return {"correo_id": correo_id, "es_nuevo": es_nuevo, "fin": "reporte_propio", "ruta": ["persistir"]}
     if not es_nuevo:
         fin = "duplicado"
     elif clf.tipo in _TIPOS_TICKET:
@@ -84,6 +88,13 @@ def n_persistir(estado: EstadoCorreo, repo: Repositorio) -> dict:
         elif fin is None and etapa is None and _buzon_de_avisos(correo.remitente) and not es_delicado(correo):
             salida["fin"] = "fuera_de_alcance"
     return salida
+
+
+def es_reporte_propio(correo) -> bool:
+    """Un resumen que mandó Tommy desde nuestro buzón ('[Tommi] …'). Las respuestas ('Re: [Tommi] …') no."""
+    remitente = (correo.remitente or "").lower()
+    propios = {x for x in (config.BUZON, (config.SMTP_REMITENTE or "").lower()) if x}
+    return (correo.asunto or "").lstrip().startswith("[Tommi]") and any(p in remitente for p in propios)
 
 
 def _buzon_de_avisos(remitente: str) -> bool:

@@ -255,6 +255,7 @@ COBRANZA_AVISOS = os.getenv("COBRANZA_AVISOS", "true").strip().lower() in ("1", 
 COBRANZA_MODO = os.getenv("COBRANZA_MODO", "resumen").strip().lower()
 COBRANZA_RESUMEN_HORA_MX = int(os.getenv("COBRANZA_RESUMEN_HORA_MX", "10"))   # lun-vie, hora de México
 COBRANZA_RESUMEN_EMAILS = _csv("COBRANZA_RESUMEN_EMAILS", "")                  # Yans (y quien se sume)
+COBRANZA_RESUMEN_CC = _csv("COBRANZA_RESUMEN_CC", "")                          # copia del correo diario
 COBRANZA_ASESOR_DIAS = os.getenv("COBRANZA_ASESOR_DIAS", "tue,thu")            # a los asesores: martes y jueves
 COBRANZA_ASESOR_HORA_MX = int(os.getenv("COBRANZA_ASESOR_HORA_MX", "10"))
 # Pagos aplicados: Yans marca en la tabla de Cobranzas (NOTION_DB_COBRANZAS) "Pago hecho" = aplicado → esa
