@@ -58,6 +58,14 @@ def n_persistir(estado: EstadoCorreo, repo: Repositorio) -> dict:
         # Los resúmenes que manda Tommy (cobranza a Yans va a integraciones@, que es el buzón que leemos):
         # se guardan, pero no son un ticket ni un aviso de Allianz.
         return {"correo_id": correo_id, "es_nuevo": es_nuevo, "fin": "reporte_propio", "ruta": ["persistir"]}
+    if es_nuevo:
+        # Solicitud firmada de un trámite nuestro que llega por correo (asesor, cliente o equipo): queda en el
+        # panel para Ceci, como la de WhatsApp. Si no lo es, sigue el camino de siempre.
+        from app.acciones import solicitud_correo
+        sol = solicitud_correo.procesar(repo, correo, correo_id, ent)
+        if sol:
+            return {"correo_id": correo_id, "es_nuevo": es_nuevo, "fin": sol["fin"],
+                    "ticket_id": sol.get("ticket_id"), "ruta": ["persistir", "solicitud_correo"]}
     if not es_nuevo:
         fin = "duplicado"
     elif clf.tipo in _TIPOS_TICKET:

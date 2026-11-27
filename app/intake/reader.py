@@ -6,6 +6,7 @@ hola@babilonia.ai se agrega `LectorGmail` implementando la misma interfaz, sin t
 """
 from __future__ import annotations
 
+import base64
 import email
 import email.policy
 import hashlib
@@ -72,6 +73,34 @@ def _adjuntos(msg: EmailMessage) -> list[str]:
     return nombres
 
 
+MAX_ADJUNTOS_DATOS = 5
+MAX_BYTES_ADJUNTOS_DATOS = 8 * 1024 * 1024
+
+
+def _adjuntos_datos(msg: EmailMessage) -> list[dict]:
+    """PDF e imágenes adjuntos con su contenido en base64 (hasta 5 y 8 MB en total)."""
+    salida: list[dict] = []
+    total = 0
+    if not msg.is_multipart():
+        return salida
+    for parte in msg.walk():
+        if "attachment" not in str(parte.get("Content-Disposition") or ""):
+            continue
+        tipo = (parte.get_content_type() or "").lower()
+        if not (tipo == "application/pdf" or tipo.startswith("image/")):
+            continue
+        try:
+            datos = parte.get_payload(decode=True) or b""
+        except Exception:  # noqa: BLE001
+            continue
+        if not datos or total + len(datos) > MAX_BYTES_ADJUNTOS_DATOS or len(salida) >= MAX_ADJUNTOS_DATOS:
+            continue
+        total += len(datos)
+        salida.append({"nombre": parte.get_filename() or "adjunto", "tipo": tipo, "bytes": len(datos),
+                       "base64": base64.b64encode(datos).decode()})
+    return salida
+
+
 def normalizar_desde_bytes(datos: bytes, origen: str | None = None) -> Correo:
     """Parsea un correo crudo (.eml / RFC822) a un `Correo` normalizado."""
     msg: EmailMessage = email.message_from_bytes(datos, policy=email.policy.default)  # type: ignore[assignment]
@@ -104,6 +133,7 @@ def normalizar_desde_bytes(datos: bytes, origen: str | None = None) -> Correo:
         fecha=fecha,
         headers={k.lower(): v for k, v in msg.items()},
         adjuntos=_adjuntos(msg),
+        adjuntos_datos=_adjuntos_datos(msg),
         origen=origen,
     )
 
