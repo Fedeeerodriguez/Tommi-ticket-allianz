@@ -49,6 +49,8 @@ class Correo:
     fecha: Optional[datetime] = None
     headers: dict[str, str] = field(default_factory=dict)
     adjuntos: list[str] = field(default_factory=list)
+    # PDF e imágenes adjuntos, con el contenido (no se guarda en la base del correo): solicitud firmada por correo.
+    adjuntos_datos: list[dict] = field(default_factory=list)
     origen: Optional[str] = None  # ruta del .eml o id del mensaje en el buzón
     hilo_id: Optional[str] = None  # threadId de Gmail → para responder EN EL MISMO HILO (Fase B)
     fallo: bool = False  # el intake no lo pudo procesar → el lector NO lo marca leído (se reintenta)

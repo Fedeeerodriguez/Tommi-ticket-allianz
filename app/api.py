@@ -19,6 +19,7 @@ Endpoints (todos bajo /api/tickets-allianz):
   POST /api/tickets-allianz/tramites/archivos-whatsapp -> lo que mandó el cliente por WhatsApp (Etapa 3B)
   POST /api/tickets-allianz/tramites/solicitud         -> Tommy deja la solicitud del cliente (X-Tomi-Key)
   POST /api/tickets-allianz/tramites/solicitud/{id}/descartar -> Ceci la descarta
+  GET  /api/tickets-allianz/tramites/solicitud/{id}/archivos  -> adjuntos del correo de la solicitud firmada
   GET  /api/health                                     -> ping
 
 Seguridad: `Authorization: Bearer <sesión de Tomi>` de un admin (firmada con TOMI_JWT_SECRET) o,
@@ -657,3 +658,20 @@ def descartar_solicitud(ticket_id: int, body: DescartarIn, _=Depends(_auth)):
     if not r["ok"]:
         raise HTTPException(status_code=409, detail=r["motivo"])
     return r
+
+
+@app.get("/api/tickets-allianz/tramites/solicitud/{ticket_id}/archivos")
+def archivos_solicitud(ticket_id: int, _=Depends(_auth)):
+    """Los adjuntos del correo con el que llegó la solicitud firmada (asesor, cliente o equipo), en el mismo
+    formato que los de WhatsApp, para marcarlos y mandarlos a Allianz. Solo lee."""
+    from app.acciones import solicitud_correo
+    repo = _get_repo()
+    t = repo.obtener_ticket(ticket_id)
+    if not t:
+        raise HTTPException(status_code=404, detail="no existe ese ticket")
+    fecha = str(t.get("created_at") or "")
+    archivos = [{"nombre": a.get("nombre"), "tipo": a.get("tipo"), "base64": a.get("base64"),
+                 "bytes": a.get("bytes") or 0, "fecha": fecha} for a in solicitud_correo.leer_adjuntos(repo, ticket_id)]
+    n = len(archivos)
+    return {"ok": True, "archivos": archivos,
+            "motivo": f"{n} adjunto{'s' if n != 1 else ''} del correo" if n else "el correo no trae adjuntos"}
